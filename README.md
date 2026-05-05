@@ -86,16 +86,23 @@
 [root@kali ~]$ ls -la /ops/missions/
 ```
 
-<div align="center">
+```
+drwxr-xr-x  [BLOCKCHAIN]   SmartGuard/            Slither DeFi fraud detector · 100% F1 · SIGiST 2026
+drwxr-xr-x  [DFIR]         Operation-FishNet/     ACPO forensics · DarkComet RAT · 50+ court exhibits
+drwxr-xr-x  [OFFENSIVE]    OWASP-Pentest-Suite/   SQLi · XSS · CSRF · 2FA bypass · 89/100
+drwxr-xr-x  [NETWORK]      Network-Security/      ARP poison · Snort IDS · OpenVPN · RADIUS · A2
+drwxr-xr-x  [SECURE-CODE]  Secure-Programming/    SEI CERT C++ · Rust Hangman · DCL50 STR50 MEM51
+drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeline · HIBP API
+```
 
-[![SmartGuard](https://github-readme-stats.vercel.app/api/pin/?username=CodeEvent&repo=SmartGuard&theme=chartreuse-dark&hide_border=true)](https://github.com/CodeEvent/SmartGuard)
-[![Operation-FishNet](https://github-readme-stats.vercel.app/api/pin/?username=CodeEvent&repo=Operation-FishNet&theme=chartreuse-dark&hide_border=true)](https://github.com/CodeEvent/Operation-FishNet)
-[![OWASP-Pentest-Suite](https://github-readme-stats.vercel.app/api/pin/?username=CodeEvent&repo=OWASP-Pentest-Suite&theme=chartreuse-dark&hide_border=true)](https://github.com/CodeEvent/OWASP-Pentest-Suite)
-[![Network-Security](https://github-readme-stats.vercel.app/api/pin/?username=CodeEvent&repo=Network-Security&theme=chartreuse-dark&hide_border=true)](https://github.com/CodeEvent/Network-Security)
-[![Secure-Programming](https://github-readme-stats.vercel.app/api/pin/?username=CodeEvent&repo=Secure-Programming&theme=chartreuse-dark&hide_border=true)](https://github.com/CodeEvent/Secure-Programming)
-[![Programming-for-Cyber-Security](https://github-readme-stats.vercel.app/api/pin/?username=CodeEvent&repo=Programming-for-Cyber-Security&theme=chartreuse-dark&hide_border=true)](https://github.com/CodeEvent/Programming-for-Cyber-Security)
-
-</div>
+| Mission | Objective | Stack |
+|---------|-----------|-------|
+| [🔐 SmartGuard](https://github.com/CodeEvent/SmartGuard) | DeFi fraud detector — 100% F1 — SIGiST 2026 | Python · Slither · Solidity |
+| [🕵️ Operation FishNet](https://github.com/CodeEvent/Operation-FishNet) | ACPO DFIR — DarkComet RAT — 50+ exhibits | Autopsy · Volatility · FTK |
+| [💉 OWASP Pentest Suite](https://github.com/CodeEvent/OWASP-Pentest-Suite) | SQLi · XSS · CSRF · 2FA bypass — 89/100 | Burp Suite · Python |
+| [🌐 Network Security](https://github.com/CodeEvent/Network-Security) | ARP poison · Snort · OpenVPN · RADIUS — A2 | Ettercap · Snort · FreeRADIUS |
+| [🔒 Secure Programming](https://github.com/CodeEvent/Secure-Programming) | SEI CERT C++ remediation + Rust | C++17 · Rust |
+| [🐍 Python Security Tools](https://github.com/CodeEvent/Programming-for-Cyber-Security) | HTTP brute force · DNS pipeline | Python · Sockets |
 
 ---
 
