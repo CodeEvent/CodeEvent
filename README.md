@@ -54,6 +54,12 @@
     ├── Arpwatch          ARP change detection
     └── OSSEC v3.7        host intrusion detection
 
+[*] CRYPTOGRAPHY ───────────────────────────────────────
+    ├── OpenSSL PKI       root CA · X.509 · CSR signing · HTTPS
+    ├── strongSwan        IKEv2 IPsec VPN · 4096-bit PKI · EAP-MSCHAPv2
+    ├── GPG               detached signatures · key pair management
+    └── AES/RSA/SHA       symmetric · asymmetric · hashing · DES · CBC
+
 [*] NETWORK SECURITY ───────────────────────────────────────
     ├── OpenVPN 2.4       PKI · EasyRSA · X.509 certs
     ├── FreeRADIUS 3.0    AAA · 802.1X · RADIUS protocol
@@ -102,7 +108,7 @@ drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeli
 | [🕵️ Operation FishNet](https://github.com/CodeEvent/Operation-FishNet) | ACPO DFIR — DarkComet RAT — 50+ exhibits | Autopsy · Volatility · FTK |
 | [💉 OWASP Pentest Suite](https://github.com/CodeEvent/OWASP-Pentest-Suite) | SQLi · XSS · CSRF · 2FA bypass — 89/100 | Burp Suite · Python |
 | [🌐 Network Security](https://github.com/CodeEvent/Network-Security) | ARP poison · Snort · OpenVPN · RADIUS — A2 | Ettercap · Snort · FreeRADIUS |
-| 🔑 Cryptography | PKI · AES-256 · RSA · SHA-3 · GPG · IKEv2 VPN — First-class | OpenSSL · GPG · strongSwan
+| [🔑 Cryptography](https://github.com/CodeEvent/Cryptography) | PKI · AES-256 · RSA · SHA-3 · GPG · IKEv2 VPN — First-class | OpenSSL · GPG · strongSwan |
 | [🔒 Secure Programming](https://github.com/CodeEvent/Secure-Programming) | SEI CERT C++ remediation + Rust | C++17 · Rust |
 | [🐍 Python Security Tools](https://github.com/CodeEvent/Programming-for-Cyber-Security) | HTTP brute force · DNS pipeline | Python · Sockets |
 
@@ -133,15 +139,15 @@ drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeli
    Network Security COMP10014 — 80-89%
    Labs: ARP Poison · Snort IDS · GRE · OpenVPN · RADIUS
 
-** Alert 2025.05.01 10:22:17 UTC
-   Rule 9005 (level 10) -> PENTEST ASSESSMENT: 89/100
-   2FA bypass via SQLi · stored XSS session hijack · CSRF
-   Targets: Juice Shop · Mutillidae · Security Shepherd
-
 ** Alert 2025.06.15 09:00:00 UTC
-   Rule 9006 (level 10) -> GRADE: FIRST CLASS
+   Rule 9005 (level 10) -> GRADE: FIRST CLASS
    Cryptography COMP09106 — PKI · AES · RSA · hashing · GPG · IKEv2 VPN
    Labs: CrypTool · OpenSSL · strongSwan · 9 weeks
+
+** Alert 2025.05.01 10:22:17 UTC
+   Rule 9006 (level 10) -> PENTEST ASSESSMENT: 89/100
+   2FA bypass via SQLi · stored XSS session hijack · CSRF
+   Targets: Juice Shop · Mutillidae · Security Shepherd
 
 
 ```
