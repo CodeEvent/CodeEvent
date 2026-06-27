@@ -91,6 +91,7 @@ drwxr-xr-x  [BLOCKCHAIN]   SmartGuard/            Slither DeFi fraud detector ·
 drwxr-xr-x  [DFIR]         Operation-FishNet/     ACPO forensics · DarkComet RAT · 50+ court exhibits
 drwxr-xr-x  [OFFENSIVE]    OWASP-Pentest-Suite/   SQLi · XSS · CSRF · 2FA bypass · 89/100
 drwxr-xr-x  [NETWORK]      Network-Security/      ARP poison · Snort IDS · OpenVPN · RADIUS · A2
+drwxr-xr-x  [CRYPTO]       Cryptography/          PKI · AES · RSA · hashing · GPG · IKEv2 VPN · COMP09106
 drwxr-xr-x  [SECURE-CODE]  Secure-Programming/    SEI CERT C++ · Rust Hangman · DCL50 STR50 MEM51
 drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeline · HIBP API
 ```
@@ -101,6 +102,7 @@ drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeli
 | [🕵️ Operation FishNet](https://github.com/CodeEvent/Operation-FishNet) | ACPO DFIR — DarkComet RAT — 50+ exhibits | Autopsy · Volatility · FTK |
 | [💉 OWASP Pentest Suite](https://github.com/CodeEvent/OWASP-Pentest-Suite) | SQLi · XSS · CSRF · 2FA bypass — 89/100 | Burp Suite · Python |
 | [🌐 Network Security](https://github.com/CodeEvent/Network-Security) | ARP poison · Snort · OpenVPN · RADIUS — A2 | Ettercap · Snort · FreeRADIUS |
+| 🔑 Cryptography | PKI · AES-256 · RSA · SHA-3 · GPG · IKEv2 VPN — First-class | OpenSSL · GPG · strongSwan
 | [🔒 Secure Programming](https://github.com/CodeEvent/Secure-Programming) | SEI CERT C++ remediation + Rust | C++17 · Rust |
 | [🐍 Python Security Tools](https://github.com/CodeEvent/Programming-for-Cyber-Security) | HTTP brute force · DNS pipeline | Python · Sockets |
 
@@ -135,6 +137,13 @@ drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeli
    Rule 9005 (level 10) -> PENTEST ASSESSMENT: 89/100
    2FA bypass via SQLi · stored XSS session hijack · CSRF
    Targets: Juice Shop · Mutillidae · Security Shepherd
+
+** Alert 2025.06.15 09:00:00 UTC
+   Rule 9006 (level 10) -> GRADE: FIRST CLASS
+   Cryptography COMP09106 — PKI · AES · RSA · hashing · GPG · IKEv2 VPN
+   Labs: CrypTool · OpenSSL · strongSwan · 9 weeks
+
+
 ```
 
 ---
