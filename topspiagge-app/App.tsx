@@ -7,10 +7,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ArchiviScreen } from './src/screens/ArchiviScreen';
 import { ContoScreen } from './src/screens/ContoScreen';
+import { CustomerBookingScreen } from './src/screens/customer/CustomerBookingScreen';
+import { ModeSelectScreen } from './src/screens/customer/ModeSelectScreen';
 import { GrigliaScreen } from './src/screens/GrigliaScreen';
 import { PiantinaScreen } from './src/screens/PiantinaScreen';
 import { QuadroScreen } from './src/screens/QuadroScreen';
 import { StatisticheScreen } from './src/screens/StatisticheScreen';
+import { AppModeProvider, useAppMode } from './src/store/AppModeContext';
 import { StoreProvider } from './src/store/StoreContext';
 import { colors, radius, spacing } from './src/theme';
 
@@ -38,29 +41,42 @@ const TabIcon: React.FC<{ routeName: string; focused: boolean }> = ({ routeName,
   </View>
 );
 
+const StaffApp: React.FC = () => (
+  <NavigationContainer>
+    <StatusBar style="dark" />
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarShowLabel: false,
+        tabBarStyle: styles.tabBar,
+        tabBarIcon: ({ focused }) => <TabIcon routeName={route.name} focused={focused} />,
+      })}
+    >
+      <Tab.Screen name="Piantina" component={PiantinaScreen} />
+      <Tab.Screen name="Griglia" component={GrigliaScreen} />
+      <Tab.Screen name="Quadro" component={QuadroScreen} />
+      <Tab.Screen name="Conto" component={ContoScreen} />
+      <Tab.Screen name="Statistiche" component={StatisticheScreen} />
+      <Tab.Screen name="Archivi" component={ArchiviScreen} />
+    </Tab.Navigator>
+  </NavigationContainer>
+);
+
+const RootRouter: React.FC = () => {
+  const { mode } = useAppMode();
+  if (mode === 'customer') return <CustomerBookingScreen />;
+  if (mode === 'staff') return <StaffApp />;
+  return <ModeSelectScreen />;
+};
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <StoreProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          <Tab.Navigator
-            screenOptions={({ route }) => ({
-              headerShown: false,
-              tabBarShowLabel: false,
-              tabBarStyle: styles.tabBar,
-              tabBarIcon: ({ focused }) => <TabIcon routeName={route.name} focused={focused} />,
-            })}
-          >
-            <Tab.Screen name="Piantina" component={PiantinaScreen} />
-            <Tab.Screen name="Griglia" component={GrigliaScreen} />
-            <Tab.Screen name="Quadro" component={QuadroScreen} />
-            <Tab.Screen name="Conto" component={ContoScreen} />
-            <Tab.Screen name="Statistiche" component={StatisticheScreen} />
-            <Tab.Screen name="Archivi" component={ArchiviScreen} />
-          </Tab.Navigator>
-        </NavigationContainer>
-      </StoreProvider>
+      <AppModeProvider>
+        <StoreProvider>
+          <RootRouter />
+        </StoreProvider>
+      </AppModeProvider>
     </SafeAreaProvider>
   );
 }

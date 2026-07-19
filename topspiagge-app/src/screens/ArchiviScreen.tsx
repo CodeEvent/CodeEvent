@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader } from '../components/UI';
+import { useAppMode } from '../store/AppModeContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
@@ -23,11 +24,18 @@ const CATEGORY_LABEL: Record<ArticleCategory, string> = {
 
 export const ArchiviScreen: React.FC = () => {
   const [tab, setTab] = useState<Tab>('listini');
+  const { setMode } = useAppMode();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
-        <SectionHeader title="Archivi" subtitle="Listini, clienti e articoli su misura per il tuo lido" />
+        <View style={styles.headerRow}>
+          <SectionHeader title="Archivi" subtitle="Listini, clienti e articoli su misura per il tuo lido" />
+          <Pressable onPress={() => setMode('select')} style={styles.exitBtn}>
+            <Ionicons name="swap-horizontal-outline" size={14} color={colors.primaryDark} />
+            <Text style={styles.exitBtnText}>Modalità</Text>
+          </Pressable>
+        </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm }}>
           <Chip label="Disposizione" selected={tab === 'disposizione'} onPress={() => setTab('disposizione')} />
           <Chip label="Listini" selected={tab === 'listini'} onPress={() => setTab('listini')} />
@@ -766,6 +774,17 @@ const ArticleForm: React.FC<{ article: Article; onSave: (a: Article) => void; on
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  exitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.xl,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  exitBtnText: { color: colors.primaryDark, fontWeight: '700', fontSize: 11 },
   scrollBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { fontWeight: '700', fontSize: 15, color: colors.text },

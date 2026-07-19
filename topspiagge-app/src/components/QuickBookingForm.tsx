@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Booking, Customer } from '../types';
+import { findCustomerConflict, findUmbrellaConflict } from '../utils/booking';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 import { Button, Chip } from './UI';
 
@@ -36,22 +37,15 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     [customers, query]
   );
 
-  const conflict = useMemo(() => {
-    return bookings.find(
-      (b) => b.umbrellaId === umbrellaId && dateFrom <= b.dateTo && dateTo >= b.dateFrom
-    );
-  }, [bookings, umbrellaId, dateFrom, dateTo]);
+  const conflict = useMemo(
+    () => findUmbrellaConflict(bookings, umbrellaId, dateFrom, dateTo),
+    [bookings, umbrellaId, dateFrom, dateTo]
+  );
   const conflictCustomer = customers.find((c) => c.id === conflict?.customerId);
 
   const customerConflict = useMemo(() => {
     if (creatingCustomer || !selectedCustomerId) return undefined;
-    return bookings.find(
-      (b) =>
-        b.customerId === selectedCustomerId &&
-        b.umbrellaId !== umbrellaId &&
-        dateFrom <= b.dateTo &&
-        dateTo >= b.dateFrom
-    );
+    return findCustomerConflict(bookings, selectedCustomerId, umbrellaId, dateFrom, dateTo);
   }, [bookings, selectedCustomerId, umbrellaId, dateFrom, dateTo, creatingCustomer]);
   const customerConflictUmbrella = getUmbrella(customerConflict?.umbrellaId ?? '');
 
