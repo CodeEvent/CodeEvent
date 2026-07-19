@@ -13,7 +13,7 @@ interface Props {
 }
 
 export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialFromOffset = 0 }) => {
-  const { customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
+  const { customers, bookings, createBooking, upsertCustomer, getActivePriceList, getUmbrella } = useStore();
   const [fromOffset, setFromOffset] = useState(initialFromOffset);
   const [length, setLength] = useState(1);
   const [query, setQuery] = useState('');
@@ -43,10 +43,22 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   }, [bookings, umbrellaId, dateFrom, dateTo]);
   const conflictCustomer = customers.find((c) => c.id === conflict?.customerId);
 
+  const customerConflict = useMemo(() => {
+    if (creatingCustomer || !selectedCustomerId) return undefined;
+    return bookings.find(
+      (b) =>
+        b.customerId === selectedCustomerId &&
+        b.umbrellaId !== umbrellaId &&
+        dateFrom <= b.dateTo &&
+        dateTo >= b.dateFrom
+    );
+  }, [bookings, selectedCustomerId, umbrellaId, dateFrom, dateTo, creatingCustomer]);
+  const customerConflictUmbrella = getUmbrella(customerConflict?.umbrellaId ?? '');
+
   const canConfirm = creatingCustomer ? newName.trim().length > 0 : !!selectedCustomerId;
 
   const confirm = () => {
-    if (conflict || !canConfirm) return;
+    if (conflict || customerConflict || !canConfirm) return;
 
     let customerId = selectedCustomerId;
     if (creatingCustomer) {
@@ -164,6 +176,15 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         </View>
       )}
 
+      {!conflict && customerConflict && (
+        <View style={styles.conflictBox}>
+          <Text style={styles.conflictText}>
+            Il cliente ha già l'Ombrellone {customerConflictUmbrella?.number} prenotato dal{' '}
+            {formatDateShort(customerConflict.dateFrom)} al {formatDateShort(customerConflict.dateTo)}.
+          </Text>
+        </View>
+      )}
+
       <View style={styles.totalRow}>
         <Text style={styles.totalLabel}>Totale stimato</Text>
         <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
@@ -172,7 +193,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       <Button
         title={fromOffset === 0 ? 'Check-in ora' : 'Conferma prenotazione'}
         onPress={confirm}
-        disabled={!canConfirm || !!conflict}
+        disabled={!canConfirm || !!conflict || !!customerConflict}
         style={{ marginTop: spacing.lg }}
       />
     </ScrollView>
