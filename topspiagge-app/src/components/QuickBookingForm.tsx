@@ -2,8 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { Booking } from '../types';
-import { daysBetween, formatCurrency, formatDateShort, isoDate } from '../utils/format';
+import { Booking, Customer } from '../types';
+import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 import { Button, Chip } from './UI';
 
 interface Props {
@@ -13,13 +13,16 @@ interface Props {
 }
 
 export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialFromOffset = 0 }) => {
-  const { customers, createBooking, getActivePriceList } = useStore();
+  const { customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
   const [fromOffset, setFromOffset] = useState(initialFromOffset);
   const [length, setLength] = useState(1);
   const [query, setQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(
     customers[0]?.id
   );
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
 
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
@@ -33,13 +36,40 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     [customers, query]
   );
 
+  const conflict = useMemo(() => {
+    return bookings.find(
+      (b) => b.umbrellaId === umbrellaId && dateFrom <= b.dateTo && dateTo >= b.dateFrom
+    );
+  }, [bookings, umbrellaId, dateFrom, dateTo]);
+  const conflictCustomer = customers.find((c) => c.id === conflict?.customerId);
+
+  const canConfirm = creatingCustomer ? newName.trim().length > 0 : !!selectedCustomerId;
+
   const confirm = () => {
-    if (!selectedCustomerId) return;
+    if (conflict || !canConfirm) return;
+
+    let customerId = selectedCustomerId;
+    if (creatingCustomer) {
+      const customer: Customer = {
+        id: `cust-${Date.now()}`,
+        name: newName.trim(),
+        phone: newPhone.trim(),
+        email: '',
+        notes: '',
+        vip: false,
+        bookingHistory: [],
+        createdAt: isoDate(0),
+      };
+      upsertCustomer(customer);
+      customerId = customer.id;
+    }
+    if (!customerId) return;
+
     const status = fromOffset === 0 ? 'occupato' : 'prenotato';
     const booking: Booking = {
       id: `bk-${umbrellaId}-${Date.now()}`,
       umbrellaId,
-      customerId: selectedCustomerId,
+      customerId,
       dateFrom,
       dateTo,
       totalPrice: total,
@@ -54,24 +84,60 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
 
   return (
     <ScrollView style={{ maxHeight: 420 }}>
-      <Text style={styles.label}>Cliente</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Cerca cliente..."
-        placeholderTextColor={colors.textMuted}
-        value={query}
-        onChangeText={setQuery}
-      />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.sm }}>
-        {filteredCustomers.map((c) => (
-          <Chip
-            key={c.id}
-            label={c.name}
-            selected={selectedCustomerId === c.id}
-            onPress={() => setSelectedCustomerId(c.id)}
-          />
-        ))}
+      <View style={styles.rowBetween}>
+        <Text style={styles.label}>Cliente</Text>
+        <Button
+          title={creatingCustomer ? 'Cliente esistente' : '+ Nuovo cliente'}
+          variant="ghost"
+          onPress={() => setCreatingCustomer((v) => !v)}
+          style={styles.toggleBtn}
+        />
       </View>
+
+      {creatingCustomer ? (
+        <View>
+          <Text style={styles.sublabel}>Nome e cognome</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Es. Marco Bianchi"
+            placeholderTextColor={colors.textMuted}
+            value={newName}
+            onChangeText={setNewName}
+          />
+          <Text style={[styles.sublabel, { marginTop: spacing.sm }]}>Telefono (opzionale)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="+39 ..."
+            placeholderTextColor={colors.textMuted}
+            keyboardType="phone-pad"
+            value={newPhone}
+            onChangeText={setNewPhone}
+          />
+        </View>
+      ) : (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="Cerca cliente..."
+            placeholderTextColor={colors.textMuted}
+            value={query}
+            onChangeText={setQuery}
+          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.sm }}>
+            {filteredCustomers.map((c) => (
+              <Chip
+                key={c.id}
+                label={c.name}
+                selected={selectedCustomerId === c.id}
+                onPress={() => setSelectedCustomerId(c.id)}
+              />
+            ))}
+            {filteredCustomers.length === 0 && (
+              <Text style={styles.muted}>Nessun cliente trovato.</Text>
+            )}
+          </View>
+        </>
+      )}
 
       <Text style={[styles.label, { marginTop: spacing.lg }]}>Periodo</Text>
       <View style={styles.row}>
@@ -89,6 +155,15 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         {length} {length === 1 ? 'giorno' : 'giorni'} · {formatCurrency(dailyRate)}/giorno ({priceList.name})
       </Text>
 
+      {conflict && (
+        <View style={styles.conflictBox}>
+          <Text style={styles.conflictText}>
+            Non disponibile: già prenotato da {conflictCustomer?.name ?? 'un altro cliente'} dal{' '}
+            {formatDateShort(conflict.dateFrom)} al {formatDateShort(conflict.dateTo)}.
+          </Text>
+        </View>
+      )}
+
       <View style={styles.totalRow}>
         <Text style={styles.totalLabel}>Totale stimato</Text>
         <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
@@ -97,7 +172,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       <Button
         title={fromOffset === 0 ? 'Check-in ora' : 'Conferma prenotazione'}
         onPress={confirm}
-        disabled={!selectedCustomerId}
+        disabled={!canConfirm || !!conflict}
         style={{ marginTop: spacing.lg }}
       />
     </ScrollView>
@@ -106,6 +181,9 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
 
 const styles = StyleSheet.create({
   label: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
+  sublabel: { fontSize: 12, fontWeight: '600', color: colors.textMuted, marginBottom: 4 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  toggleBtn: { paddingVertical: 4, paddingHorizontal: spacing.sm },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -118,6 +196,13 @@ const styles = StyleSheet.create({
   smallBtn: { paddingHorizontal: spacing.sm, paddingVertical: 8, marginRight: spacing.sm, marginBottom: spacing.sm },
   periodText: { fontSize: 15, fontWeight: '600', color: colors.primaryDark },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: spacing.xs },
+  conflictBox: {
+    backgroundColor: colors.occupatoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  conflictText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
