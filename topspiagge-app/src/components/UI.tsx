@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -36,16 +37,23 @@ export const Badge: React.FC<{ status: UmbrellaStatus }> = ({ status }) => (
 export const Button: React.FC<{
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' | 'info' | 'muted';
+  icon?: keyof typeof Ionicons.glyphMap;
   disabled?: boolean;
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
-}> = ({ title, onPress, variant = 'primary', disabled, loading, style }) => {
+}> = ({ title, onPress, variant = 'primary', icon, disabled, loading, style }) => {
   const bg =
     variant === 'primary'
       ? colors.primary
       : variant === 'danger'
-      ? colors.occupato
+      ? colors.danger
+      : variant === 'success'
+      ? colors.success
+      : variant === 'info'
+      ? colors.info
+      : variant === 'muted'
+      ? colors.textMuted
       : variant === 'ghost'
       ? 'transparent'
       : colors.sand;
@@ -64,7 +72,10 @@ export const Button: React.FC<{
       {loading ? (
         <ActivityIndicator color={textColor} />
       ) : (
-        <Text style={[styles.buttonText, { color: textColor }]}>{title}</Text>
+        <View style={styles.buttonContent}>
+          {icon && <Ionicons name={icon} size={16} color={textColor} style={{ marginRight: spacing.xs }} />}
+          <Text style={[styles.buttonText, { color: textColor }]}>{title}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -86,6 +97,34 @@ export const Chip: React.FC<{
       {label}
     </Text>
   </Pressable>
+);
+
+export const IconButton: React.FC<{
+  name: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  variant?: 'edit' | 'delete' | 'neutral';
+  size?: number;
+}> = ({ name, onPress, variant = 'neutral', size = 18 }) => {
+  const bg = variant === 'edit' ? colors.accent : variant === 'delete' ? colors.danger : colors.sand;
+  const iconColor = variant === 'neutral' ? colors.text : colors.white;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.iconButton, { backgroundColor: bg, opacity: pressed ? 0.8 : 1 }]}
+    >
+      <Ionicons name={name} size={size} color={iconColor} />
+    </Pressable>
+  );
+};
+
+export const EditDeleteRow: React.FC<{ onEdit: () => void; onDelete: () => void }> = ({
+  onEdit,
+  onDelete,
+}) => (
+  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+    <IconButton name="pencil" variant="edit" onPress={onEdit} />
+    <IconButton name="trash-outline" variant="delete" onPress={onDelete} />
+  </View>
 );
 
 const styles = StyleSheet.create({
@@ -134,6 +173,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   buttonText: {
     fontWeight: '700',
     fontSize: 15,
@@ -144,5 +187,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     marginRight: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

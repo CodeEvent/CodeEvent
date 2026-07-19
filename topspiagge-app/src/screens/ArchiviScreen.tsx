@@ -3,7 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, Chip, SectionHeader } from '../components/UI';
+import { Button, Card, Chip, EditDeleteRow, SectionHeader } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
@@ -93,12 +93,14 @@ const DisposizioneTab: React.FC = () => {
               />
             ) : (
               <Pressable
+                style={styles.zoneNameRow}
                 onPress={() => {
                   setRenamingRow(row);
                   setRenameValue(name);
                 }}
               >
-                <Text style={styles.itemTitle}>{name} ✎</Text>
+                <Text style={styles.itemTitle}>{name}</Text>
+                <Ionicons name="pencil-outline" size={13} color={colors.textMuted} />
               </Pressable>
             )}
             <View style={{ flexDirection: 'row', gap: spacing.xs }}>
@@ -340,8 +342,14 @@ const UmbrellaEditForm: React.FC<{ umbrellaId: string; onClose: () => void }> = 
 
 const KEY_ARTICLES = ['art-ombrellone', 'art-lettino', 'art-cabina'];
 
+const SEASON_SWATCH: Record<Season, string> = {
+  bassa: colors.in_arrivo,
+  media: colors.libero,
+  alta: colors.occupato,
+};
+
 const ListiniTab: React.FC = () => {
-  const { priceLists, articles, upsertPriceList } = useStore();
+  const { priceLists, articles, upsertPriceList, deletePriceList } = useStore();
   const [editing, setEditing] = useState<PriceList | null>(null);
 
   const newPriceList = (): PriceList => ({
@@ -353,10 +361,18 @@ const ListiniTab: React.FC = () => {
     prices: { 'art-ombrellone': 18, 'art-lettino': 6, 'art-cabina': 8 },
   });
 
+  const confirmDelete = (pl: PriceList) => {
+    Alert.alert(`Eliminare "${pl.name}"?`, 'Operazione non reversibile.', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Elimina', style: 'destructive', onPress: () => deletePriceList(pl.id) },
+    ]);
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
       {priceLists.map((pl) => (
         <Card key={pl.id} style={{ marginBottom: spacing.md }}>
+          <View style={[styles.colorSwatch, { backgroundColor: SEASON_SWATCH[pl.season] }]} />
           <View style={styles.rowBetween}>
             <Text style={styles.itemTitle}>{pl.name}</Text>
             <Text style={styles.seasonBadge}>{pl.season}</Text>
@@ -373,7 +389,9 @@ const ListiniTab: React.FC = () => {
               </Text>
             );
           })}
-          <Button title="Modifica" variant="secondary" onPress={() => setEditing(pl)} style={{ marginTop: spacing.sm }} />
+          <View style={{ marginTop: spacing.sm }}>
+            <EditDeleteRow onEdit={() => setEditing(pl)} onDelete={() => confirmDelete(pl)} />
+          </View>
         </Card>
       ))}
       <Button title="+ Nuovo listino" variant="ghost" onPress={() => setEditing(newPriceList())} />
@@ -456,9 +474,16 @@ const PriceListForm: React.FC<{
 };
 
 const ClientiTab: React.FC = () => {
-  const { customers, bookings, upsertCustomer } = useStore();
+  const { customers, bookings, upsertCustomer, deleteCustomer } = useStore();
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Customer | null>(null);
+
+  const confirmDelete = (c: Customer) => {
+    Alert.alert(`Eliminare ${c.name}?`, 'Operazione non reversibile.', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Elimina', style: 'destructive', onPress: () => deleteCustomer(c.id) },
+    ]);
+  };
 
   const filtered = useMemo(
     () => customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())),
@@ -498,7 +523,9 @@ const ClientiTab: React.FC = () => {
           {c.assignedUmbrellaId && (
             <Text style={styles.assignedTag}>🏖 Ombrellone stagionale assegnato</Text>
           )}
-          <Button title="Dettagli / Modifica" variant="secondary" onPress={() => setEditing(c)} style={{ marginTop: spacing.sm }} />
+          <View style={{ marginTop: spacing.sm }}>
+            <EditDeleteRow onEdit={() => setEditing(c)} onDelete={() => confirmDelete(c)} />
+          </View>
         </Card>
       ))}
       <Button title="+ Nuovo cliente" variant="ghost" onPress={() => setEditing(newCustomer())} style={{ marginTop: spacing.md }} />
@@ -629,8 +656,15 @@ const CustomerForm: React.FC<{
 };
 
 const ArticoliTab: React.FC = () => {
-  const { articles, upsertArticle } = useStore();
+  const { articles, upsertArticle, deleteArticle } = useStore();
   const [editing, setEditing] = useState<Article | null>(null);
+
+  const confirmDelete = (a: Article) => {
+    Alert.alert(`Eliminare "${a.name}"?`, 'Operazione non reversibile.', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Elimina', style: 'destructive', onPress: () => deleteArticle(a.id) },
+    ]);
+  };
 
   const grouped = useMemo(() => {
     const map = new Map<ArticleCategory, Article[]>();
@@ -664,7 +698,7 @@ const ArticoliTab: React.FC = () => {
                     {formatCurrency(a.basePrice)} / {a.unit}
                   </Text>
                 </View>
-                <Button title="Modifica" variant="secondary" onPress={() => setEditing(a)} />
+                <EditDeleteRow onEdit={() => setEditing(a)} onDelete={() => confirmDelete(a)} />
               </View>
             </Card>
           ))}
@@ -750,6 +784,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   groupTitle: { fontWeight: '800', color: colors.textMuted, fontSize: 12, textTransform: 'uppercase', marginBottom: 2 },
+  colorSwatch: { height: 4, borderRadius: 2, marginBottom: spacing.sm, width: '100%' },
+  zoneNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,

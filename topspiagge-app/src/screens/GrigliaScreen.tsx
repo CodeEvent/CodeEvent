@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { Chip } from '../components/UI';
 import { useStore } from '../store/StoreContext';
-import { colors, spacing, statusBg, statusColor } from '../theme';
+import { colors, radius, spacing, statusColor } from '../theme';
 import { Umbrella, UmbrellaStatus, Zone } from '../types';
 
 const ALL_ZONES = 'Tutte';
@@ -40,12 +40,9 @@ export const GrigliaScreen: React.FC = () => {
   const renderItem = ({ item }: { item: Umbrella }) => (
     <Pressable
       onPress={() => setSelectedId(item.id)}
-      style={[
-        styles.cell,
-        { backgroundColor: statusBg[item.status], borderColor: statusColor[item.status] },
-      ]}
+      style={[styles.cell, { backgroundColor: statusColor[item.status] }]}
     >
-      <Text style={[styles.cellNumber, { color: statusColor[item.status] }]}>{item.number}</Text>
+      <Text style={styles.cellNumber}>{item.number}</Text>
       <Text style={styles.cellZone}>{item.zone.replace('Fila ', 'F.')}</Text>
       {item.assignedCustomerId && <View style={styles.assigneeDot} />}
     </Pressable>
@@ -77,13 +74,18 @@ export const GrigliaScreen: React.FC = () => {
         ))}
       </View>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(u) => u.id}
-        numColumns={6}
-        contentContainerStyle={{ padding: spacing.lg }}
-        renderItem={renderItem}
-      />
+      <View style={styles.beach}>
+        <FlatList
+          data={filtered}
+          keyExtractor={(u) => u.id}
+          numColumns={6}
+          contentContainerStyle={{ padding: spacing.lg }}
+          renderItem={renderItem}
+        />
+        <View style={styles.footerBar}>
+          <Text style={styles.footerText}>Risorse in vista: {filtered.length}</Text>
+        </View>
+      </View>
 
       <UmbrellaDetailModal umbrellaId={selectedId} onClose={() => setSelectedId(null)} />
     </SafeAreaView>
@@ -91,7 +93,7 @@ export const GrigliaScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, backgroundColor: colors.card },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   headerTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
   headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2, marginBottom: spacing.sm },
@@ -100,17 +102,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     paddingHorizontal: spacing.lg,
   },
+  beach: { flex: 1, backgroundColor: colors.sand, marginTop: spacing.sm },
   cell: {
     flex: 1,
     aspectRatio: 1,
     margin: 4,
-    borderRadius: 10,
+    borderRadius: radius.sm,
     borderWidth: 2,
+    borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
-  cellNumber: { fontWeight: '800', fontSize: 15 },
-  cellZone: { fontSize: 9, color: colors.textMuted, marginTop: 2 },
+  cellNumber: { fontWeight: '800', fontSize: 15, color: colors.white },
+  cellZone: { fontSize: 9, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
   assigneeDot: {
     position: 'absolute',
     top: 6,
@@ -122,4 +130,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.card,
   },
+  footerBar: {
+    backgroundColor: colors.seaDark,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  footerText: { color: colors.white, fontWeight: '700', fontSize: 12 },
 });

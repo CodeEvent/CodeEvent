@@ -5,18 +5,30 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { QuickBookingForm } from '../components/QuickBookingForm';
 import { Button } from '../components/UI';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, spacing, statusBg, statusColor } from '../theme';
+import { colors, radius, spacing, statusColor } from '../theme';
 import { Booking } from '../types';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 
 const LABEL_WIDTH = 96;
 const DAY_WIDTH = 42;
 const ROW_HEIGHT = 36;
-const HEADER_HEIGHT = 40;
+const HEADER_HEIGHT = 22;
+const MONTH_HEADER_HEIGHT = 20;
 const WINDOW_SIZE = 21;
 
+const MONTH_NAMES = [
+  'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+  'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre',
+];
+
+function dayIndexInWindow(dateIso: string, windowStartIso: string): number {
+  const a = new Date(windowStartIso + 'T00:00:00').getTime();
+  const b = new Date(dateIso + 'T00:00:00').getTime();
+  return Math.round((b - a) / 86400000);
+}
+
 export const QuadroScreen: React.FC = () => {
-  const { umbrellas, bookings, getUmbrella } = useStore();
+  const { umbrellas, bookings, getUmbrella, getCustomer } = useStore();
   const navigation = useNavigation<any>();
   const [windowStart, setWindowStart] = useState(0);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -28,19 +40,34 @@ export const QuadroScreen: React.FC = () => {
     () => Array.from({ length: WINDOW_SIZE }, (_, i) => isoDate(windowStart + i)),
     [windowStart]
   );
+  const windowStartIso = days[0];
+  const windowEndIso = days[days.length - 1];
 
-  const bookingLookup = useMemo(() => {
-    const map = new Map<string, Booking>();
-    bookings.forEach((b) => {
-      const cursor = new Date(b.dateFrom + 'T00:00:00');
-      const end = new Date(b.dateTo + 'T00:00:00');
-      while (cursor <= end) {
-        map.set(`${b.umbrellaId}|${cursor.toISOString().slice(0, 10)}`, b);
-        cursor.setDate(cursor.getDate() + 1);
+  const monthGroups = useMemo(() => {
+    const groups: { label: string; startCol: number; span: number }[] = [];
+    days.forEach((d, i) => {
+      const monthIdx = parseInt(d.slice(5, 7), 10) - 1;
+      const label = MONTH_NAMES[monthIdx];
+      const last = groups[groups.length - 1];
+      if (last && last.label === label) {
+        last.span += 1;
+      } else {
+        groups.push({ label, startCol: i, span: 1 });
       }
     });
+    return groups;
+  }, [days]);
+
+  const bookingsByUmbrella = useMemo(() => {
+    const map = new Map<string, Booking[]>();
+    bookings.forEach((b) => {
+      if (b.dateTo < windowStartIso || b.dateFrom > windowEndIso) return;
+      const list = map.get(b.umbrellaId) ?? [];
+      list.push(b);
+      map.set(b.umbrellaId, list);
+    });
     return map;
-  }, [bookings]);
+  }, [bookings, windowStartIso, windowEndIso]);
 
   const closeModals = () => {
     setSelectedBooking(null);
@@ -59,14 +86,14 @@ export const QuadroScreen: React.FC = () => {
         <Button title="Oggi" variant="ghost" onPress={() => setWindowStart(0)} style={styles.navBtn} />
         <Button title="Sett. →" variant="secondary" onPress={() => setWindowStart((w) => w + 7)} style={styles.navBtn} />
         <Text style={styles.rangeText}>
-          {formatDateShort(days[0])} – {formatDateShort(days[days.length - 1])}
+          {formatDateShort(windowStartIso)} – {formatDateShort(windowEndIso)}
         </Text>
       </View>
 
       <ScrollView>
         <View style={{ flexDirection: 'row' }}>
           <View style={{ width: LABEL_WIDTH }}>
-            <View style={{ height: HEADER_HEIGHT }} />
+            <View style={{ height: MONTH_HEADER_HEIGHT + HEADER_HEIGHT }} />
             {umbrellas.map((u) => (
               <View key={u.id} style={[styles.labelCell, { height: ROW_HEIGHT }]}>
                 <Text style={styles.labelText} numberOfLines={1}>
@@ -78,42 +105,57 @@ export const QuadroScreen: React.FC = () => {
 
           <ScrollView horizontal showsHorizontalScrollIndicator>
             <View>
-              <View style={{ flexDirection: 'row', height: HEADER_HEIGHT }}>
-                {days.map((d) => (
-                  <View key={d} style={[styles.dayHeaderCell, { width: DAY_WIDTH }]}>
-                    <Text style={styles.dayHeaderText}>{formatDateShort(d)}</Text>
+              <View style={{ flexDirection: 'row', height: MONTH_HEADER_HEIGHT }}>
+                {monthGroups.map((g) => (
+                  <View key={g.startCol} style={[styles.monthCell, { width: g.span * DAY_WIDTH }]}>
+                    <Text style={styles.monthText}>{g.label}</Text>
                   </View>
                 ))}
               </View>
-              {umbrellas.map((u) => (
-                <View key={u.id} style={{ flexDirection: 'row', height: ROW_HEIGHT }}>
-                  {days.map((d, dIdx) => {
-                    const booking = bookingLookup.get(`${u.id}|${d}`);
-                    return (
-                      <Pressable
-                        key={d}
-                        style={[
-                          styles.dayCell,
-                          {
-                            width: DAY_WIDTH,
-                            backgroundColor: booking ? statusBg[booking.status] : colors.card,
-                            borderColor: booking ? statusColor[booking.status] : colors.border,
-                          },
-                        ]}
-                        onPress={() =>
-                          booking
-                            ? setSelectedBooking(booking)
-                            : setNewBookingSlot({ umbrellaId: u.id, offset: windowStart + dIdx })
-                        }
-                      >
-                        {booking && d === booking.dateFrom && (
-                          <View style={[styles.bookingDot, { backgroundColor: statusColor[booking.status] }]} />
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ))}
+              <View style={{ flexDirection: 'row', height: HEADER_HEIGHT }}>
+                {days.map((d) => (
+                  <View key={d} style={[styles.dayHeaderCell, { width: DAY_WIDTH }]}>
+                    <Text style={styles.dayHeaderText}>{d.slice(8, 10)}</Text>
+                  </View>
+                ))}
+              </View>
+              {umbrellas.map((u) => {
+                const rowBookings = bookingsByUmbrella.get(u.id) ?? [];
+                return (
+                  <View key={u.id} style={{ height: ROW_HEIGHT, width: WINDOW_SIZE * DAY_WIDTH }}>
+                    <View style={styles.dayGridRow}>
+                      {days.map((d, dIdx) => (
+                        <Pressable
+                          key={d}
+                          style={[styles.dayCell, { width: DAY_WIDTH }]}
+                          onPress={() => setNewBookingSlot({ umbrellaId: u.id, offset: windowStart + dIdx })}
+                        />
+                      ))}
+                    </View>
+                    {rowBookings.map((b) => {
+                      const startIdx = Math.max(0, dayIndexInWindow(b.dateFrom, windowStartIso));
+                      const endIdx = Math.min(WINDOW_SIZE - 1, dayIndexInWindow(b.dateTo, windowStartIso));
+                      if (endIdx < startIdx) return null;
+                      const left = startIdx * DAY_WIDTH + 1;
+                      const width = (endIdx - startIdx + 1) * DAY_WIDTH - 2;
+                      return (
+                        <Pressable
+                          key={b.id}
+                          style={[
+                            styles.bar,
+                            { left, width, backgroundColor: statusColor[b.status] },
+                          ]}
+                          onPress={() => setSelectedBooking(b)}
+                        >
+                          <Text style={styles.barText} numberOfLines={1}>
+                            {getCustomer(b.customerId)?.name.split(' ')[0] ?? 'Cliente'}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                );
+              })}
             </View>
           </ScrollView>
         </View>
@@ -202,16 +244,30 @@ const styles = StyleSheet.create({
   rangeText: { marginLeft: spacing.sm, color: colors.textMuted, fontWeight: '600', fontSize: 12 },
   labelCell: { justifyContent: 'center', paddingLeft: spacing.lg },
   labelText: { fontSize: 11, fontWeight: '700', color: colors.textMuted },
-  dayHeaderCell: { alignItems: 'center', justifyContent: 'center' },
-  dayHeaderText: { fontSize: 10, fontWeight: '700', color: colors.textMuted },
-  dayCell: {
-    margin: 1,
-    borderRadius: 4,
-    borderWidth: 1,
+  monthCell: {
     alignItems: 'center',
     justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  bookingDot: { width: 5, height: 5, borderRadius: 3 },
+  monthText: { fontSize: 10, fontWeight: '800', color: colors.primaryDark, textTransform: 'uppercase' },
+  dayHeaderCell: { alignItems: 'center', justifyContent: 'center' },
+  dayHeaderText: { fontSize: 10, fontWeight: '700', color: colors.textMuted },
+  dayGridRow: { flexDirection: 'row', position: 'absolute', top: 0, left: 0, height: ROW_HEIGHT },
+  dayCell: {
+    height: ROW_HEIGHT,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  bar: {
+    position: 'absolute',
+    top: 3,
+    height: ROW_HEIGHT - 6,
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  barText: { color: colors.white, fontWeight: '700', fontSize: 10 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: spacing.lg },
   card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.lg },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },

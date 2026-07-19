@@ -67,6 +67,7 @@ type Action =
   | { type: 'UPSERT_ARTICLE'; article: Article }
   | { type: 'DELETE_ARTICLE'; articleId: string }
   | { type: 'UPSERT_PRICELIST'; priceList: PriceList }
+  | { type: 'DELETE_PRICELIST'; priceListId: string }
   | { type: 'PAY_BOOKING'; bookingId: string; amount: number }
   | { type: 'CLOSE_CONTO'; conto: Conto }
   | { type: 'ADD_ZONE'; name: string; hasCabinDefault: boolean; count: number }
@@ -172,6 +173,12 @@ function reducer(state: AppState, action: Action): AppState {
         : [...state.priceLists, action.priceList];
       return { ...state, priceLists };
     }
+
+    case 'DELETE_PRICELIST':
+      return {
+        ...state,
+        priceLists: state.priceLists.filter((p) => p.id !== action.priceListId),
+      };
 
     case 'PAY_BOOKING': {
       const bookings = state.bookings.map((b) =>
@@ -351,6 +358,7 @@ interface StoreContextValue extends AppState {
   upsertArticle: (article: Article) => void;
   deleteArticle: (articleId: string) => void;
   upsertPriceList: (priceList: PriceList) => void;
+  deletePriceList: (priceListId: string) => void;
   payBooking: (bookingId: string, amount: number) => void;
   closeConto: (conto: Conto) => void;
   addZone: (name: string, hasCabinDefault: boolean, count: number) => void;
@@ -418,6 +426,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const upsertPriceList = useCallback((priceList: PriceList) => {
     dispatch({ type: 'UPSERT_PRICELIST', priceList });
   }, []);
+  const deletePriceList = useCallback((priceListId: string) => {
+    dispatch({ type: 'DELETE_PRICELIST', priceListId });
+  }, []);
   const closeConto = useCallback((conto: Conto) => {
     dispatch({ type: 'CLOSE_CONTO', conto });
   }, []);
@@ -484,6 +495,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       upsertArticle,
       deleteArticle,
       upsertPriceList,
+      deletePriceList,
       payBooking,
       closeConto,
       addZone,
@@ -510,6 +522,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       upsertArticle,
       deleteArticle,
       upsertPriceList,
+      deletePriceList,
       payBooking,
       closeConto,
       addZone,

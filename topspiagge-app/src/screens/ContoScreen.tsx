@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -16,6 +17,16 @@ const CATEGORY_LABEL: Record<ArticleCategory, string> = {
   bar: 'Bar',
   ristorante: 'Ristorante',
   servizio: 'Servizi',
+};
+
+const CATEGORY_ICON: Record<ArticleCategory, keyof typeof Ionicons.glyphMap> = {
+  ombrellone: 'umbrella-outline',
+  cabina: 'home-outline',
+  parcheggio: 'car-outline',
+  pedalo: 'boat-outline',
+  bar: 'cafe-outline',
+  ristorante: 'restaurant-outline',
+  servizio: 'construct-outline',
 };
 
 export const ContoScreen: React.FC = () => {
@@ -79,13 +90,29 @@ export const ContoScreen: React.FC = () => {
 
   const filteredArticles = articles.filter((a) => a.category === categoryFilter);
 
+  const sospeso = booking && !includeBalance ? remainingBalance : 0;
+
   const reset = () => {
     setItems([]);
     setReceivedAmount('');
     setSplitCount(1);
   };
 
-  const handleClose = () => {
+  const receiptText = () =>
+    `${docType === 'scontrino' ? 'Scontrino' : docType === 'fattura' ? 'Fattura' : 'Ricevuta'}\n` +
+    `Totale: ${formatCurrency(total)}\nMetodo: ${paymentMethod}\n${
+      change > 0 ? `Resto: ${formatCurrency(change)}\n` : ''
+    }${sospeso > 0 ? `Sospeso: ${formatCurrency(sospeso)}\n` : ''}Documento simulato a fini dimostrativi.`;
+
+  const handlePrint = () => {
+    if (total <= 0) {
+      Alert.alert('Conto vuoto', 'Aggiungi almeno un articolo o seleziona il saldo prenotazione.');
+      return;
+    }
+    Alert.alert('Anteprima stampa', receiptText());
+  };
+
+  const handleRegister = () => {
     if (total <= 0) {
       Alert.alert('Conto vuoto', 'Aggiungi almeno un articolo o seleziona il saldo prenotazione.');
       return;
@@ -111,10 +138,8 @@ export const ContoScreen: React.FC = () => {
       freeUmbrella(umbrella.id);
     }
     Alert.alert(
-      `${docType === 'scontrino' ? 'Scontrino' : docType === 'fattura' ? 'Fattura' : 'Ricevuta'} emessa`,
-      `Totale: ${formatCurrency(total)}\nMetodo: ${paymentMethod}\n${
-        change > 0 ? `Resto: ${formatCurrency(change)}\n` : ''
-      }Documento simulato a fini dimostrativi.`,
+      `${docType === 'scontrino' ? 'Scontrino' : docType === 'fattura' ? 'Fattura' : 'Ricevuta'} registrata`,
+      receiptText(),
       [{ text: 'OK', onPress: reset }]
     );
   };
@@ -176,6 +201,9 @@ export const ContoScreen: React.FC = () => {
           </ScrollView>
           {filteredArticles.map((a) => (
             <View key={a.id} style={styles.articleRow}>
+              <View style={styles.articleIconBox}>
+                <Ionicons name={CATEGORY_ICON[a.category]} size={18} color={colors.primary} />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.articleName}>{a.name}</Text>
                 <Text style={styles.muted}>
@@ -260,12 +288,34 @@ export const ContoScreen: React.FC = () => {
           )}
         </Card>
 
-        <View style={styles.totalBar}>
-          <Text style={styles.totalLabel}>Totale</Text>
-          <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
+        <View style={styles.summaryStack}>
+          <View style={[styles.summaryRow, { backgroundColor: colors.prenotatoBg }]}>
+            <Text style={[styles.summaryLabel, { color: colors.primaryDark }]}>Totale</Text>
+            <Text style={[styles.summaryValue, { color: colors.primaryDark }]}>{formatCurrency(total)}</Text>
+          </View>
+          {sospeso > 0 && (
+            <View style={[styles.summaryRow, { backgroundColor: colors.occupatoBg }]}>
+              <Text style={[styles.summaryLabel, { color: colors.occupato }]}>Sospeso</Text>
+              <Text style={[styles.summaryValue, { color: colors.occupato }]}>{formatCurrency(sospeso)}</Text>
+            </View>
+          )}
+          <View style={[styles.summaryRow, { backgroundColor: colors.liberoBg }]}>
+            <Text style={[styles.summaryLabel, { color: colors.libero }]}>Pagato</Text>
+            <Text style={[styles.summaryValue, { color: colors.libero }]}>{formatCurrency(total)}</Text>
+          </View>
+          {change > 0 && (
+            <View style={[styles.summaryRow, { backgroundColor: colors.in_arrivoBg }]}>
+              <Text style={[styles.summaryLabel, { color: colors.accentDark }]}>Resto</Text>
+              <Text style={[styles.summaryValue, { color: colors.accentDark }]}>{formatCurrency(change)}</Text>
+            </View>
+          )}
         </View>
 
-        <Button title="Emetti e chiudi conto" onPress={handleClose} style={{ marginTop: spacing.lg }} />
+        <View style={styles.actionRow}>
+          <Button title="Registra" icon="checkmark-circle-outline" variant="success" onPress={handleRegister} style={{ flex: 1 }} />
+          <Button title="Stampa" icon="print-outline" variant="info" onPress={handlePrint} style={{ flex: 1 }} />
+        </View>
+        <Button title="Annulla" icon="refresh-outline" variant="muted" onPress={reset} style={{ marginTop: spacing.sm }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -290,6 +340,15 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   articleName: { fontWeight: '600', color: colors.text },
+  articleIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: colors.prenotatoBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,14 +371,16 @@ const styles = StyleSheet.create({
   },
   changeText: { marginTop: spacing.sm, color: colors.primaryDark, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm },
-  totalBar: {
+  summaryStack: { gap: spacing.sm },
+  summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
-  totalLabel: { color: colors.white, fontWeight: '700', fontSize: 15 },
-  totalValue: { color: colors.white, fontWeight: '800', fontSize: 22 },
+  summaryLabel: { fontWeight: '700', fontSize: 14 },
+  summaryValue: { fontWeight: '800', fontSize: 18 },
+  actionRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
 });
