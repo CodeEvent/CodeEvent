@@ -1,0 +1,100 @@
+// Core domain types for Top Spiagge
+
+export type UmbrellaStatus = 'libero' | 'occupato' | 'in_arrivo' | 'prenotato';
+
+export type Zone = 'Fila A' | 'Fila B' | 'Fila C' | 'Fila D' | 'VIP';
+
+export interface Umbrella {
+  id: string;
+  number: number;
+  row: number; // grid row (0-indexed)
+  col: number; // grid col (0-indexed)
+  zone: Zone;
+  hasCabin: boolean;
+  status: UmbrellaStatus;
+  currentBookingId?: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  notes?: string;
+  vip: boolean;
+  bookingHistory: string[]; // booking ids
+  createdAt: string;
+}
+
+export type PaymentMethod = 'contanti' | 'carta' | 'misto';
+
+export interface Booking {
+  id: string;
+  umbrellaId: string;
+  customerId: string;
+  dateFrom: string; // ISO date (yyyy-mm-dd)
+  dateTo: string; // ISO date (yyyy-mm-dd)
+  totalPrice: number;
+  deposit: number;
+  paid: number;
+  status: UmbrellaStatus;
+  createdAt: string;
+}
+
+export type ArticleCategory =
+  | 'ombrellone'
+  | 'cabina'
+  | 'parcheggio'
+  | 'pedalo'
+  | 'bar'
+  | 'ristorante'
+  | 'servizio';
+
+export interface Article {
+  id: string;
+  name: string;
+  category: ArticleCategory;
+  basePrice: number;
+  unit: string; // 'giorno' | 'pz' | 'ora'
+}
+
+export type Season = 'bassa' | 'media' | 'alta';
+
+export interface PriceList {
+  id: string;
+  name: string;
+  season: Season;
+  prices: Record<string, number>; // articleId -> price override
+  activeFrom: string;
+  activeTo: string;
+}
+
+export interface ContoItem {
+  articleId: string;
+  qty: number;
+  unitPrice: number;
+}
+
+export type DocType = 'scontrino' | 'fattura' | 'ricevuta';
+
+export interface Conto {
+  id: string;
+  umbrellaId?: string;
+  customerId?: string;
+  items: ContoItem[];
+  total: number;
+  paidAmount: number;
+  paymentMethod: PaymentMethod;
+  docType: DocType;
+  splitCount: number;
+  createdAt: string;
+  closed: boolean;
+}
+
+export interface DailyStat {
+  date: string; // yyyy-mm-dd
+  incasso: number;
+  presenze: number;
+  bar: number;
+  ombrelloni: number;
+}
