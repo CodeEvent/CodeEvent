@@ -47,6 +47,7 @@ export const GrigliaScreen: React.FC = () => {
     >
       <Text style={[styles.cellNumber, { color: statusColor[item.status] }]}>{item.number}</Text>
       <Text style={styles.cellZone}>{item.zone.replace('Fila ', 'F.')}</Text>
+      {item.assignedCustomerId && <View style={styles.assigneeDot} />}
     </Pressable>
   );
 
@@ -110,4 +111,15 @@ const styles = StyleSheet.create({
   },
   cellNumber: { fontWeight: '800', fontSize: 15 },
   cellZone: { fontSize: 9, color: colors.textMuted, marginTop: 2 },
+  assigneeDot: {
+    position: 'absolute',
+    top: 6,
+    right: 8,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.accent,
+    borderWidth: 1,
+    borderColor: colors.card,
+  },
 });

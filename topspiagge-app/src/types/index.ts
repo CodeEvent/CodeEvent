@@ -2,17 +2,18 @@
 
 export type UmbrellaStatus = 'libero' | 'occupato' | 'in_arrivo' | 'prenotato';
 
-export type Zone = 'Fila A' | 'Fila B' | 'Fila C' | 'Fila D' | 'VIP';
+export type Zone = string;
 
 export interface Umbrella {
   id: string;
   number: number;
-  row: number; // grid row (0-indexed)
-  col: number; // grid col (0-indexed)
+  row: number; // grid row (0-indexed) -- one row = one zone
+  col: number; // grid col (0-indexed, position within the row)
   zone: Zone;
   hasCabin: boolean;
   status: UmbrellaStatus;
   currentBookingId?: string;
+  assignedCustomerId?: string; // seasonal/permanent subscriber ("abbonato"), independent of dated bookings
 }
 
 export interface Customer {
@@ -23,6 +24,7 @@ export interface Customer {
   notes?: string;
   vip: boolean;
   bookingHistory: string[]; // booking ids
+  assignedUmbrellaId?: string; // reverse pointer of Umbrella.assignedCustomerId
   createdAt: string;
 }
 

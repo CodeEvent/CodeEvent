@@ -1,11 +1,11 @@
 import { useNavigation } from '@react-navigation/native';
 import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { formatCurrency, formatDateShort } from '../utils/format';
 import { QuickBookingForm } from './QuickBookingForm';
-import { Badge, Button } from './UI';
+import { Badge, Button, Chip } from './UI';
 
 interface Props {
   umbrellaId: string | null;
@@ -13,20 +13,28 @@ interface Props {
 }
 
 export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) => {
-  const { getUmbrella, getBooking, getCustomer, freeUmbrella } = useStore();
+  const { getUmbrella, getBooking, getCustomer, freeUmbrella, customers, assignCustomer } = useStore();
   const navigation = useNavigation<any>();
   const [mode, setMode] = useState<'detail' | 'new_booking'>('detail');
+  const [assigningCustomer, setAssigningCustomer] = useState(false);
+  const [assigneeQuery, setAssigneeQuery] = useState('');
 
   const umbrella = umbrellaId ? getUmbrella(umbrellaId) : undefined;
   const booking = getBooking(umbrella?.currentBookingId);
   const customer = getCustomer(booking?.customerId);
+  const seasonalAssignee = getCustomer(umbrella?.assignedCustomerId);
 
   const close = () => {
     setMode('detail');
+    setAssigningCustomer(false);
     onClose();
   };
 
   if (!umbrella) return null;
+
+  const filteredAssignees = customers
+    .filter((c) => c.name.toLowerCase().includes(assigneeQuery.toLowerCase()))
+    .slice(0, 6);
 
   const goToConto = () => {
     close();
@@ -47,6 +55,55 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
             <Badge status={umbrella.status} />
           </View>
           {umbrella.hasCabin && <Text style={styles.muted}>Con cabina</Text>}
+
+          {mode === 'detail' && (
+            <View style={styles.seasonalBox}>
+              <Text style={styles.seasonalLabel}>Cliente stagionale (abbonato)</Text>
+              {seasonalAssignee ? (
+                <View style={styles.seasonalRow}>
+                  <View>
+                    <Text style={styles.customerName}>{seasonalAssignee.name}</Text>
+                    <Text style={styles.muted}>{seasonalAssignee.phone}</Text>
+                  </View>
+                  <Button
+                    title="Rimuovi"
+                    variant="danger"
+                    onPress={() => assignCustomer(umbrella.id, undefined)}
+                    style={styles.seasonalBtn}
+                  />
+                </View>
+              ) : assigningCustomer ? (
+                <View style={{ marginTop: spacing.sm }}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Cerca cliente..."
+                    placeholderTextColor={colors.textMuted}
+                    value={assigneeQuery}
+                    onChangeText={setAssigneeQuery}
+                  />
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                    {filteredAssignees.map((c) => (
+                      <Chip
+                        key={c.id}
+                        label={c.name}
+                        onPress={() => {
+                          assignCustomer(umbrella.id, c.id);
+                          setAssigningCustomer(false);
+                        }}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ) : (
+                <Button
+                  title="Assegna cliente stagionale"
+                  variant="secondary"
+                  onPress={() => setAssigningCustomer(true)}
+                  style={{ marginTop: spacing.sm }}
+                />
+              )}
+            </View>
+          )}
 
           {mode === 'detail' && (
             <>
@@ -163,4 +220,28 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   infoValue: { fontWeight: '700', color: colors.text },
+  seasonalBox: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  seasonalLabel: { fontWeight: '700', color: colors.text, fontSize: 13 },
+  seasonalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  seasonalBtn: { paddingVertical: 6, paddingHorizontal: spacing.md },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
 });

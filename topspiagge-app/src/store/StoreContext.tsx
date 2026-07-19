@@ -8,6 +8,7 @@ import React, {
   useReducer,
 } from 'react';
 import {
+  applySeasonalAssignments,
   buildArticles,
   buildBookings,
   buildContiStorico,
@@ -43,6 +44,7 @@ function buildInitialState(): AppState {
   const umbrellas = buildUmbrellas();
   const customers = buildCustomers();
   const bookings = buildBookings(umbrellas, customers);
+  applySeasonalAssignments(umbrellas, customers);
   return {
     umbrellas,
     bookings,
@@ -66,7 +68,16 @@ type Action =
   | { type: 'DELETE_ARTICLE'; articleId: string }
   | { type: 'UPSERT_PRICELIST'; priceList: PriceList }
   | { type: 'PAY_BOOKING'; bookingId: string; amount: number }
-  | { type: 'CLOSE_CONTO'; conto: Conto };
+  | { type: 'CLOSE_CONTO'; conto: Conto }
+  | { type: 'ADD_ZONE'; name: string; hasCabinDefault: boolean; count: number }
+  | { type: 'RENAME_ZONE'; row: number; name: string }
+  | { type: 'REMOVE_ZONE'; row: number }
+  | { type: 'REORDER_ZONE'; row: number; direction: 'up' | 'down' }
+  | { type: 'ADD_UMBRELLA'; row: number; hasCabin: boolean }
+  | { type: 'REMOVE_UMBRELLA'; umbrellaId: string }
+  | { type: 'REORDER_UMBRELLA'; umbrellaId: string; direction: 'left' | 'right' }
+  | { type: 'UPDATE_UMBRELLA'; umbrellaId: string; patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>> }
+  | { type: 'ASSIGN_CUSTOMER'; umbrellaId: string; customerId?: string };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -196,6 +207,136 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, conti, dailyStats, umbrellas };
     }
 
+    case 'ADD_ZONE': {
+      const rows = state.umbrellas.map((u) => u.row);
+      const newRow = rows.length > 0 ? Math.max(...rows) + 1 : 0;
+      const numbers = state.umbrellas.map((u) => u.number);
+      const baseNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+      const created: Umbrella[] = Array.from({ length: Math.max(1, action.count) }, (_, i) => ({
+        id: `u-${Date.now()}-${i}`,
+        number: baseNumber + i,
+        row: newRow,
+        col: i,
+        zone: action.name,
+        hasCabin: action.hasCabinDefault,
+        status: 'libero',
+      }));
+      return { ...state, umbrellas: [...state.umbrellas, ...created] };
+    }
+
+    case 'RENAME_ZONE': {
+      const umbrellas = state.umbrellas.map((u) =>
+        u.row === action.row ? { ...u, zone: action.name } : u
+      );
+      return { ...state, umbrellas };
+    }
+
+    case 'REMOVE_ZONE': {
+      const removedIds = new Set(
+        state.umbrellas.filter((u) => u.row === action.row).map((u) => u.id)
+      );
+      if (removedIds.size === 0) return state;
+
+      const remaining = state.umbrellas.filter((u) => !removedIds.has(u.id));
+      const distinctRows = Array.from(new Set(remaining.map((u) => u.row))).sort((a, b) => a - b);
+      const rowRemap = new Map(distinctRows.map((row, idx) => [row, idx]));
+      const umbrellas = remaining.map((u) => ({ ...u, row: rowRemap.get(u.row)! }));
+
+      const bookings = state.bookings.filter((b) => !removedIds.has(b.umbrellaId));
+      const customers = state.customers.map((c) =>
+        c.assignedUmbrellaId && removedIds.has(c.assignedUmbrellaId)
+          ? { ...c, assignedUmbrellaId: undefined, bookingHistory: c.bookingHistory.filter((id) => bookings.some((b) => b.id === id)) }
+          : { ...c, bookingHistory: c.bookingHistory.filter((id) => bookings.some((b) => b.id === id)) }
+      );
+
+      return { ...state, umbrellas, bookings, customers };
+    }
+
+    case 'REORDER_ZONE': {
+      const targetRow = action.direction === 'up' ? action.row - 1 : action.row + 1;
+      const rows = new Set(state.umbrellas.map((u) => u.row));
+      if (!rows.has(targetRow)) return state;
+      const umbrellas = state.umbrellas.map((u) => {
+        if (u.row === action.row) return { ...u, row: targetRow };
+        if (u.row === targetRow) return { ...u, row: action.row };
+        return u;
+      });
+      return { ...state, umbrellas };
+    }
+
+    case 'ADD_UMBRELLA': {
+      const rowUmbrellas = state.umbrellas.filter((u) => u.row === action.row);
+      const cols = rowUmbrellas.map((u) => u.col);
+      const newCol = cols.length > 0 ? Math.max(...cols) + 1 : 0;
+      const numbers = state.umbrellas.map((u) => u.number);
+      const newNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+      const zone = rowUmbrellas[0]?.zone ?? `Fila ${action.row + 1}`;
+      const created: Umbrella = {
+        id: `u-${Date.now()}`,
+        number: newNumber,
+        row: action.row,
+        col: newCol,
+        zone,
+        hasCabin: action.hasCabin,
+        status: 'libero',
+      };
+      return { ...state, umbrellas: [...state.umbrellas, created] };
+    }
+
+    case 'REMOVE_UMBRELLA': {
+      const umbrella = state.umbrellas.find((u) => u.id === action.umbrellaId);
+      if (!umbrella) return state;
+      const bookings = state.bookings.filter((b) => b.umbrellaId !== action.umbrellaId);
+      const customers = state.customers.map((c) =>
+        c.assignedUmbrellaId === action.umbrellaId ? { ...c, assignedUmbrellaId: undefined } : c
+      );
+      const umbrellas = state.umbrellas.filter((u) => u.id !== action.umbrellaId);
+      return { ...state, umbrellas, bookings, customers };
+    }
+
+    case 'REORDER_UMBRELLA': {
+      const umbrella = state.umbrellas.find((u) => u.id === action.umbrellaId);
+      if (!umbrella) return state;
+      const targetCol = action.direction === 'left' ? umbrella.col - 1 : umbrella.col + 1;
+      const neighbor = state.umbrellas.find((u) => u.row === umbrella.row && u.col === targetCol);
+      if (!neighbor) return state;
+      const umbrellas = state.umbrellas.map((u) => {
+        if (u.id === umbrella.id) return { ...u, col: targetCol };
+        if (u.id === neighbor.id) return { ...u, col: umbrella.col };
+        return u;
+      });
+      return { ...state, umbrellas };
+    }
+
+    case 'UPDATE_UMBRELLA': {
+      const umbrellas = state.umbrellas.map((u) =>
+        u.id === action.umbrellaId ? { ...u, ...action.patch } : u
+      );
+      return { ...state, umbrellas };
+    }
+
+    case 'ASSIGN_CUSTOMER': {
+      const { umbrellaId, customerId } = action;
+      const umbrella = state.umbrellas.find((u) => u.id === umbrellaId);
+      if (!umbrella) return state;
+      const previousCustomerId = umbrella.assignedCustomerId;
+      const previousUmbrellaId = customerId
+        ? state.customers.find((c) => c.id === customerId)?.assignedUmbrellaId
+        : undefined;
+
+      const umbrellas = state.umbrellas.map((u) => {
+        if (u.id === umbrellaId) return { ...u, assignedCustomerId: customerId };
+        if (previousUmbrellaId && u.id === previousUmbrellaId) return { ...u, assignedCustomerId: undefined };
+        return u;
+      });
+      const customers = state.customers.map((c) => {
+        if (c.id === customerId) return { ...c, assignedUmbrellaId: umbrellaId };
+        if (previousCustomerId && c.id === previousCustomerId) return { ...c, assignedUmbrellaId: undefined };
+        return c;
+      });
+      return { ...state, umbrellas, customers };
+    }
+
     default:
       return state;
   }
@@ -212,6 +353,15 @@ interface StoreContextValue extends AppState {
   upsertPriceList: (priceList: PriceList) => void;
   payBooking: (bookingId: string, amount: number) => void;
   closeConto: (conto: Conto) => void;
+  addZone: (name: string, hasCabinDefault: boolean, count: number) => void;
+  renameZone: (row: number, name: string) => void;
+  removeZone: (row: number) => void;
+  reorderZone: (row: number, direction: 'up' | 'down') => void;
+  addUmbrella: (row: number, hasCabin: boolean) => void;
+  removeUmbrella: (umbrellaId: string) => void;
+  reorderUmbrella: (umbrellaId: string, direction: 'left' | 'right') => void;
+  updateUmbrella: (umbrellaId: string, patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>>) => void;
+  assignCustomer: (umbrellaId: string, customerId?: string) => void;
   getUmbrella: (id: string) => Umbrella | undefined;
   getBooking: (id?: string) => Booking | undefined;
   getCustomer: (id?: string) => Customer | undefined;
@@ -274,6 +424,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const payBooking = useCallback((bookingId: string, amount: number) => {
     dispatch({ type: 'PAY_BOOKING', bookingId, amount });
   }, []);
+  const addZone = useCallback((name: string, hasCabinDefault: boolean, count: number) => {
+    dispatch({ type: 'ADD_ZONE', name, hasCabinDefault, count });
+  }, []);
+  const renameZone = useCallback((row: number, name: string) => {
+    dispatch({ type: 'RENAME_ZONE', row, name });
+  }, []);
+  const removeZone = useCallback((row: number) => {
+    dispatch({ type: 'REMOVE_ZONE', row });
+  }, []);
+  const reorderZone = useCallback((row: number, direction: 'up' | 'down') => {
+    dispatch({ type: 'REORDER_ZONE', row, direction });
+  }, []);
+  const addUmbrella = useCallback((row: number, hasCabin: boolean) => {
+    dispatch({ type: 'ADD_UMBRELLA', row, hasCabin });
+  }, []);
+  const removeUmbrella = useCallback((umbrellaId: string) => {
+    dispatch({ type: 'REMOVE_UMBRELLA', umbrellaId });
+  }, []);
+  const reorderUmbrella = useCallback((umbrellaId: string, direction: 'left' | 'right') => {
+    dispatch({ type: 'REORDER_UMBRELLA', umbrellaId, direction });
+  }, []);
+  const updateUmbrella = useCallback(
+    (umbrellaId: string, patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>>) => {
+      dispatch({ type: 'UPDATE_UMBRELLA', umbrellaId, patch });
+    },
+    []
+  );
+  const assignCustomer = useCallback((umbrellaId: string, customerId?: string) => {
+    dispatch({ type: 'ASSIGN_CUSTOMER', umbrellaId, customerId });
+  }, []);
 
   const getUmbrella = useCallback(
     (id: string) => state.umbrellas.find((u) => u.id === id),
@@ -306,6 +486,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       upsertPriceList,
       payBooking,
       closeConto,
+      addZone,
+      renameZone,
+      removeZone,
+      reorderZone,
+      addUmbrella,
+      removeUmbrella,
+      reorderUmbrella,
+      updateUmbrella,
+      assignCustomer,
       getUmbrella,
       getBooking,
       getCustomer,
@@ -323,6 +512,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       upsertPriceList,
       payBooking,
       closeConto,
+      addZone,
+      renameZone,
+      removeZone,
+      reorderZone,
+      addUmbrella,
+      removeUmbrella,
+      reorderUmbrella,
+      updateUmbrella,
+      assignCustomer,
       getUmbrella,
       getBooking,
       getCustomer,

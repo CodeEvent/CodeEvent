@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
+import { useRoute } from '@react-navigation/native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   PanResponder,
@@ -103,6 +104,7 @@ const UmbrellaCell: React.FC<{
         {umbrella.number}
       </Text>
       {umbrella.hasCabin && <View style={styles.cabinDot} />}
+      {umbrella.assignedCustomerId && <View style={styles.assigneeDot} />}
     </Animated.View>
   );
 };
@@ -111,6 +113,11 @@ export const PiantinaScreen: React.FC = () => {
   const { umbrellas, swapUmbrellas } = useStore();
   const positions = useUmbrellaPositions(umbrellas);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const route = useRoute<any>();
+
+  useEffect(() => {
+    if (route.params?.umbrellaId) setSelectedId(route.params.umbrellaId);
+  }, [route.params?.umbrellaId]);
 
   const zones = useMemo(() => {
     const seen = new Map<number, string>();
@@ -138,6 +145,10 @@ export const PiantinaScreen: React.FC = () => {
             </Text>
           </View>
         ))}
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
+          <Text style={styles.legendText}>Cliente stagionale</Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.boardScroll}>
@@ -208,6 +219,17 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.accent,
+  },
+  assigneeDot: {
+    position: 'absolute',
+    top: 5,
+    right: 12,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.accent,
+    borderWidth: 1,
+    borderColor: colors.card,
   },
   zoneLabel: {
     position: 'absolute',

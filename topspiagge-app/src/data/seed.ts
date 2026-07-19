@@ -190,3 +190,13 @@ export function buildDailyStats(): DailyStat[] {
 export function buildContiStorico(): Conto[] {
   return [];
 }
+
+export function applySeasonalAssignments(umbrellas: Umbrella[], customers: Customer[]): void {
+  const vipUmbrellas = umbrellas.filter((u) => u.zone === 'VIP');
+  const vipCustomers = customers.filter((c) => c.vip);
+  vipUmbrellas.slice(0, vipCustomers.length).forEach((u, idx) => {
+    const customer = vipCustomers[idx];
+    u.assignedCustomerId = customer.id;
+    customer.assignedUmbrellaId = u.id;
+  });
+}
