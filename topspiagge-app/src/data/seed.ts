@@ -8,6 +8,7 @@ import {
   Umbrella,
 } from '../types';
 import { isoDate } from '../utils/format';
+import { generateBookingReference } from '../utils/reference';
 
 export const ROWS = 12;
 export const COLS_PER_SIDE = 10;
@@ -139,6 +140,7 @@ export function buildBookings(umbrellas: Umbrella[], customers: Customer[]): Boo
       paid: status === 'occupato' ? total : 0,
       status,
       createdAt: isoDate(-1),
+      reference: generateBookingReference(),
     };
     bookings.push(booking);
     u.status = status;
@@ -163,6 +165,7 @@ export function buildBookings(umbrellas: Umbrella[], customers: Customer[]): Boo
       paid: Math.round(total * 0.3),
       status: 'prenotato',
       createdAt: isoDate(-3),
+      reference: generateBookingReference(),
     };
     bookings.push(booking);
     customer.bookingHistory.push(booking.id);

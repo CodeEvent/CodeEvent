@@ -54,6 +54,7 @@ export interface Booking {
   beds?: number; // lettini booked for this umbrella
   chairs?: number; // sdraio booked for this umbrella
   groupId?: string; // links sibling bookings made together for a party > 4 adults, spread across umbrellas
+  reference: string; // short code shown to the customer, shared by every booking in the same group
 }
 
 export type ArticleCategory =

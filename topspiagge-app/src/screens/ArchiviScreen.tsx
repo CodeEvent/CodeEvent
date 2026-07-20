@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
 import { COLS_PER_SIDE } from '../components/BeachCanvas';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
-import { useAppMode } from '../store/AppModeContext';
+import { useOperatorAuth } from '../store/OperatorAuthContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
@@ -27,16 +27,16 @@ const CATEGORY_LABEL: Record<ArticleCategory, string> = {
 
 export const ArchiviScreen: React.FC = () => {
   const [tab, setTab] = useState<Tab>('oggi');
-  const { setMode } = useAppMode();
+  const { logout } = useOperatorAuth();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
         <View style={styles.headerRow}>
           <SectionHeader title="Archivi" subtitle="Prenotazioni, listini, clienti e articoli su misura per il tuo lido" />
-          <Pressable onPress={() => setMode('select')} style={styles.exitBtn}>
-            <Ionicons name="swap-horizontal-outline" size={14} color={colors.primaryDark} />
-            <Text style={styles.exitBtnText}>Modalità</Text>
+          <Pressable onPress={logout} style={styles.exitBtn}>
+            <Ionicons name="log-out-outline" size={14} color={colors.primaryDark} />
+            <Text style={styles.exitBtnText}>Esci</Text>
           </Pressable>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm }}>

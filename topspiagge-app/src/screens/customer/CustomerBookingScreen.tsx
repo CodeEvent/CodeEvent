@@ -14,11 +14,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
 import { GAP, MIN_CELL, BeachCanvas, useUmbrellaPositions } from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
-import { Badge, Button, Card, Checkbox, Chip, StepProgressBar, Stepper } from '../../components/UI';
-import { useAppMode } from '../../store/AppModeContext';
+import { Button, Card, Checkbox, Chip, StepProgressBar, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
-import { Booking, Customer, GuestCount, Umbrella } from '../../types';
+import { Booking, Customer, Umbrella } from '../../types';
 import {
   distributeGuests,
   findCustomerConflict,
@@ -28,8 +27,9 @@ import {
   MAX_EQUIPMENT_PER_UMBRELLA,
   umbrellasNeededFor,
 } from '../../utils/booking';
-import { DEPOSIT_RATE, isDepositRefundable, refundCutoffDate } from '../../utils/cancellation';
-import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../../utils/format';
+import { DEPOSIT_RATE, refundCutoffDate } from '../../utils/cancellation';
+import { formatCurrency, formatDateLong, formatDateShort, isoDate, offsetFromToday } from '../../utils/format';
+import { generateBookingReference } from '../../utils/reference';
 
 const WIDE_BREAKPOINT = 860;
 const SIDEBAR_WIDTH = 380;
@@ -46,20 +46,59 @@ const PERIOD_PRESETS = [
 
 type Step = 'dates' | 'map';
 
-export const CustomerBookingScreen: React.FC = () => {
-  const { setMode } = useAppMode();
+export interface EditBookingContext {
+  bookings: Booking[];
+  customer: Customer;
+}
+
+interface CustomerBookingScreenProps {
+  editContext?: EditBookingContext | null;
+  onExitToLanding: () => void;
+  onManage: () => void;
+  initialStartOffset?: number;
+  initialDays?: number;
+}
+
+export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
+  editContext,
+  onExitToLanding,
+  onManage,
+  initialStartOffset,
+  initialDays,
+}) => {
   const { umbrellas, bookings } = useStore();
   const alert = useAppAlert();
   const { width, height } = useWindowDimensions();
 
-  const [step, setStep] = useState<Step>('dates');
-  const [startOffset, setStartOffset] = useState(0);
-  const [days, setDays] = useState(1);
+  const primaryEditBooking = editContext?.bookings[0];
+
+  // Editing an existing booking must not treat that same booking as a conflict against
+  // itself -- otherwise the customer's own umbrella would show as unavailable to them.
+  const editingBookingIds = useMemo(
+    () => new Set((editContext?.bookings ?? []).map((b) => b.id)),
+    [editContext]
+  );
+  const availabilityBookings = useMemo(
+    () => (editContext ? bookings.filter((b) => !editingBookingIds.has(b.id)) : bookings),
+    [bookings, editContext, editingBookingIds]
+  );
+
+  const [step, setStep] = useState<Step>(editContext ? 'map' : 'dates');
+  const [startOffset, setStartOffset] = useState(() =>
+    primaryEditBooking ? offsetFromToday(primaryEditBooking.dateFrom) : initialStartOffset ?? 0
+  );
+  const [days, setDays] = useState(() =>
+    primaryEditBooking
+      ? offsetFromToday(primaryEditBooking.dateTo) - offsetFromToday(primaryEditBooking.dateFrom) + 1
+      : initialDays ?? 1
+  );
   const [awaitingEndDate, setAwaitingEndDate] = useState(false);
-  const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
+  const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(
+    () => primaryEditBooking?.umbrellaId ?? null
+  );
   const [formStage, setFormStage] = useState<'details' | 'review'>('details');
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
-  const [myBookingsVisible, setMyBookingsVisible] = useState(false);
+  const [confirmedIsEdit, setConfirmedIsEdit] = useState(false);
   const [dateEditVisible, setDateEditVisible] = useState(false);
 
   // Mirrors the classic booking-flow progress bar: Map (pick dates + spot) -> Dettagli
@@ -87,7 +126,7 @@ export const CustomerBookingScreen: React.FC = () => {
     setAwaitingEndDate(false);
   };
 
-  const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
+  const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(availabilityBookings, u.id, dateFrom, dateTo);
 
   const labelWidth = isWide ? 84 : 60;
   // The map is 20 seats wide (10 Nord + walkway + 10 Sud) and rarely fits a phone or a
@@ -112,9 +151,10 @@ export const CustomerBookingScreen: React.FC = () => {
     }
   };
 
-  const handleConfirmed = (createdBookings: Booking[]) => {
+  const handleConfirmed = (createdBookings: Booking[], isEdit: boolean) => {
     setSelectedUmbrellaId(null);
     setConfirmedGroup(createdBookings);
+    setConfirmedIsEdit(isEdit);
   };
 
   const mapStepEl = (
@@ -137,20 +177,20 @@ export const CustomerBookingScreen: React.FC = () => {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <Pressable onPress={() => setMode('select')} style={styles.backLink}>
+          <Pressable onPress={onExitToLanding} style={styles.backLink}>
             <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-            <Text style={styles.backLinkText}>Cambia modalità</Text>
+            <Text style={styles.backLinkText}>Torna alla home</Text>
           </Pressable>
           <Pressable
-            onPress={() => setMyBookingsVisible(true)}
+            onPress={onManage}
             style={styles.myBookingsBtn}
-            accessibilityLabel="Le mie prenotazioni"
+            accessibilityLabel="Gestisci la tua prenotazione"
           >
             <Ionicons name="person-circle-outline" size={18} color={colors.primary} />
           </Pressable>
         </View>
         <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit>
-          Prenota il tuo ombrellone
+          {editContext ? 'Modifica la tua prenotazione' : 'Prenota il tuo ombrellone'}
         </Text>
         <Text style={styles.headerSubtitle}>Bagno Pietrasanta</Text>
       </View>
@@ -180,7 +220,9 @@ export const CustomerBookingScreen: React.FC = () => {
                 dateTo={dateTo}
                 allUmbrellas={umbrellas}
                 isFreeForPeriod={isFreeForPeriod}
-                onClose={() => setSelectedUmbrellaId(null)}
+                bookingsForAvailability={availabilityBookings}
+                editContext={editContext}
+                onClose={() => (editContext ? onExitToLanding() : setSelectedUmbrellaId(null))}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
                 stage={formStage}
@@ -210,7 +252,9 @@ export const CustomerBookingScreen: React.FC = () => {
                 dateTo={dateTo}
                 allUmbrellas={umbrellas}
                 isFreeForPeriod={isFreeForPeriod}
-                onClose={() => setSelectedUmbrellaId(null)}
+                bookingsForAvailability={availabilityBookings}
+                editContext={editContext}
+                onClose={() => (editContext ? onExitToLanding() : setSelectedUmbrellaId(null))}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
                 stage={formStage}
@@ -244,17 +288,20 @@ export const CustomerBookingScreen: React.FC = () => {
 
       <ConfirmationModal
         bookings={confirmedGroup}
+        isEdit={confirmedIsEdit}
         onClose={() => {
           setConfirmedGroup(null);
-          setStep('dates');
+          if (editContext) {
+            onExitToLanding();
+          } else {
+            setStep('dates');
+          }
         }}
         onSeeMyBookings={() => {
           setConfirmedGroup(null);
-          setMyBookingsVisible(true);
+          onManage();
         }}
       />
-
-      <MyBookingsModal visible={myBookingsVisible} onClose={() => setMyBookingsVisible(false)} />
     </SafeAreaView>
   );
 };
@@ -472,8 +519,10 @@ const BookingForm: React.FC<{
   dateTo: string;
   allUmbrellas: Umbrella[];
   isFreeForPeriod: (u: Umbrella) => boolean;
+  bookingsForAvailability: Booking[];
+  editContext?: EditBookingContext | null;
   onClose: () => void;
-  onConfirmed: (bookings: Booking[]) => void;
+  onConfirmed: (bookings: Booking[], isEdit: boolean) => void;
   onEditDates: () => void;
   stage: 'details' | 'review';
   onStageChange: (stage: 'details' | 'review') => void;
@@ -483,23 +532,48 @@ const BookingForm: React.FC<{
   dateTo,
   allUmbrellas,
   isFreeForPeriod,
+  bookingsForAvailability,
+  editContext,
   onClose,
   onConfirmed,
   onEditDates,
   stage,
   onStageChange,
 }) => {
-  const { getUmbrella, customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
+  const { getUmbrella, customers, createBooking, upsertCustomer, getActivePriceList, cancelBooking } = useStore();
+  const editBookings = editContext?.bookings ?? [];
+  // Only carry over the rest of the group (extra umbrellas + their equipment) when the
+  // customer hasn't changed their primary pick -- if they tap a different umbrella on
+  // the map, that's a fresh single-umbrella selection instead of silently stacking on
+  // top of their original group.
+  const isOriginalPrimary = editBookings.length > 0 && editBookings[0].umbrellaId === umbrellaId;
+
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
-  const [adults, setAdults] = useState(2);
-  const [children5to15, setChildren5to15] = useState(0);
-  const [childrenUnder5, setChildrenUnder5] = useState(0);
+  const [adults, setAdults] = useState(() =>
+    editBookings.length ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1 : 2
+  );
+  const [children5to15, setChildren5to15] = useState(() =>
+    editBookings.reduce((s, b) => s + (b.guests?.children5to15 ?? 0), 0)
+  );
+  const [childrenUnder5, setChildrenUnder5] = useState(() =>
+    editBookings.reduce((s, b) => s + (b.guests?.childrenUnder5 ?? 0), 0)
+  );
   const [policyAccepted, setPolicyAccepted] = useState(false);
-  const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>([]);
-  const [equipment, setEquipment] = useState<Record<string, Equipment>>(() => ({
-    [umbrellaId]: { ...DEFAULT_EQUIPMENT },
-  }));
+  const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>(() =>
+    isOriginalPrimary ? editBookings.filter((b) => b.umbrellaId !== umbrellaId).map((b) => b.umbrellaId) : []
+  );
+  const [equipment, setEquipment] = useState<Record<string, Equipment>>(() => {
+    if (isOriginalPrimary && editBookings.length) {
+      const map: Record<string, Equipment> = {};
+      editBookings.forEach((b) => {
+        map[b.umbrellaId] = { beds: b.beds ?? 0, chairs: b.chairs ?? 0 };
+      });
+      return map;
+    }
+    const matching = editBookings.find((b) => b.umbrellaId === umbrellaId);
+    return { [umbrellaId]: matching ? { beds: matching.beds ?? 0, chairs: matching.chairs ?? 0 } : { ...DEFAULT_EQUIPMENT } };
+  });
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();
@@ -597,19 +671,20 @@ const BookingForm: React.FC<{
   }, [customers, phone]);
 
   const isNewCustomer = normalizePhone(phone).length >= 6 && !matchedCustomer;
+  const effectiveCustomerId = editContext ? editContext.customer.id : matchedCustomer?.id;
 
   const conflict = useMemo(
-    () => allUmbrellaIds.some((id) => findUmbrellaConflict(bookings, id, dateFrom, dateTo)),
-    [bookings, allUmbrellaIds, dateFrom, dateTo]
+    () => allUmbrellaIds.some((id) => findUmbrellaConflict(bookingsForAvailability, id, dateFrom, dateTo)),
+    [bookingsForAvailability, allUmbrellaIds, dateFrom, dateTo]
   );
   const customerConflict = useMemo(() => {
-    if (!matchedCustomer) return undefined;
-    return findCustomerConflict(bookings, matchedCustomer.id, umbrellaId, dateFrom, dateTo);
-  }, [bookings, matchedCustomer, umbrellaId, dateFrom, dateTo]);
+    if (!effectiveCustomerId) return undefined;
+    return findCustomerConflict(bookingsForAvailability, effectiveCustomerId, umbrellaId, dateFrom, dateTo);
+  }, [bookingsForAvailability, effectiveCustomerId, umbrellaId, dateFrom, dateTo]);
   const customerConflictUmbrella = getUmbrella(customerConflict?.umbrellaId ?? '');
 
   const canConfirm =
-    (!!matchedCustomer || (isNewCustomer && newName.trim().length > 0)) &&
+    (editContext || !!matchedCustomer || (isNewCustomer && newName.trim().length > 0)) &&
     !conflict &&
     !customerConflict &&
     capacityOk &&
@@ -617,7 +692,7 @@ const BookingForm: React.FC<{
 
   const confirm = () => {
     if (!canConfirm) return;
-    let customerId = matchedCustomer?.id;
+    let customerId = effectiveCustomerId;
     if (!customerId) {
       const customer: Customer = {
         id: `cust-${Date.now()}`,
@@ -632,6 +707,7 @@ const BookingForm: React.FC<{
       upsertCustomer(customer);
       customerId = customer.id;
     }
+    const reference = editContext ? editContext.bookings[0].reference : generateBookingReference();
     const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
     const guestSlots = distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length);
     const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => {
@@ -651,10 +727,18 @@ const BookingForm: React.FC<{
         beds: eq.beds,
         chairs: eq.chairs,
         groupId,
+        reference,
       };
     });
+    // Editing replaces the old group in place: the whole original group is removed
+    // (cancelBooking already cleans up every sibling sharing the same groupId) and the
+    // freshly re-picked set is created under the same reference, so the customer can
+    // still find it with the code they were originally given.
+    if (editContext) {
+      cancelBooking(editContext.bookings[0].id);
+    }
     createdBookings.forEach(createBooking);
-    onConfirmed(createdBookings);
+    onConfirmed(createdBookings, !!editContext);
   };
 
   if (!umbrella) return null;
@@ -735,7 +819,7 @@ const BookingForm: React.FC<{
           total={total}
           deposit={deposit}
           umbrellaCount={allUmbrellaIds.length}
-          primaryLabel="Conferma e prenota"
+          primaryLabel={editContext ? 'Conferma modifica' : 'Conferma e prenota'}
           primaryIcon="checkmark-circle-outline"
           onPrimary={confirm}
           primaryDisabled={!canConfirm}
@@ -806,29 +890,38 @@ const BookingForm: React.FC<{
           </View>
         )}
 
-        <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="+39 ..."
-          placeholderTextColor={colors.textMuted}
-          keyboardType="phone-pad"
-          value={phone}
-          onChangeText={setPhone}
-        />
-        {matchedCustomer && (
-          <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
-        )}
-        {isNewCustomer && (
-          <View style={{ marginTop: spacing.sm }}>
-            <Text style={styles.sectionLabel}>Nome e cognome</Text>
+        {editContext ? (
+          <View style={styles.editingAsBox}>
+            <Ionicons name="person-circle-outline" size={16} color={colors.primaryDark} />
+            <Text style={styles.editingAsText}>Stai modificando la prenotazione di {editContext.customer.name}</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
             <TextInput
               style={styles.input}
-              placeholder="Es. Marco Bianchi"
+              placeholder="+39 ..."
               placeholderTextColor={colors.textMuted}
-              value={newName}
-              onChangeText={setNewName}
+              keyboardType="phone-pad"
+              value={phone}
+              onChangeText={setPhone}
             />
-          </View>
+            {matchedCustomer && (
+              <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
+            )}
+            {isNewCustomer && (
+              <View style={{ marginTop: spacing.sm }}>
+                <Text style={styles.sectionLabel}>Nome e cognome</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Es. Marco Bianchi"
+                  placeholderTextColor={colors.textMuted}
+                  value={newName}
+                  onChangeText={setNewName}
+                />
+              </View>
+            )}
+          </>
         )}
 
         {conflictBanner}
@@ -872,9 +965,10 @@ const BookingForm: React.FC<{
 
 const ConfirmationModal: React.FC<{
   bookings: Booking[] | null;
+  isEdit: boolean;
   onClose: () => void;
   onSeeMyBookings: () => void;
-}> = ({ bookings, onClose, onSeeMyBookings }) => {
+}> = ({ bookings, isEdit, onClose, onSeeMyBookings }) => {
   const { getUmbrella, getCustomer } = useStore();
   if (!bookings || bookings.length === 0) return null;
   const primary = bookings[0];
@@ -902,10 +996,18 @@ const ConfirmationModal: React.FC<{
           <View style={styles.confirmIconCircle}>
             <Ionicons name="checkmark" size={32} color={colors.white} />
           </View>
-          <Text style={styles.confirmTitle}>Prenotazione confermata!</Text>
+          <Text style={styles.confirmTitle}>{isEdit ? 'Prenotazione aggiornata!' : 'Prenotazione confermata!'}</Text>
           <Text style={styles.confirmSubtitle}>Ti aspettiamo, {customer?.name}</Text>
 
-          <Card style={{ marginTop: spacing.lg, width: '100%' }}>
+          <View style={styles.referenceBox}>
+            <Text style={styles.referenceLabel}>Codice prenotazione</Text>
+            <Text style={styles.referenceValue}>{primary.reference}</Text>
+            <Text style={styles.referenceHint}>
+              Conservalo: ti servirà per modificare o cancellare la prenotazione
+            </Text>
+          </View>
+
+          <Card style={{ marginTop: spacing.md, width: '100%' }}>
             <View style={styles.confirmRow}>
               <Text style={styles.muted}>{umbrellas.length > 1 ? 'Ombrelloni' : 'Ombrellone'}</Text>
               <Text style={styles.confirmValue}>
@@ -943,110 +1045,14 @@ const ConfirmationModal: React.FC<{
           </Card>
 
           <Button title="Nuova prenotazione" onPress={onClose} style={{ marginTop: spacing.lg, width: '100%' }} />
-          <Button title="Le mie prenotazioni" variant="ghost" onPress={onSeeMyBookings} style={{ marginTop: spacing.sm, width: '100%' }} />
+          <Button
+            title="Gestisci le tue prenotazioni"
+            variant="ghost"
+            onPress={onSeeMyBookings}
+            style={{ marginTop: spacing.sm, width: '100%' }}
+          />
         </View>
       </View>
-    </Modal>
-  );
-};
-
-const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
-  const { customers, bookings, getUmbrella, cancelBooking } = useStore();
-  const alert = useAppAlert();
-  const [phone, setPhone] = useState('');
-
-  const customer = useMemo(() => {
-    const p = normalizePhone(phone);
-    if (!p) return undefined;
-    return customers.find((c) => normalizePhone(c.phone) === p);
-  }, [customers, phone]);
-
-  const today = isoDate(0);
-  const myBookings = useMemo(() => {
-    if (!customer) return [];
-    return bookings
-      .filter((b) => b.customerId === customer.id && b.dateTo >= today)
-      .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
-  }, [bookings, customer, today]);
-
-  const handleCancel = (booking: Booking) => {
-    const refundable = isDepositRefundable(booking.dateFrom, today);
-    const groupSize = booking.groupId
-      ? bookings.filter((b) => b.groupId === booking.groupId).length
-      : 1;
-    const depositTotal = booking.groupId
-      ? bookings.filter((b) => b.groupId === booking.groupId).reduce((sum, b) => sum + b.deposit, 0)
-      : booking.deposit;
-    const groupNote = groupSize > 1 ? ` Verranno cancellati tutti e ${groupSize} gli ombrelloni del gruppo.` : '';
-    alert(
-      'Cancellare la prenotazione?',
-      (refundable
-        ? `L'arrivo è tra almeno 7 giorni: l'acconto di ${formatCurrency(depositTotal)} ti verrà restituito.`
-        : `L'arrivo è tra meno di 7 giorni (o è già iniziato): l'acconto di ${formatCurrency(depositTotal)} non è rimborsabile.`) + groupNote,
-      [
-        { text: 'Non cancellare', style: 'cancel' },
-        {
-          text: 'Cancella prenotazione',
-          style: 'destructive',
-          onPress: () => cancelBooking(booking.id),
-        },
-      ]
-    );
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>Le mie prenotazioni</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Inserisci il tuo numero di telefono"
-            placeholderTextColor={colors.textMuted}
-            keyboardType="phone-pad"
-            value={phone}
-            onChangeText={setPhone}
-          />
-          <ScrollView style={{ maxHeight: 360, marginTop: spacing.sm }}>
-            {!customer && normalizePhone(phone).length > 0 && (
-              <Text style={styles.muted}>Nessun cliente trovato con questo numero.</Text>
-            )}
-            {customer && myBookings.length === 0 && (
-              <Text style={styles.muted}>Nessuna prenotazione futura per {customer.name}.</Text>
-            )}
-            {customer &&
-              myBookings.map((b) => {
-                const u = getUmbrella(b.umbrellaId);
-                const refundable = isDepositRefundable(b.dateFrom, today);
-                return (
-                  <Card key={b.id} style={{ marginTop: spacing.sm }}>
-                    <View style={styles.confirmRow}>
-                      <Text style={styles.confirmValue}>
-                        Ombrellone N.{u?.number} ({u?.zone})
-                      </Text>
-                      <Badge status={b.status} />
-                    </View>
-                    <Text style={styles.muted}>
-                      {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
-                    </Text>
-                    {b.groupId && <Text style={styles.groupTag}>Gruppo multi-ombrellone</Text>}
-                    <Text style={[styles.muted, { color: refundable ? colors.libero : colors.occupato }]}>
-                      {refundable ? 'Acconto rimborsabile se cancelli ora' : 'Acconto non rimborsabile'}
-                    </Text>
-                    <Button
-                      title="Cancella prenotazione"
-                      variant="danger"
-                      onPress={() => handleCancel(b)}
-                      style={{ marginTop: spacing.sm, paddingVertical: 8 }}
-                    />
-                  </Card>
-                );
-              })}
-          </ScrollView>
-          <Button title="Chiudi" variant="ghost" onPress={onClose} style={{ marginTop: spacing.md }} />
-        </Pressable>
-      </Pressable>
     </Modal>
   );
 };
@@ -1283,6 +1289,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   welcomeText: { color: colors.libero, fontWeight: '700', fontSize: 13, marginTop: spacing.xs },
+  editingAsBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  editingAsText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12, flexShrink: 1 },
   conflictBox: { backgroundColor: colors.occupatoBg, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
   conflictText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
   totalRow: {
@@ -1314,6 +1330,18 @@ const styles = StyleSheet.create({
   },
   confirmTitle: { fontSize: 19, fontWeight: '800', color: colors.text, marginTop: spacing.md },
   confirmSubtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  referenceBox: {
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    width: '100%',
+  },
+  referenceLabel: { fontSize: 11, fontWeight: '700', color: colors.primaryDark, textTransform: 'uppercase' },
+  referenceValue: { fontSize: 22, fontWeight: '800', color: colors.primaryDark, letterSpacing: 1, marginTop: 2 },
+  referenceHint: { fontSize: 11, color: colors.textMuted, marginTop: 4, textAlign: 'center' },
   confirmRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

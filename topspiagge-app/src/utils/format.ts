@@ -33,3 +33,12 @@ export function daysBetween(a: string, b: string): number {
   const db = new Date(b + 'T00:00:00').getTime();
   return Math.max(1, Math.round((db - da) / 86400000));
 }
+
+// Inverse of isoDate(): how many days from today (0 = today, negative = past) a given
+// ISO date is. Used to seed the date-picker's offset/length state from an existing booking.
+export function offsetFromToday(iso: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(iso + 'T00:00:00');
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}

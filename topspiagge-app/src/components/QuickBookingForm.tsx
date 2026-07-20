@@ -14,6 +14,7 @@ import {
 } from '../utils/booking';
 import { DEPOSIT_RATE, refundCutoffDate } from '../utils/cancellation';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
+import { generateBookingReference } from '../utils/reference';
 import { Calendar } from './Calendar';
 import { Button, Chip, Stepper } from './UI';
 
@@ -157,6 +158,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
 
     const status = isToday ? 'occupato' : 'prenotato';
     const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
+    const reference = generateBookingReference();
     const guestSlots = distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length);
     const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => ({
       id: `bk-${uId}-${Date.now()}-${idx}`,
@@ -171,6 +173,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       createdAt: isoDate(0),
       guests: guestSlots[idx],
       groupId,
+      reference,
     }));
     createdBookings.forEach(createBooking);
     onDone();
