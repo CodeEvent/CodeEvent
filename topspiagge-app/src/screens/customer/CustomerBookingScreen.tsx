@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
 import { GAP, MIN_CELL, BeachCanvas, useUmbrellaPositions } from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
-import { Badge, Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
+import { Badge, Button, Card, Checkbox, Chip, StepProgressBar, Stepper } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
@@ -57,9 +57,14 @@ export const CustomerBookingScreen: React.FC = () => {
   const [days, setDays] = useState(1);
   const [awaitingEndDate, setAwaitingEndDate] = useState(false);
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
+  const [formStage, setFormStage] = useState<'details' | 'review'>('details');
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
   const [myBookingsVisible, setMyBookingsVisible] = useState(false);
   const [dateEditVisible, setDateEditVisible] = useState(false);
+
+  // Mirrors the classic booking-flow progress bar: Map (pick dates + spot) -> Dettagli
+  // (guests/phone/policy) -> Riepilogo (final editable review before confirming).
+  const currentStepIndex = !selectedUmbrellaId ? 0 : formStage === 'details' ? 1 : 2;
 
   const isWide = width >= WIDE_BREAKPOINT;
 
@@ -101,6 +106,7 @@ export const CustomerBookingScreen: React.FC = () => {
   const handleTap = (u: Umbrella) => {
     if (isFreeForPeriod(u)) {
       setSelectedUmbrellaId(u.id);
+      setFormStage('details');
     } else {
       alert('Non disponibile', `L'ombrellone N.${u.number} (${u.zone}) non è disponibile per il periodo scelto.`);
     }
@@ -149,6 +155,8 @@ export const CustomerBookingScreen: React.FC = () => {
         <Text style={styles.headerSubtitle}>Bagno Pietrasanta</Text>
       </View>
 
+      <StepProgressBar steps={['Mappa', 'Dettagli', 'Riepilogo']} currentIndex={currentStepIndex} />
+
       {step === 'dates' ? (
         <DateStep
           startOffset={startOffset}
@@ -175,6 +183,8 @@ export const CustomerBookingScreen: React.FC = () => {
                 onClose={() => setSelectedUmbrellaId(null)}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
+                stage={formStage}
+                onStageChange={setFormStage}
               />
             ) : (
               <View style={styles.sidebarEmpty}>
@@ -203,6 +213,8 @@ export const CustomerBookingScreen: React.FC = () => {
                 onClose={() => setSelectedUmbrellaId(null)}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
+                stage={formStage}
+                onStageChange={setFormStage}
               />
             </Pressable>
           </Pressable>
@@ -431,6 +443,29 @@ const PeriodHero: React.FC<{ dateFrom: string; dateTo: string; days: number; onE
   </>
 );
 
+const BookingFooter: React.FC<{
+  total: number;
+  deposit: number;
+  umbrellaCount: number;
+  primaryLabel: string;
+  primaryIcon: keyof typeof Ionicons.glyphMap;
+  onPrimary: () => void;
+  primaryDisabled: boolean;
+  onCancel: () => void;
+}> = ({ total, deposit, umbrellaCount, primaryLabel, primaryIcon, onPrimary, primaryDisabled, onCancel }) => (
+  <View style={styles.stickyFooter}>
+    <View style={styles.totalRow}>
+      <Text style={styles.totalLabel}>
+        Totale soggiorno {umbrellaCount > 1 ? `(${umbrellaCount} ombrelloni)` : ''}
+      </Text>
+      <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
+    </View>
+    <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
+    <Button title={primaryLabel} icon={primaryIcon} onPress={onPrimary} disabled={primaryDisabled} style={{ marginTop: spacing.md }} />
+    <Button title="Annulla" variant="ghost" onPress={onCancel} style={{ marginTop: spacing.sm }} />
+  </View>
+);
+
 const BookingForm: React.FC<{
   umbrellaId: string;
   dateFrom: string;
@@ -440,9 +475,21 @@ const BookingForm: React.FC<{
   onClose: () => void;
   onConfirmed: (bookings: Booking[]) => void;
   onEditDates: () => void;
-}> = ({ umbrellaId, dateFrom, dateTo, allUmbrellas, isFreeForPeriod, onClose, onConfirmed, onEditDates }) => {
+  stage: 'details' | 'review';
+  onStageChange: (stage: 'details' | 'review') => void;
+}> = ({
+  umbrellaId,
+  dateFrom,
+  dateTo,
+  allUmbrellas,
+  isFreeForPeriod,
+  onClose,
+  onConfirmed,
+  onEditDates,
+  stage,
+  onStageChange,
+}) => {
   const { getUmbrella, customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
-  const [stage, setStage] = useState<'details' | 'review'>('details');
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
   const [adults, setAdults] = useState(2);
@@ -634,180 +681,192 @@ const BookingForm: React.FC<{
 
   if (stage === 'review') {
     return (
-      <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContent}>
-        <Pressable onPress={() => setStage('details')} style={styles.backLink}>
-          <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-          <Text style={styles.backLinkText}>Modifica ospiti e telefono</Text>
-        </Pressable>
+      <View style={styles.formOuter}>
+        <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
+          <Pressable onPress={() => onStageChange('details')} style={styles.backLink}>
+            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+            <Text style={styles.backLinkText}>Modifica ospiti e telefono</Text>
+          </Pressable>
 
-        <Text style={styles.sheetTitle}>Riepilogo prenotazione</Text>
+          <Text style={styles.sheetTitle}>Riepilogo prenotazione</Text>
 
-        <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
+          <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
 
-        <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>
-          {allUmbrellaIds.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
-        </Text>
-        {allUmbrellaIds.map((id) => {
-          const u = getUmbrella(id);
-          const eq = equipment[id] ?? DEFAULT_EQUIPMENT;
-          if (!u) return null;
-          return (
-            <View key={id} style={styles.equipmentCard}>
-              <View style={styles.rowBetween}>
-                <Text style={styles.equipmentTitle}>
-                  Ombrellone N.{u.number} · {u.zone}
-                </Text>
-                <Text style={styles.equipmentPrice}>{formatCurrency(umbrellaTotal(id))}</Text>
-              </View>
-              <Stepper label="Lettini" value={eq.beds} max={MAX_EQUIPMENT_PER_UMBRELLA} onChange={(v) => setBeds(id, v)} />
-              <Stepper label="Sdraio" value={eq.chairs} max={MAX_EQUIPMENT_PER_UMBRELLA} onChange={(v) => setChairs(id, v)} />
-              <Text style={styles.muted}>
-                {formatCurrency(dailyRate)} ombrellone + {formatCurrency(eq.beds * bedRate)} lettini +{' '}
-                {formatCurrency(eq.chairs * chairRate)} sdraio, al giorno
-              </Text>
-            </View>
-          );
-        })}
-
-        {conflictBanner}
-
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>
-            Totale soggiorno {allUmbrellaIds.length > 1 ? `(${allUmbrellaIds.length} ombrelloni)` : ''}
+          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>
+            {allUmbrellaIds.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
           </Text>
-          <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
-        </View>
-        <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
+          {allUmbrellaIds.map((id) => {
+            const u = getUmbrella(id);
+            const eq = equipment[id] ?? DEFAULT_EQUIPMENT;
+            if (!u) return null;
+            return (
+              <View key={id} style={styles.equipmentCard}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.equipmentTitle}>
+                    Ombrellone N.{u.number} · {u.zone}
+                  </Text>
+                  <Text style={styles.equipmentPrice}>{formatCurrency(umbrellaTotal(id))}</Text>
+                </View>
+                <Stepper
+                  label="Lettini"
+                  icon="bed-outline"
+                  value={eq.beds}
+                  max={MAX_EQUIPMENT_PER_UMBRELLA}
+                  onChange={(v) => setBeds(id, v)}
+                />
+                <Stepper
+                  label="Sdraio"
+                  icon="sunny-outline"
+                  value={eq.chairs}
+                  max={MAX_EQUIPMENT_PER_UMBRELLA}
+                  onChange={(v) => setChairs(id, v)}
+                />
+                <Text style={styles.muted}>
+                  {formatCurrency(dailyRate)} ombrellone + {formatCurrency(eq.beds * bedRate)} lettini +{' '}
+                  {formatCurrency(eq.chairs * chairRate)} sdraio, al giorno
+                </Text>
+              </View>
+            );
+          })}
 
-        <Button
-          title="Conferma e prenota"
-          icon="checkmark-circle-outline"
-          onPress={confirm}
-          disabled={!canConfirm}
-          style={{ marginTop: spacing.lg }}
+          {conflictBanner}
+        </ScrollView>
+        <BookingFooter
+          total={total}
+          deposit={deposit}
+          umbrellaCount={allUmbrellaIds.length}
+          primaryLabel="Conferma e prenota"
+          primaryIcon="checkmark-circle-outline"
+          onPrimary={confirm}
+          primaryDisabled={!canConfirm}
+          onCancel={onClose}
         />
-        <Button title="Annulla" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
-      </ScrollView>
+      </View>
     );
   }
 
   return (
-    <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContent}>
-      <Text style={styles.sheetTitle}>
-        Ombrellone {umbrella.number} · {umbrella.zone}
-      </Text>
+    <View style={styles.formOuter}>
+      <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
+        <Text style={styles.sheetTitle}>
+          Ombrellone {umbrella.number} · {umbrella.zone}
+        </Text>
 
-      <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
+        <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
 
-      <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Chi viaggia con te?</Text>
-      <View style={styles.guestsBox}>
-        <Stepper label="Adulti" value={adults} min={1} onChange={changeAdults} />
-        <View style={styles.divider} />
-        <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={setChildren5to15} />
-        <View style={styles.divider} />
-        <Stepper label="Bambini sotto i 5 anni" value={childrenUnder5} onChange={setChildrenUnder5} />
-      </View>
-      <Text style={styles.muted}>Max {MAX_ADULTS_PER_UMBRELLA} adulti per ombrellone · bambini illimitati</Text>
+        <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Chi viaggia con te?</Text>
+        <View style={styles.guestsBox}>
+          <Stepper label="Adulti" icon="person-outline" value={adults} min={1} onChange={changeAdults} />
+          <View style={styles.divider} />
+          <Stepper
+            label="Bambini 5–15 anni"
+            icon="school-outline"
+            value={children5to15}
+            onChange={setChildren5to15}
+          />
+          <View style={styles.divider} />
+          <Stepper
+            label="Bambini sotto i 5 anni"
+            icon="happy-outline"
+            value={childrenUnder5}
+            onChange={setChildrenUnder5}
+          />
+        </View>
+        <Text style={styles.muted}>Max {MAX_ADULTS_PER_UMBRELLA} adulti per ombrellone · bambini illimitati</Text>
 
-      {umbrellasNeeded > 1 && (
-        <View style={styles.extraBox}>
+        {umbrellasNeeded > 1 && (
+          <View style={styles.extraBox}>
+            <View style={styles.policyHeaderRow}>
+              <Ionicons name="people-outline" size={16} color={colors.primaryDark} />
+              <Text style={styles.policyTitle}>Ombrelloni aggiuntivi</Text>
+            </View>
+            <Text style={styles.policyText}>
+              Per {adults} adulti servono {umbrellasNeeded} ombrelloni (i bambini non contano per il limite). Ti
+              suggeriamo i più vicini a quello scelto: aggiungine{' '}
+              {extraNeeded > extraUmbrellaIds.length ? `almeno ${extraNeeded - extraUmbrellaIds.length} in più` : 'quanti ne servono'}.
+            </Text>
+            {nearbySuggestions.map((u) => {
+              const selected = extraUmbrellaIds.includes(u.id);
+              return (
+                <Pressable key={u.id} onPress={() => toggleExtra(u.id)} style={styles.extraRow}>
+                  <Ionicons
+                    name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={20}
+                    color={selected ? colors.libero : colors.border}
+                  />
+                  <Text style={styles.extraRowText}>
+                    Ombrellone N.{u.number} · {u.zone}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            <Text style={[styles.muted, { marginTop: spacing.xs }]}>
+              Capienza: max {capacity} adulti in {allUmbrellaIds.length} ombrelloni · nel gruppo: {adults} adulti
+            </Text>
+          </View>
+        )}
+
+        <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="+39 ..."
+          placeholderTextColor={colors.textMuted}
+          keyboardType="phone-pad"
+          value={phone}
+          onChangeText={setPhone}
+        />
+        {matchedCustomer && (
+          <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
+        )}
+        {isNewCustomer && (
+          <View style={{ marginTop: spacing.sm }}>
+            <Text style={styles.sectionLabel}>Nome e cognome</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Es. Marco Bianchi"
+              placeholderTextColor={colors.textMuted}
+              value={newName}
+              onChangeText={setNewName}
+            />
+          </View>
+        )}
+
+        {conflictBanner}
+
+        <View style={styles.policyBox}>
           <View style={styles.policyHeaderRow}>
-            <Ionicons name="people-outline" size={16} color={colors.primaryDark} />
-            <Text style={styles.policyTitle}>Ombrelloni aggiuntivi</Text>
+            <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+            <Text style={styles.policyTitle}>Acconto e politica di cancellazione</Text>
           </View>
           <Text style={styles.policyText}>
-            Per {adults} adulti servono {umbrellasNeeded} ombrelloni (i bambini non contano per il limite). Ti
-            suggeriamo i più vicini a quello scelto: aggiungine{' '}
-            {extraNeeded > extraUmbrellaIds.length ? `almeno ${extraNeeded - extraUmbrellaIds.length} in più` : 'quanti ne servono'}.
+            Per confermare versi ora un acconto del 20% ({formatCurrency(deposit)}). Il saldo di{' '}
+            {formatCurrency(total - deposit)} si paga in spiaggia.
           </Text>
-          {nearbySuggestions.map((u) => {
-            const selected = extraUmbrellaIds.includes(u.id);
-            return (
-              <Pressable key={u.id} onPress={() => toggleExtra(u.id)} style={styles.extraRow}>
-                <Ionicons
-                  name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={20}
-                  color={selected ? colors.libero : colors.border}
-                />
-                <Text style={styles.extraRowText}>
-                  Ombrellone N.{u.number} · {u.zone}
-                </Text>
-              </Pressable>
-            );
-          })}
-          <Text style={[styles.muted, { marginTop: spacing.xs }]}>
-            Capienza: max {capacity} adulti in {allUmbrellaIds.length} ombrelloni · nel gruppo: {adults} adulti
+          <Text style={styles.policyText}>
+            Puoi cancellare gratuitamente entro il <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>{' '}
+            (7 giorni prima dell'arrivo): l'acconto ti verrà restituito. Cancellando dopo tale data, o non
+            presentandoti, l'acconto <Text style={styles.policyBold}>non è rimborsabile</Text>.
           </Text>
+          <View style={{ marginTop: spacing.sm }}>
+            <Checkbox
+              checked={policyAccepted}
+              onToggle={() => setPolicyAccepted((v) => !v)}
+              label="Ho letto e accetto la politica di acconto e cancellazione"
+            />
+          </View>
         </View>
-      )}
-
-      <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="+39 ..."
-        placeholderTextColor={colors.textMuted}
-        keyboardType="phone-pad"
-        value={phone}
-        onChangeText={setPhone}
+      </ScrollView>
+      <BookingFooter
+        total={total}
+        deposit={deposit}
+        umbrellaCount={allUmbrellaIds.length}
+        primaryLabel="Rivedi prenotazione"
+        primaryIcon="receipt-outline"
+        onPrimary={() => onStageChange('review')}
+        primaryDisabled={!canConfirm}
+        onCancel={onClose}
       />
-      {matchedCustomer && (
-        <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
-      )}
-      {isNewCustomer && (
-        <View style={{ marginTop: spacing.sm }}>
-          <Text style={styles.sectionLabel}>Nome e cognome</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Es. Marco Bianchi"
-            placeholderTextColor={colors.textMuted}
-            value={newName}
-            onChangeText={setNewName}
-          />
-        </View>
-      )}
-
-      {conflictBanner}
-
-      <View style={styles.policyBox}>
-        <View style={styles.policyHeaderRow}>
-          <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
-          <Text style={styles.policyTitle}>Acconto e politica di cancellazione</Text>
-        </View>
-        <Text style={styles.policyText}>
-          Per confermare versi ora un acconto del 20% ({formatCurrency(deposit)}). Il saldo di{' '}
-          {formatCurrency(total - deposit)} si paga in spiaggia.
-        </Text>
-        <Text style={styles.policyText}>
-          Puoi cancellare gratuitamente entro il <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>{' '}
-          (7 giorni prima dell'arrivo): l'acconto ti verrà restituito. Cancellando dopo tale data, o non
-          presentandoti, l'acconto <Text style={styles.policyBold}>non è rimborsabile</Text>.
-        </Text>
-        <View style={{ marginTop: spacing.sm }}>
-          <Checkbox
-            checked={policyAccepted}
-            onToggle={() => setPolicyAccepted((v) => !v)}
-            label="Ho letto e accetto la politica di acconto e cancellazione"
-          />
-        </View>
-      </View>
-
-      <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>
-          Totale soggiorno {allUmbrellaIds.length > 1 ? `(${allUmbrellaIds.length} ombrelloni)` : ''}
-        </Text>
-        <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
-      </View>
-      <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
-
-      <Button
-        title="Rivedi prenotazione"
-        icon="receipt-outline"
-        onPress={() => setStage('review')}
-        disabled={!canConfirm}
-        style={{ marginTop: spacing.lg }}
-      />
-      <Button title="Annulla" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
-    </ScrollView>
+    </View>
   );
 };
 
@@ -1113,8 +1172,17 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sidebarEmptyText: { color: colors.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  formOuter: { flex: 1 },
   formScroll: { flex: 1 },
-  formScrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  formScrollContentSticky: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  stickyFooter: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
 
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: {

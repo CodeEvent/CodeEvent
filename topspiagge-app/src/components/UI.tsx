@@ -145,10 +145,14 @@ export const Stepper: React.FC<{
   value: number;
   min?: number;
   max?: number;
+  icon?: keyof typeof Ionicons.glyphMap;
   onChange: (value: number) => void;
-}> = ({ label, value, min = 0, max = Infinity, onChange }) => (
+}> = ({ label, value, min = 0, max = Infinity, icon, onChange }) => (
   <View style={styles.stepperRow}>
-    <Text style={styles.stepperLabel}>{label}</Text>
+    <View style={styles.stepperLabelRow}>
+      {icon && <Ionicons name={icon} size={16} color={colors.textMuted} style={{ marginRight: spacing.xs }} />}
+      <Text style={styles.stepperLabel}>{label}</Text>
+    </View>
     <View style={styles.stepperControls}>
       <Pressable
         onPress={() => onChange(Math.max(min, value - 1))}
@@ -166,6 +170,37 @@ export const Stepper: React.FC<{
         <Ionicons name="add" size={16} color={value >= max ? colors.border : colors.primary} />
       </Pressable>
     </View>
+  </View>
+);
+
+export const StepProgressBar: React.FC<{ steps: string[]; currentIndex: number }> = ({ steps, currentIndex }) => (
+  <View style={styles.stepBarRow}>
+    {steps.map((label, i) => {
+      const done = i < currentIndex;
+      const current = i === currentIndex;
+      return (
+        <React.Fragment key={label}>
+          <View style={styles.stepBarItem}>
+            <View style={[styles.stepBarDot, done && styles.stepBarDotDone, current && styles.stepBarDotCurrent]}>
+              {done ? (
+                <Ionicons name="checkmark" size={14} color={colors.white} />
+              ) : current ? (
+                <View style={styles.stepBarDotInner} />
+              ) : null}
+            </View>
+            <Text
+              style={[styles.stepBarLabel, (done || current) && styles.stepBarLabelActive]}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
+          </View>
+          {i < steps.length - 1 && (
+            <View style={[styles.stepBarLine, i < currentIndex && styles.stepBarLineDone]} />
+          )}
+        </React.Fragment>
+      );
+    })}
   </View>
 );
 
@@ -258,6 +293,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm,
   },
+  stepperLabelRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
   stepperLabel: { color: colors.text, fontWeight: '600', fontSize: 14 },
   stepperControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   stepperBtn: {
@@ -270,4 +306,23 @@ const styles = StyleSheet.create({
   },
   stepperBtnDisabled: { backgroundColor: colors.bg },
   stepperValue: { fontWeight: '700', color: colors.text, fontSize: 15, minWidth: 20, textAlign: 'center' },
+  stepBarRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  stepBarItem: { alignItems: 'center', width: 64 },
+  stepBarDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBarDotDone: { backgroundColor: colors.primary, borderColor: colors.primary },
+  stepBarDotCurrent: { borderColor: colors.primary },
+  stepBarDotInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
+  stepBarLabel: { fontSize: 10, color: colors.textMuted, marginTop: 4, fontWeight: '600' },
+  stepBarLabelActive: { color: colors.primaryDark, fontWeight: '800' },
+  stepBarLine: { flex: 1, height: 2, backgroundColor: colors.border, marginTop: 12 },
+  stepBarLineDone: { backgroundColor: colors.primary },
 });
