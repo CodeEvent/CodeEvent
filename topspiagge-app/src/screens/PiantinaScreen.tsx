@@ -1,23 +1,33 @@
 import { useRoute } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BeachCanvas, CELL, SideSwitch, useUmbrellaPositions } from '../components/BeachCanvas';
+import {
+  BeachCanvas,
+  COLS_PER_SIDE,
+  GAP,
+  MIN_CELL,
+  WALKWAY_WIDTH,
+  useUmbrellaPositions,
+} from '../components/BeachCanvas';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing, statusColor } from '../theme';
-import { BeachSide, Umbrella } from '../types';
+import { Umbrella } from '../types';
 
 const TAP_THRESHOLD = 10;
+const ROWS = 12;
+const TOTAL_COLS = COLS_PER_SIDE * 2;
 
 const UmbrellaCell: React.FC<{
   umbrella: Umbrella;
   position: { x: number; y: number };
   positions: Map<string, { x: number; y: number }>;
   allUmbrellas: Umbrella[];
+  cellSize: number;
   onDrop: (fromId: string, toId: string) => void;
   onTap: (id: string) => void;
-}> = ({ umbrella, position, positions, allUmbrellas, onDrop, onTap }) => {
+}> = ({ umbrella, position, positions, allUmbrellas, cellSize, onDrop, onTap }) => {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [dragging, setDragging] = useState(false);
 
@@ -38,8 +48,8 @@ const UmbrellaCell: React.FC<{
           return;
         }
         const dropCenter = {
-          x: position.x + CELL / 2 + gesture.dx,
-          y: position.y + CELL / 2 + gesture.dy,
+          x: position.x + cellSize / 2 + gesture.dx,
+          y: position.y + cellSize / 2 + gesture.dy,
         };
         let target: Umbrella | undefined;
         for (const u of allUmbrellas) {
@@ -48,9 +58,9 @@ const UmbrellaCell: React.FC<{
           if (!p) continue;
           if (
             dropCenter.x >= p.x &&
-            dropCenter.x <= p.x + CELL &&
+            dropCenter.x <= p.x + cellSize &&
             dropCenter.y >= p.y &&
-            dropCenter.y <= p.y + CELL
+            dropCenter.y <= p.y + cellSize
           ) {
             target = u;
             break;
@@ -70,6 +80,9 @@ const UmbrellaCell: React.FC<{
         {
           left: position.x,
           top: position.y,
+          width: cellSize,
+          height: cellSize,
+          borderRadius: cellSize / 2,
           backgroundColor: statusColor[umbrella.status],
           borderColor: colors.card,
           transform: pan.getTranslateTransform(),
@@ -78,7 +91,9 @@ const UmbrellaCell: React.FC<{
         },
       ]}
     >
-      <Text style={styles.cellNumber}>{umbrella.number}</Text>
+      <Text style={[styles.cellNumber, { fontSize: Math.min(16, Math.max(9, cellSize / 4.5)) }]}>
+        {umbrella.number}
+      </Text>
       {umbrella.hasCabin && <View style={styles.cabinDot} />}
       {umbrella.assignedCustomerId && <View style={styles.assigneeDot} />}
     </Animated.View>
@@ -87,19 +102,25 @@ const UmbrellaCell: React.FC<{
 
 export const PiantinaScreen: React.FC = () => {
   const { umbrellas, swapUmbrellas } = useStore();
-  const [side, setSide] = useState<BeachSide>('nord');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const route = useRoute<any>();
+  const { width, height } = useWindowDimensions();
 
-  const sideUmbrellas = useMemo(() => umbrellas.filter((u) => u.side === side), [umbrellas, side]);
-  const positions = useUmbrellaPositions(sideUmbrellas);
+  const labelWidth = 60;
+  const mapAreaHeight = height - 240;
+  const cellSize = Math.max(
+    MIN_CELL,
+    Math.min(
+      72,
+      Math.floor((width - spacing.lg * 2 - labelWidth - WALKWAY_WIDTH) / TOTAL_COLS) - GAP,
+      Math.floor(mapAreaHeight / ROWS) - GAP
+    )
+  );
+
+  const positions = useUmbrellaPositions(umbrellas, cellSize);
 
   useEffect(() => {
-    if (route.params?.umbrellaId) {
-      setSelectedId(route.params.umbrellaId);
-      const target = umbrellas.find((u) => u.id === route.params.umbrellaId);
-      if (target) setSide(target.side);
-    }
+    if (route.params?.umbrellaId) setSelectedId(route.params.umbrellaId);
   }, [route.params?.umbrellaId]);
 
   const freeCounts = useMemo(
@@ -109,7 +130,6 @@ export const PiantinaScreen: React.FC = () => {
     }),
     [umbrellas]
   );
-  const freeOnSide = freeCounts[side];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -130,22 +150,22 @@ export const PiantinaScreen: React.FC = () => {
             <Text style={styles.legendText}>Cliente stagionale</Text>
           </View>
         </View>
-        <View style={{ marginTop: spacing.sm }}>
-          <SideSwitch value={side} onChange={setSide} counts={freeCounts} />
-        </View>
       </View>
 
       <BeachCanvas
-        umbrellas={sideUmbrellas}
+        umbrellas={umbrellas}
         positions={positions}
-        footerText={`Lato ${side === 'nord' ? 'Nord' : 'Sud'} · ombrelloni liberi oggi: ${freeOnSide}`}
+        cellSize={cellSize}
+        labelWidth={labelWidth}
+        footerText={`Liberi oggi: ${freeCounts.nord + freeCounts.sud} (Nord ${freeCounts.nord} · Sud ${freeCounts.sud})`}
         renderCell={(u, position) => (
           <UmbrellaCell
             key={u.id}
             umbrella={u}
             position={position}
             positions={positions}
-            allUmbrellas={sideUmbrellas}
+            allUmbrellas={umbrellas}
+            cellSize={cellSize}
             onDrop={swapUmbrellas}
             onTap={setSelectedId}
           />
@@ -179,9 +199,6 @@ const styles = StyleSheet.create({
   legendText: { fontSize: 11, color: colors.textMuted },
   cell: {
     position: 'absolute',
-    width: CELL,
-    height: CELL,
-    borderRadius: CELL / 2,
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -190,7 +207,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 2 },
   },
-  cellNumber: { fontWeight: '800', fontSize: 16, color: colors.white },
+  cellNumber: { fontWeight: '800', color: colors.white },
   cabinDot: {
     position: 'absolute',
     bottom: 6,

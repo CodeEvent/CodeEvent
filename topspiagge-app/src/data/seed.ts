@@ -1,6 +1,5 @@
 import {
   Article,
-  BeachSide,
   Booking,
   Conto,
   Customer,
@@ -10,31 +9,31 @@ import {
 } from '../types';
 import { isoDate } from '../utils/format';
 
-const SIDES: BeachSide[] = ['nord', 'sud'];
-export const ROWS_PER_SIDE = 12;
-export const COLS_PER_ROW = 10;
+export const ROWS = 12;
+export const COLS_PER_SIDE = 10;
+export const TOTAL_COLS = COLS_PER_SIDE * 2;
 
+// Each row is one continuous line of 20 umbrellas split by a walkway:
+// seats 1-10 (columns 0-9) are "Lato Nord", seats 11-20 (columns 10-19) are "Lato Sud".
 export function buildUmbrellas(): Umbrella[] {
   const umbrellas: Umbrella[] = [];
   let n = 1;
-  SIDES.forEach((side) => {
-    for (let row = 0; row < ROWS_PER_SIDE; row++) {
-      for (let col = 0; col < COLS_PER_ROW; col++) {
-        umbrellas.push({
-          id: `u-${n}`,
-          number: n,
-          side,
-          row,
-          col,
-          zone: `Fila ${row + 1}`,
-          // Front row (closest to the sea) and every 5th spot come with a cabin
-          hasCabin: row === 0 || col % 5 === 0,
-          status: 'libero',
-        });
-        n++;
-      }
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < TOTAL_COLS; col++) {
+      umbrellas.push({
+        id: `u-${n}`,
+        number: n,
+        side: col < COLS_PER_SIDE ? 'nord' : 'sud',
+        row,
+        col,
+        zone: `Fila ${row + 1}`,
+        // Front row (closest to the sea) and every 5th spot come with a cabin
+        hasCabin: row === 0 || col % 5 === 0,
+        status: 'libero',
+      });
+      n++;
     }
-  });
+  }
   return umbrellas;
 }
 

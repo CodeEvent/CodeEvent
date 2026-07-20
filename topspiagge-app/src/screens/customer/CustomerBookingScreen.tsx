@@ -12,13 +12,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
-import { BeachCanvas, GAP, MIN_CELL, SideSwitch, useUmbrellaPositions } from '../../components/BeachCanvas';
+import {
+  COLS_PER_SIDE,
+  GAP,
+  MIN_CELL,
+  BeachCanvas,
+  WALKWAY_WIDTH,
+  useUmbrellaPositions,
+} from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
 import { Badge, Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
-import { BeachSide, Booking, Customer, GuestCount, Umbrella } from '../../types';
+import { Booking, Customer, GuestCount, Umbrella } from '../../types';
 import {
   distributeGuests,
   findCustomerConflict,
@@ -33,8 +40,8 @@ import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../../
 
 const WIDE_BREAKPOINT = 860;
 const SIDEBAR_WIDTH = 380;
-const ROWS_PER_SIDE = 12;
-const COLS_PER_ROW = 10;
+const ROWS = 12;
+const TOTAL_COLS = COLS_PER_SIDE * 2;
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 
@@ -57,7 +64,6 @@ export const CustomerBookingScreen: React.FC = () => {
   const [startOffset, setStartOffset] = useState(0);
   const [days, setDays] = useState(1);
   const [awaitingEndDate, setAwaitingEndDate] = useState(false);
-  const [side, setSide] = useState<BeachSide>('nord');
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
   const [myBookingsVisible, setMyBookingsVisible] = useState(false);
@@ -84,26 +90,25 @@ export const CustomerBookingScreen: React.FC = () => {
   };
 
   const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
-  const sideUmbrellas = umbrellas.filter((u) => u.side === side);
 
-  const labelWidth = isWide ? 84 : 52;
+  const labelWidth = isWide ? 84 : 44;
   const mapAreaWidth = isWide ? width - SIDEBAR_WIDTH : width;
   const mapAreaHeight = height - 320;
   const cellSize = Math.max(
     MIN_CELL,
     Math.min(
       72,
-      Math.floor((mapAreaWidth - spacing.lg * 2 - labelWidth) / COLS_PER_ROW) - GAP,
-      Math.floor(mapAreaHeight / ROWS_PER_SIDE) - GAP
+      Math.floor((mapAreaWidth - spacing.lg * 2 - labelWidth - WALKWAY_WIDTH) / TOTAL_COLS) - GAP,
+      Math.floor(mapAreaHeight / ROWS) - GAP
     )
   );
 
-  const positions = useUmbrellaPositions(sideUmbrellas, cellSize);
+  const positions = useUmbrellaPositions(umbrellas, cellSize);
+  const freeCount = umbrellas.filter(isFreeForPeriod).length;
   const freeCounts = {
     nord: umbrellas.filter((u) => u.side === 'nord' && isFreeForPeriod(u)).length,
     sud: umbrellas.filter((u) => u.side === 'sud' && isFreeForPeriod(u)).length,
   };
-  const freeCount = freeCounts[side];
 
   const handleTap = (u: Umbrella) => {
     if (isFreeForPeriod(u)) {
@@ -120,16 +125,14 @@ export const CustomerBookingScreen: React.FC = () => {
 
   const mapStepEl = (
     <MapStep
-      umbrellas={sideUmbrellas}
+      umbrellas={umbrellas}
       positions={positions}
       cellSize={cellSize}
       labelWidth={labelWidth}
       dateFrom={dateFrom}
       dateTo={dateTo}
       freeCount={freeCount}
-      side={side}
-      onSideChange={setSide}
-      sideCounts={freeCounts}
+      freeCounts={freeCounts}
       isFreeForPeriod={isFreeForPeriod}
       onTap={handleTap}
       onChangeDates={() => setStep('dates')}
@@ -296,9 +299,7 @@ const MapStep: React.FC<{
   dateFrom: string;
   dateTo: string;
   freeCount: number;
-  side: BeachSide;
-  onSideChange: (side: BeachSide) => void;
-  sideCounts: Record<BeachSide, number>;
+  freeCounts: { nord: number; sud: number };
   isFreeForPeriod: (u: Umbrella) => boolean;
   onTap: (u: Umbrella) => void;
   onChangeDates: () => void;
@@ -310,9 +311,7 @@ const MapStep: React.FC<{
   dateFrom,
   dateTo,
   freeCount,
-  side,
-  onSideChange,
-  sideCounts,
+  freeCounts,
   isFreeForPeriod,
   onTap,
   onChangeDates,
@@ -331,10 +330,6 @@ const MapStep: React.FC<{
       </Pressable>
     </View>
 
-    <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-      <SideSwitch value={side} onChange={onSideChange} counts={sideCounts} />
-    </View>
-
     <View style={styles.legendRow}>
       <View style={styles.legendItem}>
         <View style={[styles.legendDot, { backgroundColor: colors.libero }]} />
@@ -344,6 +339,9 @@ const MapStep: React.FC<{
         <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
         <Text style={styles.legendText}>Non disponibile</Text>
       </View>
+      <Text style={styles.legendCounts}>
+        Nord {freeCounts.nord} liberi · Sud {freeCounts.sud} liberi
+      </Text>
     </View>
 
     <BeachCanvas
@@ -910,10 +908,18 @@ const styles = StyleSheet.create({
   },
   changeDatesText: { color: colors.primaryDark, fontWeight: '700', fontSize: 11 },
 
-  legendRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, marginTop: spacing.xs, marginBottom: spacing.xs },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.md },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
   legendText: { fontSize: 11, color: colors.textMuted },
+  legendCounts: { fontSize: 11, color: colors.textMuted, fontWeight: '700', marginLeft: 'auto' },
   cell: {
     position: 'absolute',
     borderWidth: 3,

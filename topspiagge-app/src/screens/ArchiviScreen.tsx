@@ -4,12 +4,12 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
-import { SideSwitch } from '../components/BeachCanvas';
+import { COLS_PER_SIDE } from '../components/BeachCanvas';
 import { Badge, Button, Card, Chip, EditDeleteRow, SectionHeader } from '../components/UI';
 import { useAppMode } from '../store/AppModeContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { Article, ArticleCategory, BeachSide, Booking, Customer, PriceList, Season, Umbrella } from '../types';
+import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 
 type Tab = 'prenotazioni' | 'listini' | 'clienti' | 'articoli' | 'disposizione';
@@ -270,32 +270,28 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
 
 const DisposizioneTab: React.FC = () => {
   const { umbrellas, getCustomer, renameZone, reorderZone } = useStore();
-  const [side, setSide] = useState<BeachSide>('nord');
   const [editingUmbrellaId, setEditingUmbrellaId] = useState<string | null>(null);
   const [renamingRow, setRenamingRow] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
   const zones = useMemo(() => {
     const map = new Map<number, { name: string; umbrellas: Umbrella[] }>();
-    umbrellas
-      .filter((u) => u.side === side)
-      .forEach((u) => {
-        const entry = map.get(u.row) ?? { name: u.zone, umbrellas: [] };
-        entry.umbrellas.push(u);
-        map.set(u.row, entry);
-      });
+    umbrellas.forEach((u) => {
+      const entry = map.get(u.row) ?? { name: u.zone, umbrellas: [] };
+      entry.umbrellas.push(u);
+      map.set(u.row, entry);
+    });
     Array.from(map.values()).forEach((entry) => entry.umbrellas.sort((a, b) => a.col - b.col));
     return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
-  }, [umbrellas, side]);
+  }, [umbrellas]);
 
   return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
       <Text style={styles.helperText}>
-        Layout fisso: 2 lati (Nord/Sud) x 12 file x 10 ombrelloni. Puoi rinominare le file, riordinarle,
-        gestire le cabine e assegnare un cliente stagionale direttamente da qui.
+        Layout fisso: ogni fila ha 20 ombrelloni, 10 lato Nord e 10 lato Sud separati da un
+        camminamento. Puoi rinominare le file, riordinarle, gestire le cabine e assegnare un cliente
+        stagionale direttamente da qui.
       </Text>
-
-      <SideSwitch value={side} onChange={setSide} />
 
       {zones.map(([row, { name, umbrellas: rowUmbrellas }], idx) => (
         <Card key={row} style={{ marginTop: spacing.md }}>
@@ -307,7 +303,7 @@ const DisposizioneTab: React.FC = () => {
                 onChangeText={setRenameValue}
                 autoFocus
                 onSubmitEditing={() => {
-                  renameZone(side, row, renameValue.trim() || name);
+                  renameZone(row, renameValue.trim() || name);
                   setRenamingRow(null);
                 }}
               />
@@ -326,14 +322,14 @@ const DisposizioneTab: React.FC = () => {
             <View style={{ flexDirection: 'row', gap: spacing.xs }}>
               <Pressable
                 style={styles.iconBtn}
-                onPress={() => reorderZone(side, row, 'up')}
+                onPress={() => reorderZone(row, 'up')}
                 disabled={idx === 0}
               >
                 <Ionicons name="chevron-up" size={18} color={idx === 0 ? colors.border : colors.text} />
               </Pressable>
               <Pressable
                 style={styles.iconBtn}
-                onPress={() => reorderZone(side, row, 'down')}
+                onPress={() => reorderZone(row, 'down')}
                 disabled={idx === zones.length - 1}
               >
                 <Ionicons
@@ -349,13 +345,16 @@ const DisposizioneTab: React.FC = () => {
             {rowUmbrellas.map((u) => {
               const assignee = getCustomer(u.assignedCustomerId);
               return (
-                <Pressable key={u.id} style={styles.umbrellaChip} onPress={() => setEditingUmbrellaId(u.id)}>
-                  <Text style={styles.umbrellaChipNumber}>N.{u.number}</Text>
-                  <View style={{ flexDirection: 'row', gap: 2, marginTop: 2 }}>
-                    {u.hasCabin && <Ionicons name="home-outline" size={11} color={colors.textMuted} />}
-                    {assignee && <Ionicons name="star" size={11} color={colors.accent} />}
-                  </View>
-                </Pressable>
+                <React.Fragment key={u.id}>
+                  {u.col === COLS_PER_SIDE && <View style={styles.walkwayDivider} />}
+                  <Pressable style={styles.umbrellaChip} onPress={() => setEditingUmbrellaId(u.id)}>
+                    <Text style={styles.umbrellaChipNumber}>N.{u.number}</Text>
+                    <View style={{ flexDirection: 'row', gap: 2, marginTop: 2 }}>
+                      {u.hasCabin && <Ionicons name="home-outline" size={11} color={colors.textMuted} />}
+                      {assignee && <Ionicons name="star" size={11} color={colors.accent} />}
+                    </View>
+                  </Pressable>
+                </React.Fragment>
               );
             })}
           </ScrollView>
@@ -1025,6 +1024,13 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   umbrellaChipNumber: { fontWeight: '700', fontSize: 13, color: colors.text },
+  walkwayDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.border,
+    marginRight: spacing.sm,
+    alignSelf: 'center',
+  },
   addChip: {
     width: 56,
     height: 56,

@@ -19,7 +19,7 @@ export function findNearestUmbrellas(
   limit: number
 ): Umbrella[] {
   return allUmbrellas
-    .filter((u) => u.side === anchor.side && !excludeIds.has(u.id) && isAvailable(u))
+    .filter((u) => !excludeIds.has(u.id) && isAvailable(u))
     .map((u) => ({ u, dist: Math.hypot(u.row - anchor.row, u.col - anchor.col) }))
     .sort((a, b) => a.dist - b.dist)
     .slice(0, limit)

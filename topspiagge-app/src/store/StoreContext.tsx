@@ -19,7 +19,6 @@ import {
 } from '../data/seed';
 import {
   Article,
-  BeachSide,
   Booking,
   Conto,
   Customer,
@@ -73,8 +72,8 @@ type Action =
   | { type: 'DELETE_PRICELIST'; priceListId: string }
   | { type: 'PAY_BOOKING'; bookingId: string; amount: number }
   | { type: 'CLOSE_CONTO'; conto: Conto }
-  | { type: 'RENAME_ZONE'; side: BeachSide; row: number; name: string }
-  | { type: 'REORDER_ZONE'; side: BeachSide; row: number; direction: 'up' | 'down' }
+  | { type: 'RENAME_ZONE'; row: number; name: string }
+  | { type: 'REORDER_ZONE'; row: number; direction: 'up' | 'down' }
   | { type: 'REMOVE_UMBRELLA'; umbrellaId: string }
   | { type: 'REORDER_UMBRELLA'; umbrellaId: string; direction: 'left' | 'right' }
   | { type: 'UPDATE_UMBRELLA'; umbrellaId: string; patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>> }
@@ -238,19 +237,16 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'RENAME_ZONE': {
       const umbrellas = state.umbrellas.map((u) =>
-        u.side === action.side && u.row === action.row ? { ...u, zone: action.name } : u
+        u.row === action.row ? { ...u, zone: action.name } : u
       );
       return { ...state, umbrellas };
     }
 
     case 'REORDER_ZONE': {
       const targetRow = action.direction === 'up' ? action.row - 1 : action.row + 1;
-      const rows = new Set(
-        state.umbrellas.filter((u) => u.side === action.side).map((u) => u.row)
-      );
+      const rows = new Set(state.umbrellas.map((u) => u.row));
       if (!rows.has(targetRow)) return state;
       const umbrellas = state.umbrellas.map((u) => {
-        if (u.side !== action.side) return u;
         if (u.row === action.row) return { ...u, row: targetRow };
         if (u.row === targetRow) return { ...u, row: action.row };
         return u;
@@ -274,7 +270,7 @@ function reducer(state: AppState, action: Action): AppState {
       if (!umbrella) return state;
       const targetCol = action.direction === 'left' ? umbrella.col - 1 : umbrella.col + 1;
       const neighbor = state.umbrellas.find(
-        (u) => u.side === umbrella.side && u.row === umbrella.row && u.col === targetCol
+        (u) => u.row === umbrella.row && u.col === targetCol
       );
       if (!neighbor) return state;
       const umbrellas = state.umbrellas.map((u) => {
@@ -332,8 +328,8 @@ interface StoreContextValue extends AppState {
   deletePriceList: (priceListId: string) => void;
   payBooking: (bookingId: string, amount: number) => void;
   closeConto: (conto: Conto) => void;
-  renameZone: (side: BeachSide, row: number, name: string) => void;
-  reorderZone: (side: BeachSide, row: number, direction: 'up' | 'down') => void;
+  renameZone: (row: number, name: string) => void;
+  reorderZone: (row: number, direction: 'up' | 'down') => void;
   removeUmbrella: (umbrellaId: string) => void;
   reorderUmbrella: (umbrellaId: string, direction: 'left' | 'right') => void;
   updateUmbrella: (umbrellaId: string, patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>>) => void;
@@ -406,11 +402,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const payBooking = useCallback((bookingId: string, amount: number) => {
     dispatch({ type: 'PAY_BOOKING', bookingId, amount });
   }, []);
-  const renameZone = useCallback((side: BeachSide, row: number, name: string) => {
-    dispatch({ type: 'RENAME_ZONE', side, row, name });
+  const renameZone = useCallback((row: number, name: string) => {
+    dispatch({ type: 'RENAME_ZONE', row, name });
   }, []);
-  const reorderZone = useCallback((side: BeachSide, row: number, direction: 'up' | 'down') => {
-    dispatch({ type: 'REORDER_ZONE', side, row, direction });
+  const reorderZone = useCallback((row: number, direction: 'up' | 'down') => {
+    dispatch({ type: 'REORDER_ZONE', row, direction });
   }, []);
   const removeUmbrella = useCallback((umbrellaId: string) => {
     dispatch({ type: 'REMOVE_UMBRELLA', umbrellaId });
