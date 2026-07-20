@@ -8,7 +8,7 @@ import { Umbrella } from '../types';
 export const CELL = 72;
 export const GAP = 8;
 export const LABEL_WIDTH = 84;
-export const MIN_CELL = 18;
+export const MIN_CELL = 46;
 export const COLS_PER_SIDE = 10;
 export const WALKWAY_WIDTH = 28;
 const GROUP_HEADER_HEIGHT = 22;
@@ -68,8 +68,8 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
   const hasWalkway = maxCol >= COLS_PER_SIDE;
   const canvasWidth = colOffset(maxCol, cellSize, GAP) + cellSize;
   const canvasHeight = zones.length * (cellSize + GAP);
-  const labelIconSize = Math.min(16, Math.max(10, cellSize / 4.5));
-  const labelFontSize = Math.min(12, Math.max(9, cellSize / 6));
+  const labelIconSize = Math.min(16, Math.max(12, cellSize / 4));
+  const labelFontSize = Math.min(13, Math.max(11, cellSize / 5));
 
   const walkwayLeft = colOffset(COLS_PER_SIDE - 1, cellSize, GAP) + cellSize;
   const walkwayRenderWidth = GAP + WALKWAY_WIDTH;

@@ -12,14 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
-import {
-  COLS_PER_SIDE,
-  GAP,
-  MIN_CELL,
-  BeachCanvas,
-  WALKWAY_WIDTH,
-  useUmbrellaPositions,
-} from '../../components/BeachCanvas';
+import { GAP, MIN_CELL, BeachCanvas, useUmbrellaPositions } from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
 import { Badge, Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
@@ -41,7 +34,6 @@ import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../../
 const WIDE_BREAKPOINT = 860;
 const SIDEBAR_WIDTH = 380;
 const ROWS = 12;
-const TOTAL_COLS = COLS_PER_SIDE * 2;
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 
@@ -91,17 +83,12 @@ export const CustomerBookingScreen: React.FC = () => {
 
   const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
 
-  const labelWidth = isWide ? 84 : 44;
-  const mapAreaWidth = isWide ? width - SIDEBAR_WIDTH : width;
+  const labelWidth = isWide ? 84 : 60;
+  // The map is 20 seats wide (10 Nord + walkway + 10 Sud) and rarely fits a phone or a
+  // sidebar-narrowed column without shrinking cells past legibility, so the cell size is
+  // driven by available height only -- the canvas scrolls horizontally to reveal the rest.
   const mapAreaHeight = height - 320;
-  const cellSize = Math.max(
-    MIN_CELL,
-    Math.min(
-      72,
-      Math.floor((mapAreaWidth - spacing.lg * 2 - labelWidth - WALKWAY_WIDTH) / TOTAL_COLS) - GAP,
-      Math.floor(mapAreaHeight / ROWS) - GAP
-    )
-  );
+  const cellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / ROWS) - GAP));
 
   const positions = useUmbrellaPositions(umbrellas, cellSize);
   const freeCount = umbrellas.filter(isFreeForPeriod).length;
@@ -368,7 +355,7 @@ const MapStep: React.FC<{
               },
             ]}
           >
-            <Text style={[styles.cellNumber, { fontSize: Math.min(16, Math.max(9, cellSize / 4.5)) }]}>
+            <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
               {u.number}
             </Text>
           </Pressable>

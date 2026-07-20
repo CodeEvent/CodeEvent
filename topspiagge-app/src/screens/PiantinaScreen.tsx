@@ -2,14 +2,7 @@ import { useRoute } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  BeachCanvas,
-  COLS_PER_SIDE,
-  GAP,
-  MIN_CELL,
-  WALKWAY_WIDTH,
-  useUmbrellaPositions,
-} from '../components/BeachCanvas';
+import { BeachCanvas, GAP, MIN_CELL, useUmbrellaPositions } from '../components/BeachCanvas';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing, statusColor } from '../theme';
@@ -17,7 +10,6 @@ import { Umbrella } from '../types';
 
 const TAP_THRESHOLD = 10;
 const ROWS = 12;
-const TOTAL_COLS = COLS_PER_SIDE * 2;
 
 const UmbrellaCell: React.FC<{
   umbrella: Umbrella;
@@ -91,7 +83,7 @@ const UmbrellaCell: React.FC<{
         },
       ]}
     >
-      <Text style={[styles.cellNumber, { fontSize: Math.min(16, Math.max(9, cellSize / 4.5)) }]}>
+      <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
         {umbrella.number}
       </Text>
       {umbrella.hasCabin && <View style={styles.cabinDot} />}
@@ -104,18 +96,14 @@ export const PiantinaScreen: React.FC = () => {
   const { umbrellas, swapUmbrellas } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const route = useRoute<any>();
-  const { width, height } = useWindowDimensions();
+  const { height } = useWindowDimensions();
 
   const labelWidth = 60;
+  // 20 seats per row (10 Nord + walkway + 10 Sud) rarely fit a screen width without
+  // shrinking cells past legibility, so cell size is driven by height only -- the
+  // canvas scrolls horizontally to reveal the rest, same as the customer-facing map.
   const mapAreaHeight = height - 240;
-  const cellSize = Math.max(
-    MIN_CELL,
-    Math.min(
-      72,
-      Math.floor((width - spacing.lg * 2 - labelWidth - WALKWAY_WIDTH) / TOTAL_COLS) - GAP,
-      Math.floor(mapAreaHeight / ROWS) - GAP
-    )
-  );
+  const cellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / ROWS) - GAP));
 
   const positions = useUmbrellaPositions(umbrellas, cellSize);
 
