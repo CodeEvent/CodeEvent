@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
-  FlatList,
   Modal,
   Pressable,
   ScrollView,
@@ -12,12 +11,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BeachCanvas, CELL, useUmbrellaPositions } from '../../components/BeachCanvas';
 import { Badge, Button, Card, Chip } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { Booking, Customer, Umbrella, UmbrellaStatus } from '../../types';
-import { findCustomerConflict, findUmbrellaConflict, buildDayBookingLookup } from '../../utils/booking';
+import { buildDayBookingLookup, findCustomerConflict, findUmbrellaConflict } from '../../utils/booking';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../../utils/format';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
@@ -25,6 +25,7 @@ const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 export const CustomerBookingScreen: React.FC = () => {
   const { setMode } = useAppMode();
   const { umbrellas, bookings } = useStore();
+  const positions = useUmbrellaPositions(umbrellas);
   const [dateOffset, setDateOffset] = useState(0);
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
@@ -43,19 +44,6 @@ export const CustomerBookingScreen: React.FC = () => {
     } else {
       Alert.alert('Non disponibile', `L'ombrellone N.${u.number} non è disponibile per questa data.`);
     }
-  };
-
-  const renderCell = ({ item }: { item: Umbrella }) => {
-    const status = statusFor(item);
-    return (
-      <Pressable
-        onPress={() => handleTap(item)}
-        style={[styles.cell, { backgroundColor: status === 'libero' ? colors.libero : colors.textMuted }]}
-      >
-        <Text style={styles.cellNumber}>{item.number}</Text>
-        <Text style={styles.cellZone}>{item.zone.replace('Fila ', 'F.')}</Text>
-      </Pressable>
-    );
   };
 
   return (
@@ -96,18 +84,30 @@ export const CustomerBookingScreen: React.FC = () => {
         </View>
       </View>
 
-      <View style={styles.beach}>
-        <FlatList
-          data={umbrellas}
-          keyExtractor={(u) => u.id}
-          numColumns={5}
-          contentContainerStyle={{ padding: spacing.lg }}
-          renderItem={renderCell}
-        />
-        <View style={styles.footerBar}>
-          <Text style={styles.footerText}>{freeCount} ombrelloni liberi per il {formatDateShort(dateIso)}</Text>
-        </View>
-      </View>
+      <BeachCanvas
+        umbrellas={umbrellas}
+        positions={positions}
+        footerText={`${freeCount} ombrelloni liberi per il ${formatDateShort(dateIso)}`}
+        renderCell={(u, position) => {
+          const status = statusFor(u);
+          return (
+            <Pressable
+              key={u.id}
+              onPress={() => handleTap(u)}
+              style={[
+                styles.cell,
+                {
+                  left: position.x,
+                  top: position.y,
+                  backgroundColor: status === 'libero' ? colors.libero : colors.textMuted,
+                },
+              ]}
+            >
+              <Text style={styles.cellNumber}>{u.number}</Text>
+            </Pressable>
+          );
+        }}
+      />
 
       {selectedUmbrellaId && (
         <CustomerBookingSheet
@@ -135,6 +135,13 @@ export const CustomerBookingScreen: React.FC = () => {
   );
 };
 
+const PERIOD_PRESETS = [
+  { label: '1 giorno', days: 1 },
+  { label: '2 giorni', days: 2 },
+  { label: '3 giorni', days: 3 },
+  { label: '1 settimana', days: 7 },
+];
+
 const CustomerBookingSheet: React.FC<{
   umbrellaId: string;
   dateOffset: number;
@@ -144,14 +151,14 @@ const CustomerBookingSheet: React.FC<{
   const { getUmbrella, customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
-  const [nights, setNights] = useState(1);
+  const [days, setDays] = useState(1);
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
   const dateFrom = isoDate(dateOffset);
-  const dateTo = isoDate(dateOffset + nights);
-  const total = dailyRate * nights;
+  const dateTo = isoDate(dateOffset + days - 1);
+  const total = dailyRate * days;
   const deposit = Math.round(total * 0.3);
 
   const matchedCustomer = useMemo(() => {
@@ -218,9 +225,8 @@ const CustomerBookingSheet: React.FC<{
           <Text style={styles.sheetTitle}>
             Ombrellone {umbrella.number} · {umbrella.zone}
           </Text>
-          <Text style={styles.muted}>{formatDateLong(dateFrom)}</Text>
 
-          <ScrollView style={{ maxHeight: 420 }}>
+          <ScrollView style={{ maxHeight: 460 }}>
             <Text style={styles.label}>Il tuo numero di telefono</Text>
             <TextInput
               style={styles.input}
@@ -246,14 +252,36 @@ const CustomerBookingSheet: React.FC<{
               </View>
             )}
 
-            <Text style={[styles.label, { marginTop: spacing.lg }]}>Quante notti?</Text>
+            <Text style={[styles.label, { marginTop: spacing.lg }]}>Periodo di soggiorno</Text>
             <View style={styles.row}>
-              <Button title="−" variant="secondary" onPress={() => setNights((v) => Math.max(1, v - 1))} style={styles.qtyBtn} />
-              <Text style={styles.qtyText}>{nights} {nights === 1 ? 'giorno' : 'giorni'}</Text>
-              <Button title="+" variant="secondary" onPress={() => setNights((v) => v + 1)} style={styles.qtyBtn} />
+              {PERIOD_PRESETS.map((p) => (
+                <Chip key={p.days} label={p.label} selected={days === p.days} onPress={() => setDays(p.days)} />
+              ))}
+            </View>
+
+            <View style={styles.periodBox}>
+              <View style={styles.periodRow}>
+                <Text style={styles.periodLabel}>Dal</Text>
+                <Text style={styles.periodDate}>{formatDateLong(dateFrom)}</Text>
+              </View>
+              <View style={styles.periodRow}>
+                <Text style={styles.periodLabel}>Al</Text>
+                <View style={styles.periodDateAdjust}>
+                  <Pressable
+                    onPress={() => setDays((v) => Math.max(1, v - 1))}
+                    style={styles.periodNudgeBtn}
+                  >
+                    <Ionicons name="remove" size={14} color={colors.primary} />
+                  </Pressable>
+                  <Text style={styles.periodDate}>{formatDateLong(dateTo)}</Text>
+                  <Pressable onPress={() => setDays((v) => v + 1)} style={styles.periodNudgeBtn}>
+                    <Ionicons name="add" size={14} color={colors.primary} />
+                  </Pressable>
+                </View>
+              </View>
             </View>
             <Text style={styles.muted}>
-              {formatDateShort(dateFrom)} → {formatDateShort(dateTo)} · {formatCurrency(dailyRate)}/giorno
+              {days} {days === 1 ? 'giorno' : 'giorni'} · {formatCurrency(dailyRate)}/giorno
             </Text>
 
             {conflict && (
@@ -443,28 +471,21 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.md },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
   legendText: { fontSize: 11, color: colors.textMuted },
-  beach: { flex: 1, backgroundColor: colors.sand },
   cell: {
-    flex: 1,
-    aspectRatio: 1,
-    margin: 4,
-    borderRadius: radius.sm,
-    borderWidth: 2,
+    position: 'absolute',
+    width: CELL,
+    height: CELL,
+    borderRadius: CELL / 2,
+    borderWidth: 3,
     borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
   },
-  cellNumber: { fontWeight: '800', fontSize: 14, color: colors.white },
-  cellZone: { fontSize: 8, color: 'rgba(255,255,255,0.85)', marginTop: 1, fontWeight: '600' },
-  footerBar: {
-    backgroundColor: colors.seaDark,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.sm,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  footerText: { color: colors.white, fontWeight: '700', fontSize: 12 },
+  cellNumber: { fontWeight: '800', fontSize: 16, color: colors.white },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.card,
@@ -486,9 +507,26 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   welcomeText: { color: colors.libero, fontWeight: '700', fontSize: 13, marginTop: spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm },
-  qtyBtn: { width: 36, height: 36, paddingVertical: 0, paddingHorizontal: 0 },
-  qtyText: { marginHorizontal: spacing.md, fontWeight: '700', color: colors.text },
+  row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, flexWrap: 'wrap' },
+  periodBox: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  periodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  periodLabel: { color: colors.textMuted, fontWeight: '700', fontSize: 12, textTransform: 'uppercase' },
+  periodDate: { color: colors.text, fontWeight: '700', fontSize: 14, textTransform: 'capitalize' },
+  periodDateAdjust: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  periodNudgeBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: radius.sm,
+    backgroundColor: colors.sand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   conflictBox: { backgroundColor: colors.occupatoBg, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.sm },
   conflictText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
   totalRow: {

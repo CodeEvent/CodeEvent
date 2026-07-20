@@ -1,38 +1,14 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Animated,
-  PanResponder,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BeachCanvas, CELL, useUmbrellaPositions } from '../components/BeachCanvas';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, spacing, statusBg, statusColor } from '../theme';
+import { colors, spacing, statusColor } from '../theme';
 import { Umbrella } from '../types';
 
-const CELL = 72;
-const GAP = 8;
-const LABEL_WIDTH = 84;
 const TAP_THRESHOLD = 10;
-
-function useUmbrellaPositions(umbrellas: Umbrella[]) {
-  return useMemo(() => {
-    const positions = new Map<string, { x: number; y: number }>();
-    umbrellas.forEach((u) => {
-      positions.set(u.id, {
-        x: u.col * (CELL + GAP),
-        y: u.row * (CELL + GAP),
-      });
-    });
-    return positions;
-  }, [umbrellas]);
-}
 
 const UmbrellaCell: React.FC<{
   umbrella: Umbrella;
@@ -109,15 +85,6 @@ const UmbrellaCell: React.FC<{
   );
 };
 
-const WaveFooter: React.FC = () => (
-  <Svg width="100%" height={22} viewBox="0 0 400 24" preserveAspectRatio="none">
-    <Path
-      d="M0,12 C50,24 150,0 200,12 C250,24 350,0 400,12 L400,24 L0,24 Z"
-      fill={colors.sea}
-    />
-  </Svg>
-);
-
 export const PiantinaScreen: React.FC = () => {
   const { umbrellas, swapUmbrellas } = useStore();
   const positions = useUmbrellaPositions(umbrellas);
@@ -128,15 +95,6 @@ export const PiantinaScreen: React.FC = () => {
     if (route.params?.umbrellaId) setSelectedId(route.params.umbrellaId);
   }, [route.params?.umbrellaId]);
 
-  const zones = useMemo(() => {
-    const seen = new Map<number, string>();
-    umbrellas.forEach((u) => seen.set(u.row, u.zone));
-    return Array.from(seen.entries()).sort((a, b) => a[0] - b[0]);
-  }, [umbrellas]);
-
-  const maxCol = Math.max(...umbrellas.map((u) => u.col));
-  const canvasWidth = (maxCol + 1) * (CELL + GAP);
-  const canvasHeight = zones.length * (CELL + GAP);
   const freeToday = umbrellas.filter((u) => u.status === 'libero').length;
 
   return (
@@ -160,45 +118,22 @@ export const PiantinaScreen: React.FC = () => {
         </View>
       </View>
 
-      <View style={styles.beach}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.boardScroll}>
-          <View style={styles.boardRow}>
-            <View style={{ width: LABEL_WIDTH, height: canvasHeight }}>
-              {zones.map(([rowIdx, zoneName]) => (
-                <View
-                  key={rowIdx}
-                  style={[styles.zoneLabel, { top: rowIdx * (CELL + GAP), height: CELL }]}
-                >
-                  <Ionicons name="umbrella" size={16} color={colors.seaDark} />
-                  <Text style={styles.zoneLabelText} numberOfLines={1}>
-                    {zoneName}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator>
-              <View style={{ width: canvasWidth, height: canvasHeight }}>
-                {umbrellas.map((u) => (
-                  <UmbrellaCell
-                    key={u.id}
-                    umbrella={u}
-                    position={positions.get(u.id)!}
-                    positions={positions}
-                    allUmbrellas={umbrellas}
-                    onDrop={swapUmbrellas}
-                    onTap={setSelectedId}
-                  />
-                ))}
-              </View>
-            </ScrollView>
-          </View>
-        </ScrollView>
-
-        <WaveFooter />
-        <View style={styles.footerBar}>
-          <Text style={styles.footerText}>Ombrelloni liberi oggi: {freeToday}</Text>
-        </View>
-      </View>
+      <BeachCanvas
+        umbrellas={umbrellas}
+        positions={positions}
+        footerText={`Ombrelloni liberi oggi: ${freeToday}`}
+        renderCell={(u, position) => (
+          <UmbrellaCell
+            key={u.id}
+            umbrella={u}
+            position={position}
+            positions={positions}
+            allUmbrellas={umbrellas}
+            onDrop={swapUmbrellas}
+            onTap={setSelectedId}
+          />
+        )}
+      />
 
       <UmbrellaDetailModal umbrellaId={selectedId} onClose={() => setSelectedId(null)} />
     </SafeAreaView>
@@ -225,9 +160,6 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.md },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
   legendText: { fontSize: 11, color: colors.textMuted },
-  beach: { flex: 1, backgroundColor: colors.sand },
-  boardScroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
-  boardRow: { flexDirection: 'row' },
   cell: {
     position: 'absolute',
     width: CELL,
@@ -261,22 +193,4 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.white,
   },
-  zoneLabel: {
-    position: 'absolute',
-    left: 0,
-    width: LABEL_WIDTH - 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 2,
-  },
-  zoneLabelText: { fontWeight: '700', color: colors.seaDark, fontSize: 12 },
-  footerBar: {
-    backgroundColor: colors.seaDark,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.sm,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  footerText: { color: colors.white, fontWeight: '700', fontSize: 12 },
 });

@@ -28,7 +28,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
   const dateFrom = isoDate(fromOffset);
-  const dateTo = isoDate(fromOffset + length);
+  const dateTo = isoDate(fromOffset + length - 1);
   const total = dailyRate * length;
 
   const filteredCustomers = useMemo(
@@ -154,8 +154,8 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       <View style={styles.row}>
         <Button title="− Inizio" variant="secondary" onPress={() => setFromOffset((v) => Math.max(0, v - 1))} style={styles.smallBtn} />
         <Button title="+ Inizio" variant="secondary" onPress={() => setFromOffset((v) => v + 1)} style={styles.smallBtn} />
-        <Button title="− Notti" variant="secondary" onPress={() => setLength((v) => Math.max(1, v - 1))} style={styles.smallBtn} />
-        <Button title="+ Notti" variant="secondary" onPress={() => setLength((v) => v + 1)} style={styles.smallBtn} />
+        <Button title="− Giorni" variant="secondary" onPress={() => setLength((v) => Math.max(1, v - 1))} style={styles.smallBtn} />
+        <Button title="+ Giorni" variant="secondary" onPress={() => setLength((v) => v + 1)} style={styles.smallBtn} />
       </View>
       <Text style={styles.muted}>
         {length} {length === 1 ? 'giorno' : 'giorni'} · {formatCurrency(dailyRate)}/giorno ({priceList.name})
