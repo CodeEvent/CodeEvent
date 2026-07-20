@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppAlert } from '../components/AppAlert';
 import { BarChart } from '../components/BarChart';
 import { Button, Card, SectionHeader } from '../components/UI';
 import { useStore } from '../store/StoreContext';
@@ -10,6 +11,7 @@ import { exportCsv, statsToCsv } from '../utils/exportCsv';
 
 export const StatisticheScreen: React.FC = () => {
   const { dailyStats } = useStore();
+  const alert = useAppAlert();
   const [exporting, setExporting] = useState(false);
 
   const today = dailyStats[dailyStats.length - 1];
@@ -38,7 +40,7 @@ export const StatisticheScreen: React.FC = () => {
     try {
       await exportCsv(statsToCsv(dailyStats), `top-spiagge-incassi-${today?.date ?? 'export'}.csv`);
     } catch (e) {
-      Alert.alert('Errore export', 'Impossibile generare il file CSV.');
+      alert('Errore export', 'Impossibile generare il file CSV.');
     } finally {
       setExporting(false);
     }

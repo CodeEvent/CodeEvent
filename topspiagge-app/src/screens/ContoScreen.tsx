@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppAlert } from '../components/AppAlert';
 import { Badge, Button, Card, Chip, SectionHeader } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
@@ -34,6 +35,7 @@ export const ContoScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { umbrellas, articles, getUmbrella, getBooking, getCustomer, getActivePriceList, payBooking, closeConto, freeUmbrella } =
     useStore();
+  const alert = useAppAlert();
 
   const [umbrellaId, setUmbrellaId] = useState<string | undefined>(route.params?.umbrellaId);
   const [items, setItems] = useState<ContoItem[]>([]);
@@ -106,15 +108,15 @@ export const ContoScreen: React.FC = () => {
 
   const handlePrint = () => {
     if (total <= 0) {
-      Alert.alert('Conto vuoto', 'Aggiungi almeno un articolo o seleziona il saldo prenotazione.');
+      alert('Conto vuoto', 'Aggiungi almeno un articolo o seleziona il saldo prenotazione.');
       return;
     }
-    Alert.alert('Anteprima stampa', receiptText());
+    alert('Anteprima stampa', receiptText());
   };
 
   const handleRegister = () => {
     if (total <= 0) {
-      Alert.alert('Conto vuoto', 'Aggiungi almeno un articolo o seleziona il saldo prenotazione.');
+      alert('Conto vuoto', 'Aggiungi almeno un articolo o seleziona il saldo prenotazione.');
       return;
     }
     const conto: Conto = {
@@ -137,7 +139,7 @@ export const ContoScreen: React.FC = () => {
     if (freeAfter && umbrella) {
       freeUmbrella(umbrella.id);
     }
-    Alert.alert(
+    alert(
       `${docType === 'scontrino' ? 'Scontrino' : docType === 'fattura' ? 'Fattura' : 'Ricevuta'} registrata`,
       receiptText(),
       [{ text: 'OK', onPress: reset }]

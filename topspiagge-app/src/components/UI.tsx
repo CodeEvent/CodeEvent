@@ -127,6 +127,43 @@ export const EditDeleteRow: React.FC<{ onEdit: () => void; onDelete: () => void 
   </View>
 );
 
+export const Checkbox: React.FC<{
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+}> = ({ checked, onToggle, label }) => (
+  <Pressable onPress={onToggle} style={styles.checkboxRow}>
+    <View style={[styles.checkboxBox, checked && styles.checkboxBoxChecked]}>
+      {checked && <Ionicons name="checkmark" size={14} color={colors.white} />}
+    </View>
+    <Text style={styles.checkboxLabel}>{label}</Text>
+  </Pressable>
+);
+
+export const Stepper: React.FC<{
+  label: string;
+  value: number;
+  min?: number;
+  onChange: (value: number) => void;
+}> = ({ label, value, min = 0, onChange }) => (
+  <View style={styles.stepperRow}>
+    <Text style={styles.stepperLabel}>{label}</Text>
+    <View style={styles.stepperControls}>
+      <Pressable
+        onPress={() => onChange(Math.max(min, value - 1))}
+        style={[styles.stepperBtn, value <= min && styles.stepperBtnDisabled]}
+        disabled={value <= min}
+      >
+        <Ionicons name="remove" size={16} color={value <= min ? colors.border : colors.primary} />
+      </Pressable>
+      <Text style={styles.stepperValue}>{value}</Text>
+      <Pressable onPress={() => onChange(value + 1)} style={styles.stepperBtn}>
+        <Ionicons name="add" size={16} color={colors.primary} />
+      </Pressable>
+    </View>
+  </View>
+);
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
@@ -195,4 +232,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  checkboxBox: {
+    width: 22,
+    height: 22,
+    borderRadius: radius.sm,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxBoxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkboxLabel: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 18 },
+  stepperRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  stepperLabel: { color: colors.text, fontWeight: '600', fontSize: 14 },
+  stepperControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  stepperBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.sm,
+    backgroundColor: colors.sand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperBtnDisabled: { backgroundColor: colors.bg },
+  stepperValue: { fontWeight: '700', color: colors.text, fontSize: 15, minWidth: 20, textAlign: 'center' },
 });

@@ -117,6 +117,16 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
                       {formatDateShort(booking.dateFrom)} → {formatDateShort(booking.dateTo)}
                     </Text>
                   </View>
+                  {booking.guests && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.muted}>Ospiti</Text>
+                      <Text style={styles.infoValue}>
+                        {booking.guests.adults} adulti
+                        {booking.guests.children5to15 > 0 ? ` · ${booking.guests.children5to15} bambini 5-15` : ''}
+                        {booking.guests.childrenUnder5 > 0 ? ` · ${booking.guests.childrenUnder5} under 5` : ''}
+                      </Text>
+                    </View>
+                  )}
                   <View style={styles.infoRow}>
                     <Text style={styles.muted}>Totale</Text>
                     <Text style={styles.infoValue}>{formatCurrency(booking.totalPrice)}</Text>

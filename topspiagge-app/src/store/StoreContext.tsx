@@ -63,6 +63,7 @@ type Action =
   | { type: 'SWAP_UMBRELLAS'; fromId: string; toId: string }
   | { type: 'CREATE_BOOKING'; booking: Booking }
   | { type: 'FREE_UMBRELLA'; umbrellaId: string }
+  | { type: 'CANCEL_BOOKING'; bookingId: string }
   | { type: 'UPSERT_CUSTOMER'; customer: Customer }
   | { type: 'DELETE_CUSTOMER'; customerId: string }
   | { type: 'UPSERT_ARTICLE'; article: Article }
@@ -137,6 +138,23 @@ function reducer(state: AppState, action: Action): AppState {
           : u
       );
       return { ...state, umbrellas };
+    }
+
+    case 'CANCEL_BOOKING': {
+      const booking = state.bookings.find((b) => b.id === action.bookingId);
+      if (!booking) return state;
+      const bookings = state.bookings.filter((b) => b.id !== action.bookingId);
+      const umbrellas = state.umbrellas.map((u) =>
+        u.id === booking.umbrellaId && u.currentBookingId === booking.id
+          ? { ...u, status: 'libero' as const, currentBookingId: undefined }
+          : u
+      );
+      const customers = state.customers.map((c) =>
+        c.id === booking.customerId
+          ? { ...c, bookingHistory: c.bookingHistory.filter((id) => id !== booking.id) }
+          : c
+      );
+      return { ...state, bookings, umbrellas, customers };
     }
 
     case 'UPSERT_CUSTOMER': {
@@ -354,6 +372,7 @@ interface StoreContextValue extends AppState {
   swapUmbrellas: (fromId: string, toId: string) => void;
   createBooking: (booking: Booking) => void;
   freeUmbrella: (umbrellaId: string) => void;
+  cancelBooking: (bookingId: string) => void;
   upsertCustomer: (customer: Customer) => void;
   deleteCustomer: (customerId: string) => void;
   upsertArticle: (article: Article) => void;
@@ -411,6 +430,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
   const freeUmbrella = useCallback((umbrellaId: string) => {
     dispatch({ type: 'FREE_UMBRELLA', umbrellaId });
+  }, []);
+  const cancelBooking = useCallback((bookingId: string) => {
+    dispatch({ type: 'CANCEL_BOOKING', bookingId });
   }, []);
   const upsertCustomer = useCallback((customer: Customer) => {
     dispatch({ type: 'UPSERT_CUSTOMER', customer });
@@ -491,6 +513,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       swapUmbrellas,
       createBooking,
       freeUmbrella,
+      cancelBooking,
       upsertCustomer,
       deleteCustomer,
       upsertArticle,
@@ -518,6 +541,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       swapUmbrellas,
       createBooking,
       freeUmbrella,
+      cancelBooking,
       upsertCustomer,
       deleteCustomer,
       upsertArticle,

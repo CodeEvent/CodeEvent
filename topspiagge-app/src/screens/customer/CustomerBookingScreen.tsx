@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -11,13 +10,15 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppAlert } from '../../components/AppAlert';
 import { BeachCanvas, CELL, useUmbrellaPositions } from '../../components/BeachCanvas';
-import { Badge, Button, Card, Chip } from '../../components/UI';
+import { Badge, Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
-import { Booking, Customer, Umbrella } from '../../types';
+import { Booking, Customer, GuestCount, Umbrella } from '../../types';
 import { findCustomerConflict, findUmbrellaConflict } from '../../utils/booking';
+import { DEPOSIT_RATE, isDepositRefundable, refundCutoffDate } from '../../utils/cancellation';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../../utils/format';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
@@ -35,6 +36,7 @@ export const CustomerBookingScreen: React.FC = () => {
   const { setMode } = useAppMode();
   const { umbrellas, bookings } = useStore();
   const positions = useUmbrellaPositions(umbrellas);
+  const alert = useAppAlert();
 
   const [step, setStep] = useState<Step>('dates');
   const [startOffset, setStartOffset] = useState(0);
@@ -53,7 +55,7 @@ export const CustomerBookingScreen: React.FC = () => {
     if (isFreeForPeriod(u)) {
       setSelectedUmbrellaId(u.id);
     } else {
-      Alert.alert('Non disponibile', `L'ombrellone N.${u.number} non è disponibile per il periodo scelto.`);
+      alert('Non disponibile', `L'ombrellone N.${u.number} non è disponibile per il periodo scelto.`);
     }
   };
 
@@ -254,13 +256,18 @@ const CustomerBookingSheet: React.FC<{
   const { getUmbrella, customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
+  const [adults, setAdults] = useState(2);
+  const [children5to15, setChildren5to15] = useState(0);
+  const [childrenUnder5, setChildrenUnder5] = useState(0);
+  const [policyAccepted, setPolicyAccepted] = useState(false);
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
   const days = Math.round((new Date(dateTo + 'T00:00:00').getTime() - new Date(dateFrom + 'T00:00:00').getTime()) / 86400000) + 1;
   const total = dailyRate * days;
-  const deposit = Math.round(total * 0.3);
+  const deposit = Math.round(total * DEPOSIT_RATE);
+  const cutoffDate = refundCutoffDate(dateFrom);
 
   const matchedCustomer = useMemo(() => {
     const p = normalizePhone(phone);
@@ -281,7 +288,10 @@ const CustomerBookingSheet: React.FC<{
   const customerConflictUmbrella = getUmbrella(customerConflict?.umbrellaId ?? '');
 
   const canConfirm =
-    (!!matchedCustomer || (isNewCustomer && newName.trim().length > 0)) && !conflict && !customerConflict;
+    (!!matchedCustomer || (isNewCustomer && newName.trim().length > 0)) &&
+    !conflict &&
+    !customerConflict &&
+    policyAccepted;
 
   const confirm = () => {
     if (!canConfirm) return;
@@ -300,6 +310,7 @@ const CustomerBookingSheet: React.FC<{
       upsertCustomer(customer);
       customerId = customer.id;
     }
+    const guests: GuestCount = { adults, children5to15, childrenUnder5 };
     const booking: Booking = {
       id: `bk-${umbrellaId}-${Date.now()}`,
       umbrellaId,
@@ -311,6 +322,7 @@ const CustomerBookingSheet: React.FC<{
       paid: deposit,
       status: 'prenotato',
       createdAt: isoDate(0),
+      guests,
     };
     createBooking(booking);
     onConfirmed(booking);
@@ -326,12 +338,33 @@ const CustomerBookingSheet: React.FC<{
           <Text style={styles.sheetTitle}>
             Ombrellone {umbrella.number} · {umbrella.zone}
           </Text>
-          <Text style={styles.muted}>
-            {formatDateLong(dateFrom)} → {formatDateLong(dateTo)} · {days} {days === 1 ? 'giorno' : 'giorni'}
-          </Text>
 
-          <ScrollView style={{ maxHeight: 420 }}>
-            <Text style={styles.label}>Il tuo numero di telefono</Text>
+          <View style={styles.periodHero}>
+            <View style={styles.periodHeroCol}>
+              <Text style={styles.periodHeroLabel}>Dal</Text>
+              <Text style={styles.periodHeroDate}>{formatDateLong(dateFrom)}</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={16} color={colors.white} />
+            <View style={styles.periodHeroCol}>
+              <Text style={styles.periodHeroLabel}>Al</Text>
+              <Text style={styles.periodHeroDate}>{formatDateLong(dateTo)}</Text>
+            </View>
+            <Text style={styles.periodHeroDays}>
+              {days} {days === 1 ? 'giorno' : 'giorni'}
+            </Text>
+          </View>
+
+          <ScrollView style={{ maxHeight: 460 }}>
+            <Text style={styles.sectionLabel}>Chi viaggia con te?</Text>
+            <View style={styles.guestsBox}>
+              <Stepper label="Adulti" value={adults} min={1} onChange={setAdults} />
+              <View style={styles.divider} />
+              <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={setChildren5to15} />
+              <View style={styles.divider} />
+              <Stepper label="Bambini sotto i 5 anni" value={childrenUnder5} onChange={setChildrenUnder5} />
+            </View>
+
+            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
             <TextInput
               style={styles.input}
               placeholder="+39 ..."
@@ -345,7 +378,7 @@ const CustomerBookingSheet: React.FC<{
             )}
             {isNewCustomer && (
               <View style={{ marginTop: spacing.sm }}>
-                <Text style={styles.label}>Nome e cognome</Text>
+                <Text style={styles.sectionLabel}>Nome e cognome</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Es. Marco Bianchi"
@@ -372,8 +405,31 @@ const CustomerBookingSheet: React.FC<{
               </View>
             )}
 
+            <View style={styles.policyBox}>
+              <View style={styles.policyHeaderRow}>
+                <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+                <Text style={styles.policyTitle}>Acconto e politica di cancellazione</Text>
+              </View>
+              <Text style={styles.policyText}>
+                Per confermare versi ora un acconto del 20% ({formatCurrency(deposit)}). Il saldo di{' '}
+                {formatCurrency(total - deposit)} si paga in spiaggia.
+              </Text>
+              <Text style={styles.policyText}>
+                Puoi cancellare gratuitamente entro il <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>{' '}
+                (7 giorni prima dell'arrivo): l'acconto ti verrà restituito. Cancellando dopo tale data, o non
+                presentandoti, l'acconto <Text style={styles.policyBold}>non è rimborsabile</Text>.
+              </Text>
+              <View style={{ marginTop: spacing.sm }}>
+                <Checkbox
+                  checked={policyAccepted}
+                  onToggle={() => setPolicyAccepted((v) => !v)}
+                  label="Ho letto e accetto la politica di acconto e cancellazione"
+                />
+              </View>
+            </View>
+
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Totale</Text>
+              <Text style={styles.totalLabel}>Totale soggiorno</Text>
               <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
             </View>
             <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
@@ -424,6 +480,16 @@ const ConfirmationModal: React.FC<{
                 {formatDateShort(booking.dateFrom)} → {formatDateShort(booking.dateTo)}
               </Text>
             </View>
+            {booking.guests && (
+              <View style={styles.confirmRow}>
+                <Text style={styles.muted}>Ospiti</Text>
+                <Text style={styles.confirmValue}>
+                  {booking.guests.adults} adulti
+                  {booking.guests.children5to15 > 0 ? ` · ${booking.guests.children5to15} bambini 5-15` : ''}
+                  {booking.guests.childrenUnder5 > 0 ? ` · ${booking.guests.childrenUnder5} under 5` : ''}
+                </Text>
+              </View>
+            )}
             <View style={styles.confirmRow}>
               <Text style={styles.muted}>Totale</Text>
               <Text style={styles.confirmValue}>{formatCurrency(booking.totalPrice)}</Text>
@@ -443,7 +509,8 @@ const ConfirmationModal: React.FC<{
 };
 
 const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => {
-  const { customers, bookings, getUmbrella } = useStore();
+  const { customers, bookings, getUmbrella, cancelBooking } = useStore();
+  const alert = useAppAlert();
   const [phone, setPhone] = useState('');
 
   const customer = useMemo(() => {
@@ -459,6 +526,24 @@ const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ 
       .filter((b) => b.customerId === customer.id && b.dateTo >= today)
       .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
   }, [bookings, customer, today]);
+
+  const handleCancel = (booking: Booking) => {
+    const refundable = isDepositRefundable(booking.dateFrom, today);
+    alert(
+      'Cancellare la prenotazione?',
+      refundable
+        ? `L'arrivo è tra almeno 7 giorni: l'acconto di ${formatCurrency(booking.deposit)} ti verrà restituito.`
+        : `L'arrivo è tra meno di 7 giorni (o è già iniziato): l'acconto di ${formatCurrency(booking.deposit)} non è rimborsabile.`,
+      [
+        { text: 'Non cancellare', style: 'cancel' },
+        {
+          text: 'Cancella prenotazione',
+          style: 'destructive',
+          onPress: () => cancelBooking(booking.id),
+        },
+      ]
+    );
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -484,6 +569,7 @@ const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ 
             {customer &&
               myBookings.map((b) => {
                 const u = getUmbrella(b.umbrellaId);
+                const refundable = isDepositRefundable(b.dateFrom, today);
                 return (
                   <Card key={b.id} style={{ marginTop: spacing.sm }}>
                     <View style={styles.confirmRow}>
@@ -493,6 +579,15 @@ const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ 
                     <Text style={styles.muted}>
                       {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
                     </Text>
+                    <Text style={[styles.muted, { color: refundable ? colors.libero : colors.occupato }]}>
+                      {refundable ? 'Acconto rimborsabile se cancelli ora' : 'Acconto non rimborsabile'}
+                    </Text>
+                    <Button
+                      title="Cancella prenotazione"
+                      variant="danger"
+                      onPress={() => handleCancel(b)}
+                      style={{ marginTop: spacing.sm, paddingVertical: 8 }}
+                    />
                   </Card>
                 );
               })}
@@ -609,6 +704,37 @@ const styles = StyleSheet.create({
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
   sheetTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  periodHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.seaDark,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  periodHeroCol: { alignItems: 'flex-start' },
+  periodHeroLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  periodHeroDate: { color: colors.white, fontWeight: '800', fontSize: 14, textTransform: 'capitalize' },
+  periodHeroDays: { color: colors.white, fontWeight: '700', fontSize: 12, backgroundColor: 'rgba(255,255,255,0.18)', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.xl },
+  sectionLabel: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
+  guestsBox: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xs,
+  },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  policyBox: {
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  policyHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.xs },
+  policyTitle: { fontWeight: '700', color: colors.primaryDark, fontSize: 13 },
+  policyText: { color: colors.text, fontSize: 12, lineHeight: 17, marginTop: 4 },
+  policyBold: { fontWeight: '800' },
   input: {
     borderWidth: 1,
     borderColor: colors.border,

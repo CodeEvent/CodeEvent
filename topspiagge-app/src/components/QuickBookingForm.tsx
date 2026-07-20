@@ -2,10 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { Booking, Customer } from '../types';
+import { Booking, Customer, GuestCount } from '../types';
 import { findCustomerConflict, findUmbrellaConflict } from '../utils/booking';
+import { DEPOSIT_RATE, refundCutoffDate } from '../utils/cancellation';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
-import { Button, Chip } from './UI';
+import { Button, Chip, Stepper } from './UI';
 
 interface Props {
   umbrellaId: string;
@@ -24,12 +25,17 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [adults, setAdults] = useState(2);
+  const [children5to15, setChildren5to15] = useState(0);
+  const [childrenUnder5, setChildrenUnder5] = useState(0);
 
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
   const dateFrom = isoDate(fromOffset);
   const dateTo = isoDate(fromOffset + length - 1);
   const total = dailyRate * length;
+  const deposit = Math.round(total * DEPOSIT_RATE);
+  const cutoffDate = refundCutoffDate(dateFrom);
 
   const filteredCustomers = useMemo(
     () =>
@@ -72,6 +78,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     if (!customerId) return;
 
     const status = fromOffset === 0 ? 'occupato' : 'prenotato';
+    const guests: GuestCount = { adults, children5to15, childrenUnder5 };
     const booking: Booking = {
       id: `bk-${umbrellaId}-${Date.now()}`,
       umbrellaId,
@@ -79,10 +86,11 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       dateFrom,
       dateTo,
       totalPrice: total,
-      deposit: fromOffset === 0 ? 0 : Math.round(total * 0.3),
-      paid: fromOffset === 0 ? total : Math.round(total * 0.3),
+      deposit: fromOffset === 0 ? 0 : deposit,
+      paid: fromOffset === 0 ? total : deposit,
       status,
       createdAt: isoDate(0),
+      guests,
     };
     createBooking(booking);
     onDone();
@@ -161,6 +169,24 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         {length} {length === 1 ? 'giorno' : 'giorni'} · {formatCurrency(dailyRate)}/giorno ({priceList.name})
       </Text>
 
+      <Text style={[styles.label, { marginTop: spacing.lg }]}>Ospiti</Text>
+      <View style={styles.guestsBox}>
+        <Stepper label="Adulti" value={adults} min={1} onChange={setAdults} />
+        <View style={styles.divider} />
+        <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={setChildren5to15} />
+        <View style={styles.divider} />
+        <Stepper label="Bambini sotto i 5 anni" value={childrenUnder5} onChange={setChildrenUnder5} />
+      </View>
+
+      {fromOffset > 0 && (
+        <View style={styles.policyBox}>
+          <Text style={styles.policyText}>
+            Acconto 20% ({formatCurrency(deposit)}). Rimborsabile se cancellata entro il{' '}
+            <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>, altrimenti non rimborsabile.
+          </Text>
+        </View>
+      )}
+
       {conflict && (
         <View style={styles.conflictBox}>
           <Text style={styles.conflictText}>
@@ -218,6 +244,21 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   conflictText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
+  guestsBox: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xs,
+  },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  policyBox: {
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  policyText: { color: colors.text, fontSize: 12, lineHeight: 17 },
+  policyBold: { fontWeight: '800' },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

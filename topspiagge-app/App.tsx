@@ -13,6 +13,7 @@ import { GrigliaScreen } from './src/screens/GrigliaScreen';
 import { PiantinaScreen } from './src/screens/PiantinaScreen';
 import { QuadroScreen } from './src/screens/QuadroScreen';
 import { StatisticheScreen } from './src/screens/StatisticheScreen';
+import { AppAlertProvider } from './src/components/AppAlert';
 import { AppModeProvider, useAppMode } from './src/store/AppModeContext';
 import { StoreProvider } from './src/store/StoreContext';
 import { colors, radius, spacing } from './src/theme';
@@ -72,11 +73,13 @@ const RootRouter: React.FC = () => {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppModeProvider>
-        <StoreProvider>
-          <RootRouter />
-        </StoreProvider>
-      </AppModeProvider>
+      <AppAlertProvider>
+        <AppModeProvider>
+          <StoreProvider>
+            <RootRouter />
+          </StoreProvider>
+        </AppModeProvider>
+      </AppAlertProvider>
     </SafeAreaProvider>
   );
 }

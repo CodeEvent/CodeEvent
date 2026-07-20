@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppAlert } from '../components/AppAlert';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader } from '../components/UI';
 import { useAppMode } from '../store/AppModeContext';
 import { useStore } from '../store/StoreContext';
@@ -53,6 +54,7 @@ export const ArchiviScreen: React.FC = () => {
 
 const DisposizioneTab: React.FC = () => {
   const { umbrellas, getCustomer, renameZone, removeZone, reorderZone, addUmbrella } = useStore();
+  const alert = useAppAlert();
   const [editingUmbrellaId, setEditingUmbrellaId] = useState<string | null>(null);
   const [addingZone, setAddingZone] = useState(false);
   const [renamingRow, setRenamingRow] = useState<number | null>(null);
@@ -70,7 +72,7 @@ const DisposizioneTab: React.FC = () => {
   }, [umbrellas]);
 
   const confirmRemoveZone = (row: number, name: string, count: number) => {
-    Alert.alert(
+    alert(
       `Eliminare "${name}"?`,
       `Verranno eliminati ${count} ombrelloni, le relative prenotazioni e assegnazioni clienti. L'operazione non è reversibile.`,
       [
@@ -234,6 +236,7 @@ const UmbrellaEditForm: React.FC<{ umbrellaId: string; onClose: () => void }> = 
     assignCustomer,
     bookings,
   } = useStore();
+  const alert = useAppAlert();
   const umbrella = getUmbrella(umbrellaId);
   const [numberValue, setNumberValue] = useState(String(umbrella?.number ?? ''));
   const [query, setQuery] = useState('');
@@ -247,7 +250,7 @@ const UmbrellaEditForm: React.FC<{ umbrellaId: string; onClose: () => void }> = 
     .slice(0, 6);
 
   const confirmDelete = () => {
-    Alert.alert(
+    alert(
       `Eliminare l'ombrellone N.${umbrella.number}?`,
       hasActiveBooking || assignee
         ? 'Ha prenotazioni e/o un cliente stagionale collegati: verranno rimossi.'
@@ -358,6 +361,7 @@ const SEASON_SWATCH: Record<Season, string> = {
 
 const ListiniTab: React.FC = () => {
   const { priceLists, articles, upsertPriceList, deletePriceList } = useStore();
+  const alert = useAppAlert();
   const [editing, setEditing] = useState<PriceList | null>(null);
 
   const newPriceList = (): PriceList => ({
@@ -370,7 +374,7 @@ const ListiniTab: React.FC = () => {
   });
 
   const confirmDelete = (pl: PriceList) => {
-    Alert.alert(`Eliminare "${pl.name}"?`, 'Operazione non reversibile.', [
+    alert(`Eliminare "${pl.name}"?`, 'Operazione non reversibile.', [
       { text: 'Annulla', style: 'cancel' },
       { text: 'Elimina', style: 'destructive', onPress: () => deletePriceList(pl.id) },
     ]);
@@ -483,11 +487,12 @@ const PriceListForm: React.FC<{
 
 const ClientiTab: React.FC = () => {
   const { customers, bookings, upsertCustomer, deleteCustomer } = useStore();
+  const alert = useAppAlert();
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Customer | null>(null);
 
   const confirmDelete = (c: Customer) => {
-    Alert.alert(`Eliminare ${c.name}?`, 'Operazione non reversibile.', [
+    alert(`Eliminare ${c.name}?`, 'Operazione non reversibile.', [
       { text: 'Annulla', style: 'cancel' },
       { text: 'Elimina', style: 'destructive', onPress: () => deleteCustomer(c.id) },
     ]);
@@ -665,10 +670,11 @@ const CustomerForm: React.FC<{
 
 const ArticoliTab: React.FC = () => {
   const { articles, upsertArticle, deleteArticle } = useStore();
+  const alert = useAppAlert();
   const [editing, setEditing] = useState<Article | null>(null);
 
   const confirmDelete = (a: Article) => {
-    Alert.alert(`Eliminare "${a.name}"?`, 'Operazione non reversibile.', [
+    alert(`Eliminare "${a.name}"?`, 'Operazione non reversibile.', [
       { text: 'Annulla', style: 'cancel' },
       { text: 'Elimina', style: 'destructive', onPress: () => deleteArticle(a.id) },
     ]);

@@ -30,6 +30,12 @@ export interface Customer {
 
 export type PaymentMethod = 'contanti' | 'carta' | 'misto';
 
+export interface GuestCount {
+  adults: number;
+  children5to15: number;
+  childrenUnder5: number;
+}
+
 export interface Booking {
   id: string;
   umbrellaId: string;
@@ -41,6 +47,7 @@ export interface Booking {
   paid: number;
   status: UmbrellaStatus;
   createdAt: string;
+  guests?: GuestCount;
 }
 
 export type ArticleCategory =
