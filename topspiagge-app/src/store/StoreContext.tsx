@@ -26,6 +26,7 @@ import {
   PriceList,
   Umbrella,
 } from '../types';
+import { isoDate } from '../utils/format';
 
 const STORAGE_KEY = 'topspiagge:v1';
 
@@ -190,7 +191,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'CLOSE_CONTO': {
       const conto = action.conto;
       const conti = [...state.conti, conto];
-      const today = new Date().toISOString().slice(0, 10);
+      const today = isoDate(0);
       const dailyStats = state.dailyStats.some((d) => d.date === today)
         ? state.dailyStats.map((d) =>
             d.date === today
@@ -479,7 +480,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [state.customers]
   );
   const getActivePriceList = useCallback((): PriceList => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = isoDate(0);
     const active = state.priceLists.find((p) => p.activeFrom <= today && today <= p.activeTo);
     return active ?? state.priceLists[0];
   }, [state.priceLists]);

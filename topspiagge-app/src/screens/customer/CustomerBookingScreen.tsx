@@ -16,33 +16,44 @@ import { Badge, Button, Card, Chip } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
-import { Booking, Customer, Umbrella, UmbrellaStatus } from '../../types';
-import { buildDayBookingLookup, findCustomerConflict, findUmbrellaConflict } from '../../utils/booking';
+import { Booking, Customer, Umbrella } from '../../types';
+import { findCustomerConflict, findUmbrellaConflict } from '../../utils/booking';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../../utils/format';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
+
+const PERIOD_PRESETS = [
+  { label: '1 giorno', days: 1 },
+  { label: '2 giorni', days: 2 },
+  { label: '3 giorni', days: 3 },
+  { label: '1 settimana', days: 7 },
+];
+
+type Step = 'dates' | 'map';
 
 export const CustomerBookingScreen: React.FC = () => {
   const { setMode } = useAppMode();
   const { umbrellas, bookings } = useStore();
   const positions = useUmbrellaPositions(umbrellas);
-  const [dateOffset, setDateOffset] = useState(0);
+
+  const [step, setStep] = useState<Step>('dates');
+  const [startOffset, setStartOffset] = useState(0);
+  const [days, setDays] = useState(1);
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [myBookingsVisible, setMyBookingsVisible] = useState(false);
 
-  const dateIso = isoDate(dateOffset);
-  const dayLookup = useMemo(() => buildDayBookingLookup(bookings), [bookings]);
+  const dateFrom = isoDate(startOffset);
+  const dateTo = isoDate(startOffset + days - 1);
 
-  const statusFor = (u: Umbrella): UmbrellaStatus => dayLookup.get(`${u.id}|${dateIso}`)?.status ?? 'libero';
-
-  const freeCount = umbrellas.filter((u) => statusFor(u) === 'libero').length;
+  const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
+  const freeCount = umbrellas.filter(isFreeForPeriod).length;
 
   const handleTap = (u: Umbrella) => {
-    if (statusFor(u) === 'libero') {
+    if (isFreeForPeriod(u)) {
       setSelectedUmbrellaId(u.id);
     } else {
-      Alert.alert('Non disponibile', `L'ombrellone N.${u.number} non è disponibile per questa data.`);
+      Alert.alert('Non disponibile', `L'ombrellone N.${u.number} non è disponibile per il periodo scelto.`);
     }
   };
 
@@ -60,59 +71,37 @@ export const CustomerBookingScreen: React.FC = () => {
             <Text style={styles.myBookingsText}>Le mie prenotazioni</Text>
           </Pressable>
         </View>
-        <Text style={styles.headerSubtitle}>Bagno Pietrasanta · scegli data e posto</Text>
+        <Text style={styles.headerSubtitle}>Bagno Pietrasanta</Text>
       </View>
 
-      <View style={styles.dateRow}>
-        <Chip label="Oggi" selected={dateOffset === 0} onPress={() => setDateOffset(0)} />
-        <Chip label="Domani" selected={dateOffset === 1} onPress={() => setDateOffset(1)} />
-        <Chip label="Dopodomani" selected={dateOffset === 2} onPress={() => setDateOffset(2)} />
-        <Pressable onPress={() => setDateOffset((v) => v + 1)} style={styles.stepBtn}>
-          <Ionicons name="add" size={16} color={colors.primary} />
-        </Pressable>
-      </View>
-      <Text style={styles.dateLabel}>{formatDateLong(dateIso)}</Text>
-
-      <View style={styles.legendRow}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors.libero }]} />
-          <Text style={styles.legendText}>Libero</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
-          <Text style={styles.legendText}>Non disponibile</Text>
-        </View>
-      </View>
-
-      <BeachCanvas
-        umbrellas={umbrellas}
-        positions={positions}
-        footerText={`${freeCount} ombrelloni liberi per il ${formatDateShort(dateIso)}`}
-        renderCell={(u, position) => {
-          const status = statusFor(u);
-          return (
-            <Pressable
-              key={u.id}
-              onPress={() => handleTap(u)}
-              style={[
-                styles.cell,
-                {
-                  left: position.x,
-                  top: position.y,
-                  backgroundColor: status === 'libero' ? colors.libero : colors.textMuted,
-                },
-              ]}
-            >
-              <Text style={styles.cellNumber}>{u.number}</Text>
-            </Pressable>
-          );
-        }}
-      />
+      {step === 'dates' ? (
+        <DateStep
+          startOffset={startOffset}
+          setStartOffset={setStartOffset}
+          days={days}
+          setDays={setDays}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onContinue={() => setStep('map')}
+        />
+      ) : (
+        <MapStep
+          umbrellas={umbrellas}
+          positions={positions}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          freeCount={freeCount}
+          isFreeForPeriod={isFreeForPeriod}
+          onTap={handleTap}
+          onChangeDates={() => setStep('dates')}
+        />
+      )}
 
       {selectedUmbrellaId && (
         <CustomerBookingSheet
           umbrellaId={selectedUmbrellaId}
-          dateOffset={dateOffset}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
           onClose={() => setSelectedUmbrellaId(null)}
           onConfirmed={(booking) => {
             setSelectedUmbrellaId(null);
@@ -123,7 +112,10 @@ export const CustomerBookingScreen: React.FC = () => {
 
       <ConfirmationModal
         booking={confirmedBooking}
-        onClose={() => setConfirmedBooking(null)}
+        onClose={() => {
+          setConfirmedBooking(null);
+          setStep('dates');
+        }}
         onSeeMyBookings={() => {
           setConfirmedBooking(null);
           setMyBookingsVisible(true);
@@ -135,29 +127,138 @@ export const CustomerBookingScreen: React.FC = () => {
   );
 };
 
-const PERIOD_PRESETS = [
-  { label: '1 giorno', days: 1 },
-  { label: '2 giorni', days: 2 },
-  { label: '3 giorni', days: 3 },
-  { label: '1 settimana', days: 7 },
-];
+const DateStep: React.FC<{
+  startOffset: number;
+  setStartOffset: (updater: (v: number) => number) => void;
+  days: number;
+  setDays: (updater: (v: number) => number) => void;
+  dateFrom: string;
+  dateTo: string;
+  onContinue: () => void;
+}> = ({ startOffset, setStartOffset, days, setDays, dateFrom, dateTo, onContinue }) => (
+  <ScrollView contentContainerStyle={styles.dateStepBody}>
+    <Text style={styles.stepTitle}>Quando vuoi venire?</Text>
+    <Text style={styles.stepSubtitle}>Scegli l'arrivo e la durata del soggiorno</Text>
+
+    <Text style={styles.label}>Arrivo</Text>
+    <View style={styles.row}>
+      <Chip label="Oggi" selected={startOffset === 0} onPress={() => setStartOffset(() => 0)} />
+      <Chip label="Domani" selected={startOffset === 1} onPress={() => setStartOffset(() => 1)} />
+      <Chip label="Dopodomani" selected={startOffset === 2} onPress={() => setStartOffset(() => 2)} />
+      <Pressable onPress={() => setStartOffset((v) => v + 1)} style={styles.stepBtn}>
+        <Ionicons name="add" size={16} color={colors.primary} />
+      </Pressable>
+    </View>
+
+    <Text style={[styles.label, { marginTop: spacing.lg }]}>Durata</Text>
+    <View style={styles.row}>
+      {PERIOD_PRESETS.map((p) => (
+        <Chip key={p.days} label={p.label} selected={days === p.days} onPress={() => setDays(() => p.days)} />
+      ))}
+    </View>
+
+    <View style={styles.periodBox}>
+      <View style={styles.periodRow}>
+        <Text style={styles.periodLabel}>Dal</Text>
+        <Text style={styles.periodDate}>{formatDateLong(dateFrom)}</Text>
+      </View>
+      <View style={styles.periodRow}>
+        <Text style={styles.periodLabel}>Al</Text>
+        <View style={styles.periodDateAdjust}>
+          <Pressable onPress={() => setDays((v) => Math.max(1, v - 1))} style={styles.periodNudgeBtn}>
+            <Ionicons name="remove" size={14} color={colors.primary} />
+          </Pressable>
+          <Text style={styles.periodDate}>{formatDateLong(dateTo)}</Text>
+          <Pressable onPress={() => setDays((v) => v + 1)} style={styles.periodNudgeBtn}>
+            <Ionicons name="add" size={14} color={colors.primary} />
+          </Pressable>
+        </View>
+      </View>
+    </View>
+    <Text style={styles.muted}>{days} {days === 1 ? 'giorno' : 'giorni'}</Text>
+
+    <Button
+      title="Cerca disponibilità"
+      icon="search-outline"
+      onPress={onContinue}
+      style={{ marginTop: spacing.xl }}
+    />
+  </ScrollView>
+);
+
+const MapStep: React.FC<{
+  umbrellas: Umbrella[];
+  positions: Map<string, { x: number; y: number }>;
+  dateFrom: string;
+  dateTo: string;
+  freeCount: number;
+  isFreeForPeriod: (u: Umbrella) => boolean;
+  onTap: (u: Umbrella) => void;
+  onChangeDates: () => void;
+}> = ({ umbrellas, positions, dateFrom, dateTo, freeCount, isFreeForPeriod, onTap, onChangeDates }) => (
+  <>
+    <View style={styles.mapHeader}>
+      <View>
+        <Text style={styles.mapPeriodText}>
+          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+        </Text>
+        <Text style={styles.mapSubtitle}>Scegli il tuo posto sulla spiaggia</Text>
+      </View>
+      <Pressable onPress={onChangeDates} style={styles.changeDatesBtn}>
+        <Ionicons name="calendar-outline" size={13} color={colors.primaryDark} />
+        <Text style={styles.changeDatesText}>Cambia date</Text>
+      </Pressable>
+    </View>
+
+    <View style={styles.legendRow}>
+      <View style={styles.legendItem}>
+        <View style={[styles.legendDot, { backgroundColor: colors.libero }]} />
+        <Text style={styles.legendText}>Libero</Text>
+      </View>
+      <View style={styles.legendItem}>
+        <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
+        <Text style={styles.legendText}>Non disponibile</Text>
+      </View>
+    </View>
+
+    <BeachCanvas
+      umbrellas={umbrellas}
+      positions={positions}
+      footerText={`${freeCount} ombrelloni liberi per il periodo scelto`}
+      renderCell={(u, position) => {
+        const free = isFreeForPeriod(u);
+        return (
+          <Pressable
+            key={u.id}
+            onPress={() => onTap(u)}
+            style={[
+              styles.cell,
+              { left: position.x, top: position.y, backgroundColor: free ? colors.libero : colors.textMuted },
+            ]}
+          >
+            <Text style={styles.cellNumber}>{u.number}</Text>
+          </Pressable>
+        );
+      }}
+    />
+  </>
+);
 
 const CustomerBookingSheet: React.FC<{
   umbrellaId: string;
-  dateOffset: number;
+  dateFrom: string;
+  dateTo: string;
   onClose: () => void;
   onConfirmed: (booking: Booking) => void;
-}> = ({ umbrellaId, dateOffset, onClose, onConfirmed }) => {
+}> = ({ umbrellaId, dateFrom, dateTo, onClose, onConfirmed }) => {
   const { getUmbrella, customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
-  const [days, setDays] = useState(1);
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
-  const dateFrom = isoDate(dateOffset);
-  const dateTo = isoDate(dateOffset + days - 1);
+  const days = Math.round((new Date(dateTo + 'T00:00:00').getTime() - new Date(dateFrom + 'T00:00:00').getTime()) / 86400000) + 1;
   const total = dailyRate * days;
   const deposit = Math.round(total * 0.3);
 
@@ -225,8 +326,11 @@ const CustomerBookingSheet: React.FC<{
           <Text style={styles.sheetTitle}>
             Ombrellone {umbrella.number} · {umbrella.zone}
           </Text>
+          <Text style={styles.muted}>
+            {formatDateLong(dateFrom)} → {formatDateLong(dateTo)} · {days} {days === 1 ? 'giorno' : 'giorni'}
+          </Text>
 
-          <ScrollView style={{ maxHeight: 460 }}>
+          <ScrollView style={{ maxHeight: 420 }}>
             <Text style={styles.label}>Il tuo numero di telefono</Text>
             <TextInput
               style={styles.input}
@@ -251,38 +355,6 @@ const CustomerBookingSheet: React.FC<{
                 />
               </View>
             )}
-
-            <Text style={[styles.label, { marginTop: spacing.lg }]}>Periodo di soggiorno</Text>
-            <View style={styles.row}>
-              {PERIOD_PRESETS.map((p) => (
-                <Chip key={p.days} label={p.label} selected={days === p.days} onPress={() => setDays(p.days)} />
-              ))}
-            </View>
-
-            <View style={styles.periodBox}>
-              <View style={styles.periodRow}>
-                <Text style={styles.periodLabel}>Dal</Text>
-                <Text style={styles.periodDate}>{formatDateLong(dateFrom)}</Text>
-              </View>
-              <View style={styles.periodRow}>
-                <Text style={styles.periodLabel}>Al</Text>
-                <View style={styles.periodDateAdjust}>
-                  <Pressable
-                    onPress={() => setDays((v) => Math.max(1, v - 1))}
-                    style={styles.periodNudgeBtn}
-                  >
-                    <Ionicons name="remove" size={14} color={colors.primary} />
-                  </Pressable>
-                  <Text style={styles.periodDate}>{formatDateLong(dateTo)}</Text>
-                  <Pressable onPress={() => setDays((v) => v + 1)} style={styles.periodNudgeBtn}>
-                    <Ionicons name="add" size={14} color={colors.primary} />
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-            <Text style={styles.muted}>
-              {days} {days === 1 ? 'giorno' : 'giorni'} · {formatCurrency(dailyRate)}/giorno
-            </Text>
 
             {conflict && (
               <View style={styles.conflictBox}>
@@ -450,23 +522,62 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   myBookingsText: { color: colors.white, fontSize: 11, fontWeight: '700' },
-  dateRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, flexWrap: 'wrap' },
+
+  dateStepBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  stepTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: spacing.md },
+  stepSubtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2, marginBottom: spacing.lg },
+
+  label: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
+  row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, flexWrap: 'wrap' },
   stepBtn: {
-    width: 30,
-    height: 30,
+    width: 34,
+    height: 34,
     borderRadius: radius.sm,
     backgroundColor: colors.sand,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
-  dateLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.primaryDark,
-    paddingHorizontal: spacing.lg,
-    textTransform: 'capitalize',
+  periodBox: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    gap: spacing.xs,
   },
+  periodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  periodLabel: { color: colors.textMuted, fontWeight: '700', fontSize: 12, textTransform: 'uppercase' },
+  periodDate: { color: colors.text, fontWeight: '700', fontSize: 14, textTransform: 'capitalize' },
+  periodDateAdjust: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  periodNudgeBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: radius.sm,
+    backgroundColor: colors.sand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  mapHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+  mapPeriodText: { fontSize: 16, fontWeight: '800', color: colors.primaryDark },
+  mapSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  changeDatesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.xl,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  changeDatesText: { color: colors.primaryDark, fontWeight: '700', fontSize: 11 },
+
   legendRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, marginTop: spacing.xs, marginBottom: spacing.xs },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.md },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
@@ -486,6 +597,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   cellNumber: { fontWeight: '800', fontSize: 16, color: colors.white },
+
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.card,
@@ -497,7 +609,6 @@ const styles = StyleSheet.create({
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
   sheetTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  label: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs, marginTop: spacing.md },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -505,29 +616,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
     color: colors.text,
+    marginTop: spacing.xs,
   },
   welcomeText: { color: colors.libero, fontWeight: '700', fontSize: 13, marginTop: spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, flexWrap: 'wrap' },
-  periodBox: {
-    backgroundColor: colors.bg,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginTop: spacing.sm,
-    gap: spacing.xs,
-  },
-  periodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  periodLabel: { color: colors.textMuted, fontWeight: '700', fontSize: 12, textTransform: 'uppercase' },
-  periodDate: { color: colors.text, fontWeight: '700', fontSize: 14, textTransform: 'capitalize' },
-  periodDateAdjust: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  periodNudgeBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: radius.sm,
-    backgroundColor: colors.sand,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  conflictBox: { backgroundColor: colors.occupatoBg, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.sm },
+  conflictBox: { backgroundColor: colors.occupatoBg, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
   conflictText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
   totalRow: {
     flexDirection: 'row',

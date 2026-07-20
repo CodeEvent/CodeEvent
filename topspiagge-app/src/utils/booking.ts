@@ -1,4 +1,5 @@
 import { Booking } from '../types';
+import { toDateKey } from './format';
 
 export function findUmbrellaConflict(
   bookings: Booking[],
@@ -33,7 +34,7 @@ export function buildDayBookingLookup(bookings: Booking[]): Map<string, Booking>
     const cursor = new Date(b.dateFrom + 'T00:00:00');
     const end = new Date(b.dateTo + 'T00:00:00');
     while (cursor <= end) {
-      map.set(`${b.umbrellaId}|${cursor.toISOString().slice(0, 10)}`, b);
+      map.set(`${b.umbrellaId}|${toDateKey(cursor)}`, b);
       cursor.setDate(cursor.getDate() + 1);
     }
   });

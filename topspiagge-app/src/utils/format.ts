@@ -12,10 +12,20 @@ export function formatDateLong(iso: string): string {
   return date.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: 'short' });
 }
 
+// Local-calendar "YYYY-MM-DD" key. Deliberately avoids toISOString(), which
+// converts to UTC and can shift the date by a day in timezones ahead of UTC
+// (e.g. a booking for "today" ending up keyed as tomorrow or yesterday).
+export function toDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function isoDate(offsetDays: number): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
+  return toDateKey(d);
 }
 
 export function daysBetween(a: string, b: string): number {
