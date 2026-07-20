@@ -15,14 +15,16 @@ export const TOTAL_COLS = COLS_PER_SIDE * 2;
 
 // Each row is one continuous line of 20 umbrellas split by a walkway:
 // seats 1-10 (columns 0-9) are "Lato Nord", seats 11-20 (columns 10-19) are "Lato Sud".
+// Every row numbers its umbrellas 1-20 independently (Fila 2's #1 is not Fila 1's #1),
+// so the umbrella id (unique) and its display number (repeats per row) are distinct fields.
 export function buildUmbrellas(): Umbrella[] {
   const umbrellas: Umbrella[] = [];
-  let n = 1;
+  let id = 1;
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < TOTAL_COLS; col++) {
       umbrellas.push({
-        id: `u-${n}`,
-        number: n,
+        id: `u-${id}`,
+        number: col + 1,
         side: col < COLS_PER_SIDE ? 'nord' : 'sud',
         row,
         col,
@@ -31,7 +33,7 @@ export function buildUmbrellas(): Umbrella[] {
         hasCabin: row === 0 || col % 5 === 0,
         status: 'libero',
       });
-      n++;
+      id++;
     }
   }
   return umbrellas;
@@ -41,6 +43,7 @@ export function buildArticles(): Article[] {
   return [
     { id: 'art-ombrellone', name: 'Ombrellone', category: 'ombrellone', basePrice: 18, unit: 'giorno' },
     { id: 'art-lettino', name: 'Lettino', category: 'ombrellone', basePrice: 6, unit: 'giorno' },
+    { id: 'art-sdraio', name: 'Sdraio', category: 'ombrellone', basePrice: 4, unit: 'giorno' },
     { id: 'art-cabina', name: 'Cabina', category: 'cabina', basePrice: 8, unit: 'giorno' },
     { id: 'art-parcheggio', name: 'Parcheggio auto', category: 'parcheggio', basePrice: 5, unit: 'giorno' },
     { id: 'art-pedalo', name: 'Pedalò (1h)', category: 'pedalo', basePrice: 12, unit: 'ora' },
@@ -62,7 +65,7 @@ export function buildPriceLists(): PriceList[] {
       season: 'bassa',
       activeFrom: isoDate(-60),
       activeTo: isoDate(-1),
-      prices: { 'art-ombrellone': 14, 'art-lettino': 4, 'art-cabina': 6 },
+      prices: { 'art-ombrellone': 14, 'art-lettino': 4, 'art-sdraio': 3, 'art-cabina': 6 },
     },
     {
       id: 'pl-media',
@@ -70,7 +73,7 @@ export function buildPriceLists(): PriceList[] {
       season: 'media',
       activeFrom: isoDate(0),
       activeTo: isoDate(30),
-      prices: { 'art-ombrellone': 18, 'art-lettino': 6, 'art-cabina': 8 },
+      prices: { 'art-ombrellone': 18, 'art-lettino': 6, 'art-sdraio': 4, 'art-cabina': 8 },
     },
     {
       id: 'pl-alta',
@@ -78,7 +81,7 @@ export function buildPriceLists(): PriceList[] {
       season: 'alta',
       activeFrom: isoDate(31),
       activeTo: isoDate(75),
-      prices: { 'art-ombrellone': 26, 'art-lettino': 8, 'art-cabina': 12 },
+      prices: { 'art-ombrellone': 26, 'art-lettino': 8, 'art-sdraio': 6, 'art-cabina': 12 },
     },
     {
       id: 'pl-vip',
@@ -86,7 +89,7 @@ export function buildPriceLists(): PriceList[] {
       season: 'alta',
       activeFrom: isoDate(-60),
       activeTo: isoDate(90),
-      prices: { 'art-ombrellone': 22, 'art-lettino': 7, 'art-cabina': 10 },
+      prices: { 'art-ombrellone': 22, 'art-lettino': 7, 'art-sdraio': 5, 'art-cabina': 10 },
     },
   ];
 }

@@ -199,7 +199,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       {!conflict && customerConflict && (
         <View style={styles.conflictBox}>
           <Text style={styles.conflictText}>
-            Il cliente ha già l'Ombrellone {customerConflictUmbrella?.number} prenotato dal{' '}
+            Il cliente ha già l'Ombrellone {customerConflictUmbrella?.number} ({customerConflictUmbrella?.zone}) prenotato dal{' '}
             {formatDateShort(customerConflict.dateFrom)} al {formatDateShort(customerConflict.dateTo)}.
           </Text>
         </View>

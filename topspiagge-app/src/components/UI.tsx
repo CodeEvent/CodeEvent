@@ -144,8 +144,9 @@ export const Stepper: React.FC<{
   label: string;
   value: number;
   min?: number;
+  max?: number;
   onChange: (value: number) => void;
-}> = ({ label, value, min = 0, onChange }) => (
+}> = ({ label, value, min = 0, max = Infinity, onChange }) => (
   <View style={styles.stepperRow}>
     <Text style={styles.stepperLabel}>{label}</Text>
     <View style={styles.stepperControls}>
@@ -157,8 +158,12 @@ export const Stepper: React.FC<{
         <Ionicons name="remove" size={16} color={value <= min ? colors.border : colors.primary} />
       </Pressable>
       <Text style={styles.stepperValue}>{value}</Text>
-      <Pressable onPress={() => onChange(value + 1)} style={styles.stepperBtn}>
-        <Ionicons name="add" size={16} color={colors.primary} />
+      <Pressable
+        onPress={() => onChange(Math.min(max, value + 1))}
+        style={[styles.stepperBtn, value >= max && styles.stepperBtnDisabled]}
+        disabled={value >= max}
+      >
+        <Ionicons name="add" size={16} color={value >= max ? colors.border : colors.primary} />
       </Pressable>
     </View>
   </View>

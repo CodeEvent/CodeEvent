@@ -24,8 +24,8 @@ import {
   findCustomerConflict,
   findNearestUmbrellas,
   findUmbrellaConflict,
-  MAX_GUESTS_PER_UMBRELLA,
-  totalGuestCount,
+  MAX_ADULTS_PER_UMBRELLA,
+  MAX_EQUIPMENT_PER_UMBRELLA,
   umbrellasNeededFor,
 } from '../../utils/booking';
 import { DEPOSIT_RATE, isDepositRefundable, refundCutoffDate } from '../../utils/cancellation';
@@ -59,6 +59,7 @@ export const CustomerBookingScreen: React.FC = () => {
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
   const [myBookingsVisible, setMyBookingsVisible] = useState(false);
+  const [dateEditVisible, setDateEditVisible] = useState(false);
 
   const isWide = width >= WIDE_BREAKPOINT;
 
@@ -101,7 +102,7 @@ export const CustomerBookingScreen: React.FC = () => {
     if (isFreeForPeriod(u)) {
       setSelectedUmbrellaId(u.id);
     } else {
-      alert('Non disponibile', `L'ombrellone N.${u.number} non è disponibile per il periodo scelto.`);
+      alert('Non disponibile', `L'ombrellone N.${u.number} (${u.zone}) non è disponibile per il periodo scelto.`);
     }
   };
 
@@ -122,7 +123,7 @@ export const CustomerBookingScreen: React.FC = () => {
       freeCounts={freeCounts}
       isFreeForPeriod={isFreeForPeriod}
       onTap={handleTap}
-      onChangeDates={() => setStep('dates')}
+      onChangeDates={() => setDateEditVisible(true)}
     />
   );
 
@@ -173,6 +174,7 @@ export const CustomerBookingScreen: React.FC = () => {
                 isFreeForPeriod={isFreeForPeriod}
                 onClose={() => setSelectedUmbrellaId(null)}
                 onConfirmed={handleConfirmed}
+                onEditDates={() => setDateEditVisible(true)}
               />
             ) : (
               <View style={styles.sidebarEmpty}>
@@ -200,6 +202,28 @@ export const CustomerBookingScreen: React.FC = () => {
                 isFreeForPeriod={isFreeForPeriod}
                 onClose={() => setSelectedUmbrellaId(null)}
                 onConfirmed={handleConfirmed}
+                onEditDates={() => setDateEditVisible(true)}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
+      {dateEditVisible && (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setDateEditVisible(false)}>
+          <Pressable style={styles.backdrop} onPress={() => setDateEditVisible(false)}>
+            <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.handle} />
+              <DateStep
+                startOffset={startOffset}
+                days={days}
+                awaitingEndDate={awaitingEndDate}
+                onSelectDate={handleSelectDate}
+                onSelectDuration={handleSelectDuration}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onContinue={() => setDateEditVisible(false)}
+                continueLabel="Conferma date"
               />
             </Pressable>
           </Pressable>
@@ -232,7 +256,18 @@ const DateStep: React.FC<{
   dateFrom: string;
   dateTo: string;
   onContinue: () => void;
-}> = ({ startOffset, days, awaitingEndDate, onSelectDate, onSelectDuration, dateFrom, dateTo, onContinue }) => (
+  continueLabel?: string;
+}> = ({
+  startOffset,
+  days,
+  awaitingEndDate,
+  onSelectDate,
+  onSelectDuration,
+  dateFrom,
+  dateTo,
+  onContinue,
+  continueLabel = 'Cerca disponibilità',
+}) => (
   <ScrollView contentContainerStyle={styles.dateStepBody}>
     <Text style={styles.stepTitle}>Quando vuoi venire?</Text>
     <Text style={styles.stepSubtitle}>
@@ -270,7 +305,7 @@ const DateStep: React.FC<{
     <Text style={styles.muted}>{days} {days === 1 ? 'giorno' : 'giorni'} di soggiorno</Text>
 
     <Button
-      title="Cerca disponibilità"
+      title={continueLabel}
       icon="search-outline"
       onPress={onContinue}
       style={{ marginTop: spacing.xl }}
@@ -365,6 +400,37 @@ const MapStep: React.FC<{
   </>
 );
 
+type Equipment = { beds: number; chairs: number };
+const DEFAULT_EQUIPMENT: Equipment = { beds: 2, chairs: 2 };
+
+const PeriodHero: React.FC<{ dateFrom: string; dateTo: string; days: number; onEditDates: () => void }> = ({
+  dateFrom,
+  dateTo,
+  days,
+  onEditDates,
+}) => (
+  <>
+    <View style={styles.periodHero}>
+      <View style={styles.periodHeroCol}>
+        <Text style={styles.periodHeroLabel}>Dal</Text>
+        <Text style={styles.periodHeroDate}>{formatDateLong(dateFrom)}</Text>
+      </View>
+      <Ionicons name="arrow-forward" size={16} color={colors.white} />
+      <View style={styles.periodHeroCol}>
+        <Text style={styles.periodHeroLabel}>Al</Text>
+        <Text style={styles.periodHeroDate}>{formatDateLong(dateTo)}</Text>
+      </View>
+      <Pressable onPress={onEditDates} style={styles.editDatesBtn}>
+        <Ionicons name="pencil-outline" size={12} color={colors.white} />
+        <Text style={styles.editDatesBtnText}>Modifica</Text>
+      </Pressable>
+    </View>
+    <Text style={styles.muted}>
+      {days} {days === 1 ? 'giorno' : 'giorni'} di soggiorno
+    </Text>
+  </>
+);
+
 const BookingForm: React.FC<{
   umbrellaId: string;
   dateFrom: string;
@@ -373,8 +439,10 @@ const BookingForm: React.FC<{
   isFreeForPeriod: (u: Umbrella) => boolean;
   onClose: () => void;
   onConfirmed: (bookings: Booking[]) => void;
-}> = ({ umbrellaId, dateFrom, dateTo, allUmbrellas, isFreeForPeriod, onClose, onConfirmed }) => {
+  onEditDates: () => void;
+}> = ({ umbrellaId, dateFrom, dateTo, allUmbrellas, isFreeForPeriod, onClose, onConfirmed, onEditDates }) => {
   const { getUmbrella, customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
+  const [stage, setStage] = useState<'details' | 'review'>('details');
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
   const [adults, setAdults] = useState(2);
@@ -382,17 +450,19 @@ const BookingForm: React.FC<{
   const [childrenUnder5, setChildrenUnder5] = useState(0);
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>([]);
+  const [equipment, setEquipment] = useState<Record<string, Equipment>>(() => ({
+    [umbrellaId]: { ...DEFAULT_EQUIPMENT },
+  }));
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
+  const bedRate = priceList.prices['art-lettino'] ?? 6;
+  const chairRate = priceList.prices['art-sdraio'] ?? 4;
   const days = Math.round((new Date(dateTo + 'T00:00:00').getTime() - new Date(dateFrom + 'T00:00:00').getTime()) / 86400000) + 1;
-  const perUmbrellaTotal = dailyRate * days;
-  const perUmbrellaDeposit = Math.round(perUmbrellaTotal * DEPOSIT_RATE);
   const cutoffDate = refundCutoffDate(dateFrom);
 
-  const totalGuests = totalGuestCount({ adults, children5to15, childrenUnder5 });
-  const umbrellasNeeded = umbrellasNeededFor(totalGuests);
+  const umbrellasNeeded = umbrellasNeededFor(adults);
   const extraNeeded = umbrellasNeeded - 1;
 
   const nearbySuggestions = useMemo(() => {
@@ -400,41 +470,78 @@ const BookingForm: React.FC<{
     return findNearestUmbrellas(umbrella, allUmbrellas, isFreeForPeriod, new Set([umbrella.id]), 8);
   }, [umbrella, allUmbrellas, isFreeForPeriod]);
 
-  const adjustExtras = (newTotalGuests: number) => {
+  const seedEquipment = (ids: string[]) => {
+    setEquipment((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => {
+        if (!next[id]) next[id] = { ...DEFAULT_EQUIPMENT };
+      });
+      return next;
+    });
+  };
+
+  // Only adults count against an umbrella's occupancy cap, so extra umbrellas are
+  // suggested based on adult headcount alone -- children never force a bigger group.
+  const adjustExtras = (newAdults: number) => {
     setExtraUmbrellaIds((prev) => {
-      const needed = Math.max(0, umbrellasNeededFor(newTotalGuests) - 1);
+      const needed = Math.max(0, umbrellasNeededFor(newAdults) - 1);
       if (prev.length === needed) return prev;
-      if (prev.length > needed) return prev.slice(0, needed);
+      if (prev.length > needed) {
+        const removed = prev.slice(needed);
+        setEquipment((eq) => {
+          const next = { ...eq };
+          removed.forEach((id) => delete next[id]);
+          return next;
+        });
+        return prev.slice(0, needed);
+      }
       const excludeIds = new Set([umbrellaId, ...prev]);
       const additions = umbrella
         ? findNearestUmbrellas(umbrella, allUmbrellas, isFreeForPeriod, excludeIds, needed - prev.length)
         : [];
-      return [...prev, ...additions.map((u) => u.id)];
+      const addedIds = additions.map((u) => u.id);
+      seedEquipment(addedIds);
+      return [...prev, ...addedIds];
     });
   };
 
   const changeAdults = (v: number) => {
     setAdults(v);
-    adjustExtras(v + children5to15 + childrenUnder5);
-  };
-  const changeChildren5to15 = (v: number) => {
-    setChildren5to15(v);
-    adjustExtras(adults + v + childrenUnder5);
-  };
-  const changeChildrenUnder5 = (v: number) => {
-    setChildrenUnder5(v);
-    adjustExtras(adults + children5to15 + v);
+    adjustExtras(v);
   };
 
   const toggleExtra = (id: string) => {
-    setExtraUmbrellaIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setExtraUmbrellaIds((prev) => {
+      if (prev.includes(id)) {
+        setEquipment((eq) => {
+          const next = { ...eq };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((x) => x !== id);
+      }
+      seedEquipment([id]);
+      return [...prev, id];
+    });
   };
 
+  const setBeds = (id: string, value: number) =>
+    setEquipment((eq) => ({ ...eq, [id]: { ...(eq[id] ?? DEFAULT_EQUIPMENT), beds: value } }));
+  const setChairs = (id: string, value: number) =>
+    setEquipment((eq) => ({ ...eq, [id]: { ...(eq[id] ?? DEFAULT_EQUIPMENT), chairs: value } }));
+
   const allUmbrellaIds = [umbrellaId, ...extraUmbrellaIds];
-  const capacity = allUmbrellaIds.length * MAX_GUESTS_PER_UMBRELLA;
-  const capacityOk = capacity >= totalGuests;
-  const total = perUmbrellaTotal * allUmbrellaIds.length;
-  const deposit = perUmbrellaDeposit * allUmbrellaIds.length;
+  const capacity = allUmbrellaIds.length * MAX_ADULTS_PER_UMBRELLA;
+  const capacityOk = capacity >= adults;
+
+  const umbrellaTotal = (id: string) => {
+    const eq = equipment[id] ?? DEFAULT_EQUIPMENT;
+    return (dailyRate + eq.beds * bedRate + eq.chairs * chairRate) * days;
+  };
+  const umbrellaDeposit = (id: string) => Math.round(umbrellaTotal(id) * DEPOSIT_RATE);
+
+  const total = allUmbrellaIds.reduce((sum, id) => sum + umbrellaTotal(id), 0);
+  const deposit = allUmbrellaIds.reduce((sum, id) => sum + umbrellaDeposit(id), 0);
 
   const matchedCustomer = useMemo(() => {
     const p = normalizePhone(phone);
@@ -480,25 +587,109 @@ const BookingForm: React.FC<{
     }
     const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
     const guestSlots = distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length);
-    const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => ({
-      id: `bk-${uId}-${Date.now()}-${idx}`,
-      umbrellaId: uId,
-      customerId: customerId!,
-      dateFrom,
-      dateTo,
-      totalPrice: perUmbrellaTotal,
-      deposit: perUmbrellaDeposit,
-      paid: perUmbrellaDeposit,
-      status: 'prenotato',
-      createdAt: isoDate(0),
-      guests: guestSlots[idx],
-      groupId,
-    }));
+    const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => {
+      const eq = equipment[uId] ?? DEFAULT_EQUIPMENT;
+      return {
+        id: `bk-${uId}-${Date.now()}-${idx}`,
+        umbrellaId: uId,
+        customerId: customerId!,
+        dateFrom,
+        dateTo,
+        totalPrice: umbrellaTotal(uId),
+        deposit: umbrellaDeposit(uId),
+        paid: umbrellaDeposit(uId),
+        status: 'prenotato',
+        createdAt: isoDate(0),
+        guests: guestSlots[idx],
+        beds: eq.beds,
+        chairs: eq.chairs,
+        groupId,
+      };
+    });
     createdBookings.forEach(createBooking);
     onConfirmed(createdBookings);
   };
 
   if (!umbrella) return null;
+
+  const conflictBanner = (
+    <>
+      {conflict && (
+        <View style={styles.conflictBox}>
+          <Text style={styles.conflictText}>
+            Uno degli ombrelloni selezionati non è più disponibile per queste date.
+          </Text>
+        </View>
+      )}
+      {!conflict && customerConflict && (
+        <View style={styles.conflictBox}>
+          <Text style={styles.conflictText}>
+            Hai già l'Ombrellone {customerConflictUmbrella?.number} ({customerConflictUmbrella?.zone}) prenotato
+            dal {formatDateShort(customerConflict.dateFrom)} al {formatDateShort(customerConflict.dateTo)}.
+          </Text>
+        </View>
+      )}
+    </>
+  );
+
+  if (stage === 'review') {
+    return (
+      <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContent}>
+        <Pressable onPress={() => setStage('details')} style={styles.backLink}>
+          <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+          <Text style={styles.backLinkText}>Modifica ospiti e telefono</Text>
+        </Pressable>
+
+        <Text style={styles.sheetTitle}>Riepilogo prenotazione</Text>
+
+        <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
+
+        <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>
+          {allUmbrellaIds.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
+        </Text>
+        {allUmbrellaIds.map((id) => {
+          const u = getUmbrella(id);
+          const eq = equipment[id] ?? DEFAULT_EQUIPMENT;
+          if (!u) return null;
+          return (
+            <View key={id} style={styles.equipmentCard}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.equipmentTitle}>
+                  Ombrellone N.{u.number} · {u.zone}
+                </Text>
+                <Text style={styles.equipmentPrice}>{formatCurrency(umbrellaTotal(id))}</Text>
+              </View>
+              <Stepper label="Lettini" value={eq.beds} max={MAX_EQUIPMENT_PER_UMBRELLA} onChange={(v) => setBeds(id, v)} />
+              <Stepper label="Sdraio" value={eq.chairs} max={MAX_EQUIPMENT_PER_UMBRELLA} onChange={(v) => setChairs(id, v)} />
+              <Text style={styles.muted}>
+                {formatCurrency(dailyRate)} ombrellone + {formatCurrency(eq.beds * bedRate)} lettini +{' '}
+                {formatCurrency(eq.chairs * chairRate)} sdraio, al giorno
+              </Text>
+            </View>
+          );
+        })}
+
+        {conflictBanner}
+
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>
+            Totale soggiorno {allUmbrellaIds.length > 1 ? `(${allUmbrellaIds.length} ombrelloni)` : ''}
+          </Text>
+          <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
+        </View>
+        <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
+
+        <Button
+          title="Conferma e prenota"
+          icon="checkmark-circle-outline"
+          onPress={confirm}
+          disabled={!canConfirm}
+          style={{ marginTop: spacing.lg }}
+        />
+        <Button title="Annulla" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContent}>
@@ -506,30 +697,17 @@ const BookingForm: React.FC<{
         Ombrellone {umbrella.number} · {umbrella.zone}
       </Text>
 
-      <View style={styles.periodHero}>
-        <View style={styles.periodHeroCol}>
-          <Text style={styles.periodHeroLabel}>Dal</Text>
-          <Text style={styles.periodHeroDate}>{formatDateLong(dateFrom)}</Text>
-        </View>
-        <Ionicons name="arrow-forward" size={16} color={colors.white} />
-        <View style={styles.periodHeroCol}>
-          <Text style={styles.periodHeroLabel}>Al</Text>
-          <Text style={styles.periodHeroDate}>{formatDateLong(dateTo)}</Text>
-        </View>
-        <Text style={styles.periodHeroDays}>
-          {days} {days === 1 ? 'giorno' : 'giorni'}
-        </Text>
-      </View>
+      <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
 
-      <Text style={styles.sectionLabel}>Chi viaggia con te?</Text>
+      <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Chi viaggia con te?</Text>
       <View style={styles.guestsBox}>
         <Stepper label="Adulti" value={adults} min={1} onChange={changeAdults} />
         <View style={styles.divider} />
-        <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={changeChildren5to15} />
+        <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={setChildren5to15} />
         <View style={styles.divider} />
-        <Stepper label="Bambini sotto i 5 anni" value={childrenUnder5} onChange={changeChildrenUnder5} />
+        <Stepper label="Bambini sotto i 5 anni" value={childrenUnder5} onChange={setChildrenUnder5} />
       </View>
-      <Text style={styles.muted}>Max {MAX_GUESTS_PER_UMBRELLA} persone per ombrellone</Text>
+      <Text style={styles.muted}>Max {MAX_ADULTS_PER_UMBRELLA} adulti per ombrellone · bambini illimitati</Text>
 
       {umbrellasNeeded > 1 && (
         <View style={styles.extraBox}>
@@ -538,8 +716,9 @@ const BookingForm: React.FC<{
             <Text style={styles.policyTitle}>Ombrelloni aggiuntivi</Text>
           </View>
           <Text style={styles.policyText}>
-            Per {totalGuests} persone servono {umbrellasNeeded} ombrelloni. Ti suggeriamo i più vicini a
-            quello scelto: aggiungine {extraNeeded > extraUmbrellaIds.length ? `almeno ${extraNeeded - extraUmbrellaIds.length} in più` : 'quanti ne servono'}.
+            Per {adults} adulti servono {umbrellasNeeded} ombrelloni (i bambini non contano per il limite). Ti
+            suggeriamo i più vicini a quello scelto: aggiungine{' '}
+            {extraNeeded > extraUmbrellaIds.length ? `almeno ${extraNeeded - extraUmbrellaIds.length} in più` : 'quanti ne servono'}.
           </Text>
           {nearbySuggestions.map((u) => {
             const selected = extraUmbrellaIds.includes(u.id);
@@ -557,7 +736,7 @@ const BookingForm: React.FC<{
             );
           })}
           <Text style={[styles.muted, { marginTop: spacing.xs }]}>
-            Capienza selezionata: {capacity} / {totalGuests} persone in {allUmbrellaIds.length} ombrelloni
+            Capienza: max {capacity} adulti in {allUmbrellaIds.length} ombrelloni · nel gruppo: {adults} adulti
           </Text>
         </View>
       )}
@@ -587,21 +766,7 @@ const BookingForm: React.FC<{
         </View>
       )}
 
-      {conflict && (
-        <View style={styles.conflictBox}>
-          <Text style={styles.conflictText}>
-            Uno degli ombrelloni selezionati non è più disponibile per queste date.
-          </Text>
-        </View>
-      )}
-      {!conflict && customerConflict && (
-        <View style={styles.conflictBox}>
-          <Text style={styles.conflictText}>
-            Hai già l'Ombrellone {customerConflictUmbrella?.number} prenotato dal{' '}
-            {formatDateShort(customerConflict.dateFrom)} al {formatDateShort(customerConflict.dateTo)}.
-          </Text>
-        </View>
-      )}
+      {conflictBanner}
 
       <View style={styles.policyBox}>
         <View style={styles.policyHeaderRow}>
@@ -635,9 +800,9 @@ const BookingForm: React.FC<{
       <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
 
       <Button
-        title="Conferma e prenota"
-        icon="checkmark-circle-outline"
-        onPress={confirm}
+        title="Rivedi prenotazione"
+        icon="receipt-outline"
+        onPress={() => setStage('review')}
         disabled={!canConfirm}
         style={{ marginTop: spacing.lg }}
       />
@@ -666,6 +831,10 @@ const ConfirmationModal: React.FC<{
     }),
     { adults: 0, children5to15: 0, childrenUnder5: 0 }
   );
+  const equipmentTotals = bookings.reduce(
+    (acc, b) => ({ beds: acc.beds + (b.beds ?? 0), chairs: acc.chairs + (b.chairs ?? 0) }),
+    { beds: 0, chairs: 0 }
+  );
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -681,7 +850,7 @@ const ConfirmationModal: React.FC<{
             <View style={styles.confirmRow}>
               <Text style={styles.muted}>{umbrellas.length > 1 ? 'Ombrelloni' : 'Ombrellone'}</Text>
               <Text style={styles.confirmValue}>
-                {umbrellas.map((u) => `N.${u?.number}`).join(', ')}
+                {umbrellas.map((u) => `N.${u?.number} (${u?.zone})`).join(', ')}
               </Text>
             </View>
             <View style={styles.confirmRow}>
@@ -696,6 +865,12 @@ const ConfirmationModal: React.FC<{
                 {guests.adults} adulti
                 {guests.children5to15 > 0 ? ` · ${guests.children5to15} bambini 5-15` : ''}
                 {guests.childrenUnder5 > 0 ? ` · ${guests.childrenUnder5} under 5` : ''}
+              </Text>
+            </View>
+            <View style={styles.confirmRow}>
+              <Text style={styles.muted}>Attrezzatura</Text>
+              <Text style={styles.confirmValue}>
+                {equipmentTotals.beds} lettini · {equipmentTotals.chairs} sdraio
               </Text>
             </View>
             <View style={styles.confirmRow}>
@@ -788,7 +963,9 @@ const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ 
                 return (
                   <Card key={b.id} style={{ marginTop: spacing.sm }}>
                     <View style={styles.confirmRow}>
-                      <Text style={styles.confirmValue}>Ombrellone N.{u?.number}</Text>
+                      <Text style={styles.confirmValue}>
+                        Ombrellone N.{u?.number} ({u?.zone})
+                      </Text>
                       <Badge status={b.status} />
                     </View>
                     <Text style={styles.muted}>
@@ -977,6 +1154,25 @@ const styles = StyleSheet.create({
   periodHeroLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   periodHeroDate: { color: colors.white, fontWeight: '800', fontSize: 14, textTransform: 'capitalize' },
   periodHeroDays: { color: colors.white, fontWeight: '700', fontSize: 12, backgroundColor: 'rgba(255,255,255,0.18)', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.xl },
+  editDatesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: radius.xl,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  editDatesBtnText: { color: colors.white, fontWeight: '700', fontSize: 11 },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  equipmentCard: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  equipmentTitle: { fontWeight: '700', color: colors.text, fontSize: 13 },
+  equipmentPrice: { fontWeight: '800', color: colors.primaryDark, fontSize: 13 },
   sectionLabel: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
   guestsBox: {
     backgroundColor: colors.bg,

@@ -202,7 +202,8 @@ export const QuadroScreen: React.FC = () => {
           <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>
               Nuova prenotazione ·{' '}
-              {newBookingSlot && `Ombrellone ${getUmbrella(newBookingSlot.umbrellaId)?.number}`}
+              {newBookingSlot &&
+                `Ombrellone ${getUmbrella(newBookingSlot.umbrellaId)?.number} · ${getUmbrella(newBookingSlot.umbrellaId)?.zone}`}
             </Text>
             {newBookingSlot && (
               <QuickBookingForm
@@ -230,7 +231,7 @@ const BookingInfo: React.FC<{ booking: Booking; onClose: () => void; onGoToConto
   return (
     <View>
       <Text style={styles.modalTitle}>
-        Ombrellone {umbrella?.number} · {customer?.name ?? 'Cliente'}
+        Ombrellone {umbrella?.number} ({umbrella?.zone}) · {customer?.name ?? 'Cliente'}
       </Text>
       <Text style={styles.muted}>
         {formatDateShort(booking.dateFrom)} → {formatDateShort(booking.dateTo)}

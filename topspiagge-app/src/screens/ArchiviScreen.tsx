@@ -113,7 +113,7 @@ const PrenotazioniTab: React.FC = () => {
                 <Card style={{ marginBottom: spacing.md }}>
                   <View style={styles.rowBetween}>
                     <Text style={styles.itemTitle}>
-                      Ombrellone N.{umbrella?.number} · {umbrella?.side === 'nord' ? 'Nord' : 'Sud'}
+                      Ombrellone N.{umbrella?.number} · {umbrella?.zone} ({umbrella?.side === 'nord' ? 'Nord' : 'Sud'})
                     </Text>
                     <Badge status={b.status} />
                   </View>
@@ -185,7 +185,7 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
   const confirmCancel = () => {
     alert(
       'Cancellare questa prenotazione?',
-      `${customer?.name ?? 'Cliente'} · Ombrellone N.${umbrella?.number}. L'operazione non è reversibile.`,
+      `${customer?.name ?? 'Cliente'} · Ombrellone N.${umbrella?.number} (${umbrella?.zone}). L'operazione non è reversibile.`,
       [
         { text: 'Annulla', style: 'cancel' },
         {
@@ -406,7 +406,7 @@ const UmbrellaEditForm: React.FC<{ umbrellaId: string; onClose: () => void }> = 
 
   const confirmDelete = () => {
     alert(
-      `Eliminare l'ombrellone N.${umbrella.number}?`,
+      `Eliminare l'ombrellone N.${umbrella.number} (${umbrella.zone})?`,
       hasActiveBooking || assignee
         ? 'Ha prenotazioni e/o un cliente stagionale collegati: verranno rimossi.'
         : 'Operazione non reversibile.',
@@ -793,7 +793,7 @@ const CustomerForm: React.FC<{
             {filteredUmbrellas.map((u) => (
               <Chip
                 key={u.id}
-                label={`N.${u.number}${u.assignedCustomerId ? ' (occupato)' : ''}`}
+                label={`N.${u.number} · ${u.zone}${u.assignedCustomerId ? ' (occupato)' : ''}`}
                 onPress={() => {
                   assignCustomer(u.id, customer.id);
                   setAssigning(false);

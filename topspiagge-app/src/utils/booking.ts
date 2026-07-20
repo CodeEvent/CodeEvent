@@ -1,14 +1,16 @@
 import { Booking, GuestCount, Umbrella } from '../types';
 import { toDateKey } from './format';
 
-export const MAX_GUESTS_PER_UMBRELLA = 4;
+// Only adults count against an umbrella's occupancy limit -- children are unlimited.
+export const MAX_ADULTS_PER_UMBRELLA = 4;
+export const MAX_EQUIPMENT_PER_UMBRELLA = 4;
 
 export function totalGuestCount(guests: GuestCount): number {
   return guests.adults + guests.children5to15 + guests.childrenUnder5;
 }
 
-export function umbrellasNeededFor(totalGuests: number): number {
-  return Math.max(1, Math.ceil(totalGuests / MAX_GUESTS_PER_UMBRELLA));
+export function umbrellasNeededFor(adults: number): number {
+  return Math.max(1, Math.ceil(adults / MAX_ADULTS_PER_UMBRELLA));
 }
 
 export function findNearestUmbrellas(
@@ -32,22 +34,26 @@ export function distributeGuests(guests: GuestCount, umbrellaCount: number): Gue
     children5to15: 0,
     childrenUnder5: 0,
   }));
+  // Adults respect the per-umbrella occupancy cap, filling one umbrella before the next.
   let slotIndex = 0;
   let slotFill = 0;
-  const distribute = (key: keyof GuestCount, count: number) => {
-    for (let i = 0; i < count && slotIndex < umbrellaCount; i++) {
-      if (slotFill === MAX_GUESTS_PER_UMBRELLA) {
-        slotIndex++;
-        slotFill = 0;
-      }
-      if (slotIndex >= umbrellaCount) break;
-      slots[slotIndex][key] += 1;
-      slotFill++;
+  for (let i = 0; i < guests.adults && slotIndex < umbrellaCount; i++) {
+    if (slotFill === MAX_ADULTS_PER_UMBRELLA) {
+      slotIndex++;
+      slotFill = 0;
+    }
+    if (slotIndex >= umbrellaCount) break;
+    slots[slotIndex].adults += 1;
+    slotFill++;
+  }
+  // Children are unlimited and don't affect capacity, so just spread them evenly.
+  const spreadChildren = (key: 'children5to15' | 'childrenUnder5', count: number) => {
+    for (let i = 0; i < count; i++) {
+      slots[i % umbrellaCount][key] += 1;
     }
   };
-  distribute('adults', guests.adults);
-  distribute('children5to15', guests.children5to15);
-  distribute('childrenUnder5', guests.childrenUnder5);
+  spreadChildren('children5to15', guests.children5to15);
+  spreadChildren('childrenUnder5', guests.childrenUnder5);
   return slots;
 }
 

@@ -51,7 +51,9 @@ export interface Booking {
   status: UmbrellaStatus;
   createdAt: string;
   guests?: GuestCount;
-  groupId?: string; // links sibling bookings made together for a party > 4 guests, spread across umbrellas
+  beds?: number; // lettini booked for this umbrella
+  chairs?: number; // sdraio booked for this umbrella
+  groupId?: string; // links sibling bookings made together for a party > 4 adults, spread across umbrellas
 }
 
 export type ArticleCategory =
