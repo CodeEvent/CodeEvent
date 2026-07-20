@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { colors, radius, spacing, statusBg, statusColor, statusLabel } from '../theme';
 import { UmbrellaStatus } from '../types';
+import { DisplayStatus, displayStatusBg, displayStatusColor, displayStatusLabel } from '../utils/displayStatus';
 
 export const Card: React.FC<{ children: React.ReactNode; style?: StyleProp<ViewStyle> }> = ({
   children,
@@ -31,6 +32,16 @@ export const Badge: React.FC<{ status: UmbrellaStatus }> = ({ status }) => (
   <View style={[styles.badge, { backgroundColor: statusBg[status] }]}>
     <View style={[styles.dot, { backgroundColor: statusColor[status] }]} />
     <Text style={[styles.badgeText, { color: statusColor[status] }]}>{statusLabel[status]}</Text>
+  </View>
+);
+
+// The operator screens (Piantina, Griglia, Quadro, Conto, Archivi) all use the same
+// merged 3-color language -- libero/occupato/da saldare -- instead of the raw 4-value
+// booking status, so a cell's color always matches what its detail view shows.
+export const StatusPill: React.FC<{ status: DisplayStatus }> = ({ status }) => (
+  <View style={[styles.badge, { backgroundColor: displayStatusBg[status] }]}>
+    <View style={[styles.dot, { backgroundColor: displayStatusColor[status] }]} />
+    <Text style={[styles.badgeText, { color: displayStatusColor[status] }]}>{displayStatusLabel[status]}</Text>
   </View>
 );
 

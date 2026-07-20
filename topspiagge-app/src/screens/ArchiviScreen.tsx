@@ -5,12 +5,12 @@ import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
 import { COLS_PER_SIDE } from '../components/BeachCanvas';
-import { Badge, Button, Card, Chip, EditDeleteRow, SectionHeader } from '../components/UI';
+import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
 import { useAppMode } from '../store/AppModeContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
-import { displayStatusFor } from '../utils/displayStatus';
+import { displayStatusFor, displayStatusForBooking } from '../utils/displayStatus';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 
 type Tab = 'oggi' | 'prenotazioni' | 'listini' | 'clienti' | 'articoli' | 'disposizione';
@@ -91,7 +91,7 @@ const OggiTab: React.FC = () => {
               <Text style={styles.itemTitle}>
                 Ombrellone N.{u?.number} · {u?.zone}
               </Text>
-              <Badge status={b.status} />
+              <StatusPill status={displayStatusForBooking(b)} />
             </View>
             <Text style={styles.muted}>
               {customer?.name ?? 'Cliente'} · {customer?.phone}
@@ -120,7 +120,7 @@ const OggiTab: React.FC = () => {
               <Text style={styles.itemTitle}>
                 Ombrellone N.{u?.number} · {u?.zone}
               </Text>
-              <Badge status={b.status} />
+              <StatusPill status={displayStatusForBooking(b)} />
             </View>
             <Text style={styles.muted}>{customer?.name ?? 'Cliente'}</Text>
             {remaining > 0 && (
@@ -236,7 +236,7 @@ const PrenotazioniTab: React.FC = () => {
                     <Text style={styles.itemTitle}>
                       Ombrellone N.{umbrella?.number} · {umbrella?.zone} ({umbrella?.side === 'nord' ? 'Nord' : 'Sud'})
                     </Text>
-                    <Badge status={b.status} />
+                    <StatusPill status={displayStatusForBooking(b)} />
                   </View>
                   <Text style={[styles.itemTitle, { fontSize: 14, marginTop: 4 }]}>
                     {customer?.name ?? 'Cliente'}

@@ -3,9 +3,10 @@ import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
+import { displayStatusFor } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort } from '../utils/format';
 import { QuickBookingForm } from './QuickBookingForm';
-import { Badge, Button, Chip } from './UI';
+import { Button, Chip, StatusPill } from './UI';
 
 interface Props {
   umbrellaId: string | null;
@@ -52,7 +53,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
             <Text style={styles.title}>
               Ombrellone {umbrella.number} · {umbrella.zone}
             </Text>
-            <Badge status={umbrella.status} />
+            <StatusPill status={displayStatusFor(umbrella, getBooking)} />
           </View>
           {umbrella.hasCabin && <Text style={styles.muted}>Con cabina</Text>}
 

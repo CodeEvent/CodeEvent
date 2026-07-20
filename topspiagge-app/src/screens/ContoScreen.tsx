@@ -4,10 +4,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
-import { Badge, Button, Card, Chip, SectionHeader } from '../components/UI';
+import { Button, Card, Chip, SectionHeader, StatusPill } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Conto, ContoItem, DocType, PaymentMethod } from '../types';
+import { displayStatusFor } from '../utils/displayStatus';
 import { formatCurrency } from '../utils/format';
 
 const CATEGORY_LABEL: Record<ArticleCategory, string> = {
@@ -169,7 +170,7 @@ export const ContoScreen: React.FC = () => {
             <View style={styles.umbrellaInfo}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={styles.customerName}>{customer?.name ?? 'Cliente sconosciuto'}</Text>
-                <Badge status={umbrella.status} />
+                <StatusPill status={displayStatusFor(umbrella, getBooking)} />
               </View>
               {booking && (
                 <>

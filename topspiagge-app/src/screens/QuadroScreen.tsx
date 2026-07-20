@@ -5,8 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { QuickBookingForm } from '../components/QuickBookingForm';
 import { Chip, Button } from '../components/UI';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, spacing, statusColor } from '../theme';
+import { colors, radius, spacing } from '../theme';
 import { BeachSide, Booking } from '../types';
+import { displayStatusColor, displayStatusForBooking } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 
 const LABEL_WIDTH = 96;
@@ -160,7 +161,7 @@ export const QuadroScreen: React.FC = () => {
                           key={b.id}
                           style={[
                             styles.bar,
-                            { left, width, backgroundColor: statusColor[b.status] },
+                            { left, width, backgroundColor: displayStatusColor[displayStatusForBooking(b)] },
                           ]}
                           onPress={() => setSelectedBooking(b)}
                         >

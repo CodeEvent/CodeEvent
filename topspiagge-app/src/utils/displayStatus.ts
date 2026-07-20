@@ -18,10 +18,23 @@ export function displayStatusFor(
   return 'occupato';
 }
 
+// For screens iterating over a specific Booking record directly (Gantt bars, arrival/
+// departure lists) rather than an umbrella's current live state -- a booking is never
+// 'libero' on its own, so this only ever resolves to occupato or da_saldare.
+export function displayStatusForBooking(booking: Booking): DisplayStatus {
+  return booking.paid < booking.totalPrice ? 'da_saldare' : 'occupato';
+}
+
 export const displayStatusColor: Record<DisplayStatus, string> = {
   libero: colors.libero,
   occupato: colors.occupato,
   da_saldare: colors.black,
+};
+
+export const displayStatusBg: Record<DisplayStatus, string> = {
+  libero: colors.liberoBg,
+  occupato: colors.occupatoBg,
+  da_saldare: '#E5E6E8',
 };
 
 export const displayStatusLabel: Record<DisplayStatus, string> = {
