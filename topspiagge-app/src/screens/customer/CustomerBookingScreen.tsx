@@ -11,12 +11,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
-import { BeachCanvas, CELL, useUmbrellaPositions } from '../../components/BeachCanvas';
+import { BeachCanvas, CELL, SideSwitch, useUmbrellaPositions } from '../../components/BeachCanvas';
 import { Badge, Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
-import { Booking, Customer, GuestCount, Umbrella } from '../../types';
+import { BeachSide, Booking, Customer, GuestCount, Umbrella } from '../../types';
 import { findCustomerConflict, findUmbrellaConflict } from '../../utils/booking';
 import { DEPOSIT_RATE, isDepositRefundable, refundCutoffDate } from '../../utils/cancellation';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../../utils/format';
@@ -35,12 +35,12 @@ type Step = 'dates' | 'map';
 export const CustomerBookingScreen: React.FC = () => {
   const { setMode } = useAppMode();
   const { umbrellas, bookings } = useStore();
-  const positions = useUmbrellaPositions(umbrellas);
   const alert = useAppAlert();
 
   const [step, setStep] = useState<Step>('dates');
   const [startOffset, setStartOffset] = useState(0);
   const [days, setDays] = useState(1);
+  const [side, setSide] = useState<BeachSide>('nord');
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [myBookingsVisible, setMyBookingsVisible] = useState(false);
@@ -49,7 +49,13 @@ export const CustomerBookingScreen: React.FC = () => {
   const dateTo = isoDate(startOffset + days - 1);
 
   const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
-  const freeCount = umbrellas.filter(isFreeForPeriod).length;
+  const sideUmbrellas = umbrellas.filter((u) => u.side === side);
+  const positions = useUmbrellaPositions(sideUmbrellas);
+  const freeCounts = {
+    nord: umbrellas.filter((u) => u.side === 'nord' && isFreeForPeriod(u)).length,
+    sud: umbrellas.filter((u) => u.side === 'sud' && isFreeForPeriod(u)).length,
+  };
+  const freeCount = freeCounts[side];
 
   const handleTap = (u: Umbrella) => {
     if (isFreeForPeriod(u)) {
@@ -88,11 +94,14 @@ export const CustomerBookingScreen: React.FC = () => {
         />
       ) : (
         <MapStep
-          umbrellas={umbrellas}
+          umbrellas={sideUmbrellas}
           positions={positions}
           dateFrom={dateFrom}
           dateTo={dateTo}
           freeCount={freeCount}
+          side={side}
+          onSideChange={setSide}
+          sideCounts={freeCounts}
           isFreeForPeriod={isFreeForPeriod}
           onTap={handleTap}
           onChangeDates={() => setStep('dates')}
@@ -194,10 +203,25 @@ const MapStep: React.FC<{
   dateFrom: string;
   dateTo: string;
   freeCount: number;
+  side: BeachSide;
+  onSideChange: (side: BeachSide) => void;
+  sideCounts: Record<BeachSide, number>;
   isFreeForPeriod: (u: Umbrella) => boolean;
   onTap: (u: Umbrella) => void;
   onChangeDates: () => void;
-}> = ({ umbrellas, positions, dateFrom, dateTo, freeCount, isFreeForPeriod, onTap, onChangeDates }) => (
+}> = ({
+  umbrellas,
+  positions,
+  dateFrom,
+  dateTo,
+  freeCount,
+  side,
+  onSideChange,
+  sideCounts,
+  isFreeForPeriod,
+  onTap,
+  onChangeDates,
+}) => (
   <>
     <View style={styles.mapHeader}>
       <View>
@@ -210,6 +234,10 @@ const MapStep: React.FC<{
         <Ionicons name="calendar-outline" size={13} color={colors.primaryDark} />
         <Text style={styles.changeDatesText}>Cambia date</Text>
       </Pressable>
+    </View>
+
+    <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
+      <SideSwitch value={side} onChange={onSideChange} counts={sideCounts} />
     </View>
 
     <View style={styles.legendRow}>

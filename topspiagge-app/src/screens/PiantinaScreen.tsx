@@ -1,12 +1,12 @@
 import { useRoute } from '@react-navigation/native';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BeachCanvas, CELL, useUmbrellaPositions } from '../components/BeachCanvas';
+import { BeachCanvas, CELL, SideSwitch, useUmbrellaPositions } from '../components/BeachCanvas';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing, statusColor } from '../theme';
-import { Umbrella } from '../types';
+import { BeachSide, Umbrella } from '../types';
 
 const TAP_THRESHOLD = 10;
 
@@ -87,15 +87,29 @@ const UmbrellaCell: React.FC<{
 
 export const PiantinaScreen: React.FC = () => {
   const { umbrellas, swapUmbrellas } = useStore();
-  const positions = useUmbrellaPositions(umbrellas);
+  const [side, setSide] = useState<BeachSide>('nord');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const route = useRoute<any>();
 
+  const sideUmbrellas = useMemo(() => umbrellas.filter((u) => u.side === side), [umbrellas, side]);
+  const positions = useUmbrellaPositions(sideUmbrellas);
+
   useEffect(() => {
-    if (route.params?.umbrellaId) setSelectedId(route.params.umbrellaId);
+    if (route.params?.umbrellaId) {
+      setSelectedId(route.params.umbrellaId);
+      const target = umbrellas.find((u) => u.id === route.params.umbrellaId);
+      if (target) setSide(target.side);
+    }
   }, [route.params?.umbrellaId]);
 
-  const freeToday = umbrellas.filter((u) => u.status === 'libero').length;
+  const freeCounts = useMemo(
+    () => ({
+      nord: umbrellas.filter((u) => u.side === 'nord' && u.status === 'libero').length,
+      sud: umbrellas.filter((u) => u.side === 'sud' && u.status === 'libero').length,
+    }),
+    [umbrellas]
+  );
+  const freeOnSide = freeCounts[side];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -116,19 +130,22 @@ export const PiantinaScreen: React.FC = () => {
             <Text style={styles.legendText}>Cliente stagionale</Text>
           </View>
         </View>
+        <View style={{ marginTop: spacing.sm }}>
+          <SideSwitch value={side} onChange={setSide} counts={freeCounts} />
+        </View>
       </View>
 
       <BeachCanvas
-        umbrellas={umbrellas}
+        umbrellas={sideUmbrellas}
         positions={positions}
-        footerText={`Ombrelloni liberi oggi: ${freeToday}`}
+        footerText={`Lato ${side === 'nord' ? 'Nord' : 'Sud'} · ombrelloni liberi oggi: ${freeOnSide}`}
         renderCell={(u, position) => (
           <UmbrellaCell
             key={u.id}
             umbrella={u}
             position={position}
             positions={positions}
-            allUmbrellas={umbrellas}
+            allUmbrellas={sideUmbrellas}
             onDrop={swapUmbrellas}
             onTap={setSelectedId}
           />

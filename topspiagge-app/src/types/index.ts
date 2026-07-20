@@ -4,10 +4,13 @@ export type UmbrellaStatus = 'libero' | 'occupato' | 'in_arrivo' | 'prenotato';
 
 export type Zone = string;
 
+export type BeachSide = 'nord' | 'sud';
+
 export interface Umbrella {
   id: string;
   number: number;
-  row: number; // grid row (0-indexed) -- one row = one zone
+  side: BeachSide; // which half of the beach ("Lato Nord" / "Lato Sud")
+  row: number; // grid row (0-indexed), local to its side -- one row = one "fila"
   col: number; // grid col (0-indexed, position within the row)
   zone: Zone;
   hasCabin: boolean;

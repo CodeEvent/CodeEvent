@@ -5,30 +5,34 @@ import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { Chip } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing, statusColor } from '../theme';
-import { Umbrella, UmbrellaStatus, Zone } from '../types';
+import { BeachSide, Umbrella, UmbrellaStatus, Zone } from '../types';
 
 const ALL_ZONES = 'Tutte';
+const ALL_SIDES = 'tutti';
 
 export const GrigliaScreen: React.FC = () => {
   const { umbrellas } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sideFilter, setSideFilter] = useState<BeachSide | 'tutti'>(ALL_SIDES);
   const [zoneFilter, setZoneFilter] = useState<string>(ALL_ZONES);
   const [statusFilter, setStatusFilter] = useState<UmbrellaStatus | 'tutti'>('tutti');
 
   const zones = useMemo(() => {
+    const scoped = sideFilter === ALL_SIDES ? umbrellas : umbrellas.filter((u) => u.side === sideFilter);
     const set = new Set<Zone>();
-    umbrellas.forEach((u) => set.add(u.zone));
-    return [ALL_ZONES, ...Array.from(set)];
-  }, [umbrellas]);
+    scoped.forEach((u) => set.add(u.zone));
+    return [ALL_ZONES, ...Array.from(set).sort((a, b) => a.localeCompare(b, 'it', { numeric: true }))];
+  }, [umbrellas, sideFilter]);
 
   const filtered = useMemo(
     () =>
       umbrellas.filter(
         (u) =>
+          (sideFilter === ALL_SIDES || u.side === sideFilter) &&
           (zoneFilter === ALL_ZONES || u.zone === zoneFilter) &&
           (statusFilter === 'tutti' || u.status === statusFilter)
       ),
-    [umbrellas, zoneFilter, statusFilter]
+    [umbrellas, sideFilter, zoneFilter, statusFilter]
   );
 
   const counts = useMemo(() => {
@@ -43,7 +47,7 @@ export const GrigliaScreen: React.FC = () => {
       style={[styles.cell, { backgroundColor: statusColor[item.status] }]}
     >
       <Text style={styles.cellNumber}>{item.number}</Text>
-      <Text style={styles.cellZone}>{item.zone.replace('Fila ', 'F.')}</Text>
+      <Text style={styles.cellZone}>{item.side === 'nord' ? 'N' : 'S'}{item.row + 1}</Text>
       {item.assignedCustomerId && <View style={styles.assigneeDot} />}
     </Pressable>
   );
@@ -58,6 +62,19 @@ export const GrigliaScreen: React.FC = () => {
         </Text>
       </View>
 
+      <View style={styles.filterRow}>
+        {(['tutti', 'nord', 'sud'] as const).map((s) => (
+          <Chip
+            key={s}
+            label={s === 'tutti' ? 'Tutti i lati' : s === 'nord' ? 'Lato Nord' : 'Lato Sud'}
+            selected={sideFilter === s}
+            onPress={() => {
+              setSideFilter(s);
+              setZoneFilter(ALL_ZONES);
+            }}
+          />
+        ))}
+      </View>
       <View style={styles.filterRow}>
         {zones.map((z) => (
           <Chip key={z} label={z} selected={zoneFilter === z} onPress={() => setZoneFilter(z)} />

@@ -19,6 +19,7 @@ import {
 } from '../data/seed';
 import {
   Article,
+  BeachSide,
   Booking,
   Conto,
   Customer,
@@ -72,11 +73,8 @@ type Action =
   | { type: 'DELETE_PRICELIST'; priceListId: string }
   | { type: 'PAY_BOOKING'; bookingId: string; amount: number }
   | { type: 'CLOSE_CONTO'; conto: Conto }
-  | { type: 'ADD_ZONE'; name: string; hasCabinDefault: boolean; count: number }
-  | { type: 'RENAME_ZONE'; row: number; name: string }
-  | { type: 'REMOVE_ZONE'; row: number }
-  | { type: 'REORDER_ZONE'; row: number; direction: 'up' | 'down' }
-  | { type: 'ADD_UMBRELLA'; row: number; hasCabin: boolean }
+  | { type: 'RENAME_ZONE'; side: BeachSide; row: number; name: string }
+  | { type: 'REORDER_ZONE'; side: BeachSide; row: number; direction: 'up' | 'down' }
   | { type: 'REMOVE_UMBRELLA'; umbrellaId: string }
   | { type: 'REORDER_UMBRELLA'; umbrellaId: string; direction: 'left' | 'right' }
   | { type: 'UPDATE_UMBRELLA'; umbrellaId: string; patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>> }
@@ -233,80 +231,26 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, conti, dailyStats, umbrellas };
     }
 
-    case 'ADD_ZONE': {
-      const rows = state.umbrellas.map((u) => u.row);
-      const newRow = rows.length > 0 ? Math.max(...rows) + 1 : 0;
-      const numbers = state.umbrellas.map((u) => u.number);
-      const baseNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
-      const created: Umbrella[] = Array.from({ length: Math.max(1, action.count) }, (_, i) => ({
-        id: `u-${Date.now()}-${i}`,
-        number: baseNumber + i,
-        row: newRow,
-        col: i,
-        zone: action.name,
-        hasCabin: action.hasCabinDefault,
-        status: 'libero',
-      }));
-      return { ...state, umbrellas: [...state.umbrellas, ...created] };
-    }
-
     case 'RENAME_ZONE': {
       const umbrellas = state.umbrellas.map((u) =>
-        u.row === action.row ? { ...u, zone: action.name } : u
+        u.side === action.side && u.row === action.row ? { ...u, zone: action.name } : u
       );
       return { ...state, umbrellas };
     }
 
-    case 'REMOVE_ZONE': {
-      const removedIds = new Set(
-        state.umbrellas.filter((u) => u.row === action.row).map((u) => u.id)
-      );
-      if (removedIds.size === 0) return state;
-
-      const remaining = state.umbrellas.filter((u) => !removedIds.has(u.id));
-      const distinctRows = Array.from(new Set(remaining.map((u) => u.row))).sort((a, b) => a - b);
-      const rowRemap = new Map(distinctRows.map((row, idx) => [row, idx]));
-      const umbrellas = remaining.map((u) => ({ ...u, row: rowRemap.get(u.row)! }));
-
-      const bookings = state.bookings.filter((b) => !removedIds.has(b.umbrellaId));
-      const customers = state.customers.map((c) =>
-        c.assignedUmbrellaId && removedIds.has(c.assignedUmbrellaId)
-          ? { ...c, assignedUmbrellaId: undefined, bookingHistory: c.bookingHistory.filter((id) => bookings.some((b) => b.id === id)) }
-          : { ...c, bookingHistory: c.bookingHistory.filter((id) => bookings.some((b) => b.id === id)) }
-      );
-
-      return { ...state, umbrellas, bookings, customers };
-    }
-
     case 'REORDER_ZONE': {
       const targetRow = action.direction === 'up' ? action.row - 1 : action.row + 1;
-      const rows = new Set(state.umbrellas.map((u) => u.row));
+      const rows = new Set(
+        state.umbrellas.filter((u) => u.side === action.side).map((u) => u.row)
+      );
       if (!rows.has(targetRow)) return state;
       const umbrellas = state.umbrellas.map((u) => {
+        if (u.side !== action.side) return u;
         if (u.row === action.row) return { ...u, row: targetRow };
         if (u.row === targetRow) return { ...u, row: action.row };
         return u;
       });
       return { ...state, umbrellas };
-    }
-
-    case 'ADD_UMBRELLA': {
-      const rowUmbrellas = state.umbrellas.filter((u) => u.row === action.row);
-      const cols = rowUmbrellas.map((u) => u.col);
-      const newCol = cols.length > 0 ? Math.max(...cols) + 1 : 0;
-      const numbers = state.umbrellas.map((u) => u.number);
-      const newNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
-      const zone = rowUmbrellas[0]?.zone ?? `Fila ${action.row + 1}`;
-      const created: Umbrella = {
-        id: `u-${Date.now()}`,
-        number: newNumber,
-        row: action.row,
-        col: newCol,
-        zone,
-        hasCabin: action.hasCabin,
-        status: 'libero',
-      };
-      return { ...state, umbrellas: [...state.umbrellas, created] };
     }
 
     case 'REMOVE_UMBRELLA': {
@@ -324,7 +268,9 @@ function reducer(state: AppState, action: Action): AppState {
       const umbrella = state.umbrellas.find((u) => u.id === action.umbrellaId);
       if (!umbrella) return state;
       const targetCol = action.direction === 'left' ? umbrella.col - 1 : umbrella.col + 1;
-      const neighbor = state.umbrellas.find((u) => u.row === umbrella.row && u.col === targetCol);
+      const neighbor = state.umbrellas.find(
+        (u) => u.side === umbrella.side && u.row === umbrella.row && u.col === targetCol
+      );
       if (!neighbor) return state;
       const umbrellas = state.umbrellas.map((u) => {
         if (u.id === umbrella.id) return { ...u, col: targetCol };
@@ -381,11 +327,8 @@ interface StoreContextValue extends AppState {
   deletePriceList: (priceListId: string) => void;
   payBooking: (bookingId: string, amount: number) => void;
   closeConto: (conto: Conto) => void;
-  addZone: (name: string, hasCabinDefault: boolean, count: number) => void;
-  renameZone: (row: number, name: string) => void;
-  removeZone: (row: number) => void;
-  reorderZone: (row: number, direction: 'up' | 'down') => void;
-  addUmbrella: (row: number, hasCabin: boolean) => void;
+  renameZone: (side: BeachSide, row: number, name: string) => void;
+  reorderZone: (side: BeachSide, row: number, direction: 'up' | 'down') => void;
   removeUmbrella: (umbrellaId: string) => void;
   reorderUmbrella: (umbrellaId: string, direction: 'left' | 'right') => void;
   updateUmbrella: (umbrellaId: string, patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>>) => void;
@@ -458,20 +401,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const payBooking = useCallback((bookingId: string, amount: number) => {
     dispatch({ type: 'PAY_BOOKING', bookingId, amount });
   }, []);
-  const addZone = useCallback((name: string, hasCabinDefault: boolean, count: number) => {
-    dispatch({ type: 'ADD_ZONE', name, hasCabinDefault, count });
+  const renameZone = useCallback((side: BeachSide, row: number, name: string) => {
+    dispatch({ type: 'RENAME_ZONE', side, row, name });
   }, []);
-  const renameZone = useCallback((row: number, name: string) => {
-    dispatch({ type: 'RENAME_ZONE', row, name });
-  }, []);
-  const removeZone = useCallback((row: number) => {
-    dispatch({ type: 'REMOVE_ZONE', row });
-  }, []);
-  const reorderZone = useCallback((row: number, direction: 'up' | 'down') => {
-    dispatch({ type: 'REORDER_ZONE', row, direction });
-  }, []);
-  const addUmbrella = useCallback((row: number, hasCabin: boolean) => {
-    dispatch({ type: 'ADD_UMBRELLA', row, hasCabin });
+  const reorderZone = useCallback((side: BeachSide, row: number, direction: 'up' | 'down') => {
+    dispatch({ type: 'REORDER_ZONE', side, row, direction });
   }, []);
   const removeUmbrella = useCallback((umbrellaId: string) => {
     dispatch({ type: 'REMOVE_UMBRELLA', umbrellaId });
@@ -522,11 +456,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       deletePriceList,
       payBooking,
       closeConto,
-      addZone,
       renameZone,
-      removeZone,
       reorderZone,
-      addUmbrella,
       removeUmbrella,
       reorderUmbrella,
       updateUmbrella,
@@ -550,11 +481,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       deletePriceList,
       payBooking,
       closeConto,
-      addZone,
       renameZone,
-      removeZone,
       reorderZone,
-      addUmbrella,
       removeUmbrella,
       reorderUmbrella,
       updateUmbrella,

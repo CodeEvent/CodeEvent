@@ -4,14 +4,15 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
-import { Button, Card, Chip, EditDeleteRow, SectionHeader } from '../components/UI';
+import { SideSwitch } from '../components/BeachCanvas';
+import { Badge, Button, Card, Chip, EditDeleteRow, SectionHeader } from '../components/UI';
 import { useAppMode } from '../store/AppModeContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
-import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
+import { Article, ArticleCategory, BeachSide, Booking, Customer, PriceList, Season, Umbrella } from '../types';
+import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 
-type Tab = 'listini' | 'clienti' | 'articoli' | 'disposizione';
+type Tab = 'prenotazioni' | 'listini' | 'clienti' | 'articoli' | 'disposizione';
 
 const CATEGORY_LABEL: Record<ArticleCategory, string> = {
   ombrellone: 'Spiaggia',
@@ -24,26 +25,28 @@ const CATEGORY_LABEL: Record<ArticleCategory, string> = {
 };
 
 export const ArchiviScreen: React.FC = () => {
-  const [tab, setTab] = useState<Tab>('listini');
+  const [tab, setTab] = useState<Tab>('prenotazioni');
   const { setMode } = useAppMode();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
         <View style={styles.headerRow}>
-          <SectionHeader title="Archivi" subtitle="Listini, clienti e articoli su misura per il tuo lido" />
+          <SectionHeader title="Archivi" subtitle="Prenotazioni, listini, clienti e articoli su misura per il tuo lido" />
           <Pressable onPress={() => setMode('select')} style={styles.exitBtn}>
             <Ionicons name="swap-horizontal-outline" size={14} color={colors.primaryDark} />
             <Text style={styles.exitBtnText}>Modalità</Text>
           </Pressable>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm }}>
+          <Chip label="Prenotazioni" selected={tab === 'prenotazioni'} onPress={() => setTab('prenotazioni')} />
           <Chip label="Disposizione" selected={tab === 'disposizione'} onPress={() => setTab('disposizione')} />
           <Chip label="Listini" selected={tab === 'listini'} onPress={() => setTab('listini')} />
           <Chip label="Clienti (CRM)" selected={tab === 'clienti'} onPress={() => setTab('clienti')} />
           <Chip label="Articoli" selected={tab === 'articoli'} onPress={() => setTab('articoli')} />
         </View>
       </View>
+      {tab === 'prenotazioni' && <PrenotazioniTab />}
       {tab === 'disposizione' && <DisposizioneTab />}
       {tab === 'listini' && <ListiniTab />}
       {tab === 'clienti' && <ClientiTab />}
@@ -52,43 +55,250 @@ export const ArchiviScreen: React.FC = () => {
   );
 };
 
-const DisposizioneTab: React.FC = () => {
-  const { umbrellas, getCustomer, renameZone, removeZone, reorderZone, addUmbrella } = useStore();
+const PrenotazioniTab: React.FC = () => {
+  const { bookings, getUmbrella, getCustomer } = useStore();
+  const [query, setQuery] = useState('');
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+
+  const today = isoDate(0);
+  const tomorrow = isoDate(1);
+
+  const upcoming = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return bookings
+      .filter((b) => b.dateTo >= today)
+      .filter((b) => {
+        if (!q) return true;
+        const customer = getCustomer(b.customerId);
+        const umbrella = getUmbrella(b.umbrellaId);
+        return (
+          !!customer?.name.toLowerCase().includes(q) ||
+          !!customer?.phone.replace(/\s+/g, '').includes(q.replace(/\s+/g, '')) ||
+          String(umbrella?.number ?? '').includes(q)
+        );
+      })
+      .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
+  }, [bookings, query, today, getCustomer, getUmbrella]);
+
+  const selectedBooking = bookings.find((b) => b.id === selectedBookingId) ?? null;
+
+  const dayLabel = (iso: string) => {
+    if (iso === today) return 'Oggi';
+    if (iso === tomorrow) return 'Domani';
+    return formatDateLong(iso);
+  };
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
+        <TextInput
+          style={styles.input}
+          placeholder="Cerca per cliente, telefono o N. ombrellone..."
+          placeholderTextColor={colors.textMuted}
+          value={query}
+          onChangeText={setQuery}
+        />
+      </View>
+      <ScrollView contentContainerStyle={styles.scrollBody}>
+        {upcoming.length === 0 && <Text style={styles.muted}>Nessuna prenotazione da oggi in poi.</Text>}
+        {upcoming.map((b, idx) => {
+          const customer = getCustomer(b.customerId);
+          const umbrella = getUmbrella(b.umbrellaId);
+          const showDateHeader = idx === 0 || upcoming[idx - 1].dateFrom !== b.dateFrom;
+          const remaining = b.totalPrice - b.paid;
+          return (
+            <View key={b.id}>
+              {showDateHeader && <Text style={styles.dateSectionHeader}>{dayLabel(b.dateFrom)}</Text>}
+              <Pressable onPress={() => setSelectedBookingId(b.id)}>
+                <Card style={{ marginBottom: spacing.md }}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.itemTitle}>
+                      Ombrellone N.{umbrella?.number} · {umbrella?.side === 'nord' ? 'Nord' : 'Sud'}
+                    </Text>
+                    <Badge status={b.status} />
+                  </View>
+                  <Text style={[styles.itemTitle, { fontSize: 14, marginTop: 4 }]}>
+                    {customer?.name ?? 'Cliente'}
+                  </Text>
+                  <Text style={styles.muted}>{customer?.phone}</Text>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.muted}>Periodo</Text>
+                    <Text style={styles.infoValue}>
+                      {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)}
+                    </Text>
+                  </View>
+                  {b.guests && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.muted}>Ospiti</Text>
+                      <Text style={styles.infoValue}>
+                        {b.guests.adults} adulti
+                        {b.guests.children5to15 > 0 ? ` · ${b.guests.children5to15} bambini 5-15` : ''}
+                        {b.guests.childrenUnder5 > 0 ? ` · ${b.guests.childrenUnder5} under 5` : ''}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.infoRow}>
+                    <Text style={styles.muted}>Totale</Text>
+                    <Text style={styles.infoValue}>{formatCurrency(b.totalPrice)}</Text>
+                  </View>
+                  {remaining > 0 && (
+                    <View style={styles.infoRow}>
+                      <Text style={[styles.muted, { color: colors.occupato }]}>Da saldare</Text>
+                      <Text style={[styles.infoValue, { color: colors.occupato }]}>
+                        {formatCurrency(remaining)}
+                      </Text>
+                    </View>
+                  )}
+                </Card>
+              </Pressable>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      <Modal
+        visible={!!selectedBooking}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedBookingId(null)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setSelectedBookingId(null)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            {selectedBooking && (
+              <BookingDetail booking={selectedBooking} onClose={() => setSelectedBookingId(null)} />
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+};
+
+const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ booking, onClose }) => {
+  const navigation = useNavigation<any>();
+  const { getCustomer, getUmbrella, cancelBooking } = useStore();
   const alert = useAppAlert();
-  const [editingUmbrellaId, setEditingUmbrellaId] = useState<string | null>(null);
-  const [addingZone, setAddingZone] = useState(false);
-  const [renamingRow, setRenamingRow] = useState<number | null>(null);
-  const [renameValue, setRenameValue] = useState('');
+  const customer = getCustomer(booking.customerId);
+  const umbrella = getUmbrella(booking.umbrellaId);
+  const remaining = booking.totalPrice - booking.paid;
 
-  const zones = useMemo(() => {
-    const map = new Map<number, { name: string; umbrellas: Umbrella[] }>();
-    umbrellas.forEach((u) => {
-      const entry = map.get(u.row) ?? { name: u.zone, umbrellas: [] };
-      entry.umbrellas.push(u);
-      map.set(u.row, entry);
-    });
-    Array.from(map.values()).forEach((entry) => entry.umbrellas.sort((a, b) => a.col - b.col));
-    return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
-  }, [umbrellas]);
-
-  const confirmRemoveZone = (row: number, name: string, count: number) => {
+  const confirmCancel = () => {
     alert(
-      `Eliminare "${name}"?`,
-      `Verranno eliminati ${count} ombrelloni, le relative prenotazioni e assegnazioni clienti. L'operazione non è reversibile.`,
+      'Cancellare questa prenotazione?',
+      `${customer?.name ?? 'Cliente'} · Ombrellone N.${umbrella?.number}. L'operazione non è reversibile.`,
       [
         { text: 'Annulla', style: 'cancel' },
-        { text: 'Elimina', style: 'destructive', onPress: () => removeZone(row) },
+        {
+          text: 'Cancella prenotazione',
+          style: 'destructive',
+          onPress: () => {
+            cancelBooking(booking.id);
+            onClose();
+          },
+        },
       ]
     );
   };
 
   return (
+    <ScrollView style={{ maxHeight: 520 }}>
+      <Text style={styles.formLabel}>
+        Ombrellone N.{umbrella?.number} · {umbrella?.side === 'nord' ? 'Nord' : 'Sud'} · {umbrella?.zone}
+      </Text>
+
+      <View style={{ marginTop: spacing.md }}>
+        <Text style={styles.itemTitle}>{customer?.name ?? 'Cliente'}</Text>
+        <Text style={styles.muted}>{customer?.phone}</Text>
+        {!!customer?.email && <Text style={styles.muted}>{customer.email}</Text>}
+        {!!customer?.notes && <Text style={styles.notes}>"{customer.notes}"</Text>}
+        {customer?.vip && <Text style={styles.assignedTag}>⭐ Cliente VIP</Text>}
+      </View>
+
+      <View style={styles.infoRow}>
+        <Text style={styles.muted}>Periodo</Text>
+        <Text style={styles.infoValue}>
+          {formatDateLong(booking.dateFrom)} → {formatDateLong(booking.dateTo)}
+        </Text>
+      </View>
+      {booking.guests && (
+        <View style={styles.infoRow}>
+          <Text style={styles.muted}>Ospiti</Text>
+          <Text style={styles.infoValue}>
+            {booking.guests.adults} adulti
+            {booking.guests.children5to15 > 0 ? ` · ${booking.guests.children5to15} bambini 5-15` : ''}
+            {booking.guests.childrenUnder5 > 0 ? ` · ${booking.guests.childrenUnder5} under 5` : ''}
+          </Text>
+        </View>
+      )}
+      <View style={styles.infoRow}>
+        <Text style={styles.muted}>Totale</Text>
+        <Text style={styles.infoValue}>{formatCurrency(booking.totalPrice)}</Text>
+      </View>
+      <View style={styles.infoRow}>
+        <Text style={styles.muted}>Pagato (acconto)</Text>
+        <Text style={styles.infoValue}>{formatCurrency(booking.paid)}</Text>
+      </View>
+      {remaining > 0 && (
+        <View style={styles.infoRow}>
+          <Text style={[styles.muted, { color: colors.occupato }]}>Da saldare</Text>
+          <Text style={[styles.infoValue, { color: colors.occupato }]}>{formatCurrency(remaining)}</Text>
+        </View>
+      )}
+
+      <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+        <Button
+          title="Vai alla Piantina"
+          variant="secondary"
+          onPress={() => {
+            onClose();
+            navigation.navigate('Piantina', { umbrellaId: booking.umbrellaId });
+          }}
+        />
+        <Button
+          title="Vai al Conto"
+          onPress={() => {
+            onClose();
+            navigation.navigate('Conto', { umbrellaId: booking.umbrellaId });
+          }}
+        />
+        <Button title="Cancella prenotazione" variant="danger" onPress={confirmCancel} />
+      </View>
+      <Button title="Chiudi" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
+    </ScrollView>
+  );
+};
+
+const DisposizioneTab: React.FC = () => {
+  const { umbrellas, getCustomer, renameZone, reorderZone } = useStore();
+  const [side, setSide] = useState<BeachSide>('nord');
+  const [editingUmbrellaId, setEditingUmbrellaId] = useState<string | null>(null);
+  const [renamingRow, setRenamingRow] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const zones = useMemo(() => {
+    const map = new Map<number, { name: string; umbrellas: Umbrella[] }>();
+    umbrellas
+      .filter((u) => u.side === side)
+      .forEach((u) => {
+        const entry = map.get(u.row) ?? { name: u.zone, umbrellas: [] };
+        entry.umbrellas.push(u);
+        map.set(u.row, entry);
+      });
+    Array.from(map.values()).forEach((entry) => entry.umbrellas.sort((a, b) => a.col - b.col));
+    return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
+  }, [umbrellas, side]);
+
+  return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
       <Text style={styles.helperText}>
-        Costruisci la piantina: aggiungi file, ombrelloni e assegna un cliente stagionale direttamente da qui.
+        Layout fisso: 2 lati (Nord/Sud) x 12 file x 10 ombrelloni. Puoi rinominare le file, riordinarle,
+        gestire le cabine e assegnare un cliente stagionale direttamente da qui.
       </Text>
+
+      <SideSwitch value={side} onChange={setSide} />
+
       {zones.map(([row, { name, umbrellas: rowUmbrellas }], idx) => (
-        <Card key={row} style={{ marginBottom: spacing.md }}>
+        <Card key={row} style={{ marginTop: spacing.md }}>
           <View style={styles.rowBetween}>
             {renamingRow === row ? (
               <TextInput
@@ -97,7 +307,7 @@ const DisposizioneTab: React.FC = () => {
                 onChangeText={setRenameValue}
                 autoFocus
                 onSubmitEditing={() => {
-                  renameZone(row, renameValue.trim() || name);
+                  renameZone(side, row, renameValue.trim() || name);
                   setRenamingRow(null);
                 }}
               />
@@ -116,14 +326,14 @@ const DisposizioneTab: React.FC = () => {
             <View style={{ flexDirection: 'row', gap: spacing.xs }}>
               <Pressable
                 style={styles.iconBtn}
-                onPress={() => reorderZone(row, 'up')}
+                onPress={() => reorderZone(side, row, 'up')}
                 disabled={idx === 0}
               >
                 <Ionicons name="chevron-up" size={18} color={idx === 0 ? colors.border : colors.text} />
               </Pressable>
               <Pressable
                 style={styles.iconBtn}
-                onPress={() => reorderZone(row, 'down')}
+                onPress={() => reorderZone(side, row, 'down')}
                 disabled={idx === zones.length - 1}
               >
                 <Ionicons
@@ -131,12 +341,6 @@ const DisposizioneTab: React.FC = () => {
                   size={18}
                   color={idx === zones.length - 1 ? colors.border : colors.text}
                 />
-              </Pressable>
-              <Pressable
-                style={styles.iconBtn}
-                onPress={() => confirmRemoveZone(row, name, rowUmbrellas.length)}
-              >
-                <Ionicons name="trash-outline" size={18} color={colors.occupato} />
               </Pressable>
             </View>
           </View>
@@ -154,22 +358,9 @@ const DisposizioneTab: React.FC = () => {
                 </Pressable>
               );
             })}
-            <Pressable style={styles.addChip} onPress={() => addUmbrella(row, false)}>
-              <Ionicons name="add" size={20} color={colors.primary} />
-            </Pressable>
           </ScrollView>
         </Card>
       ))}
-
-      <Button title="+ Nuova fila" variant="ghost" onPress={() => setAddingZone(true)} />
-
-      <Modal visible={addingZone} transparent animationType="slide" onRequestClose={() => setAddingZone(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setAddingZone(false)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <NewZoneForm onCancel={() => setAddingZone(false)} onDone={() => setAddingZone(false)} />
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       <Modal
         visible={!!editingUmbrellaId}
@@ -186,41 +377,6 @@ const DisposizioneTab: React.FC = () => {
         </Pressable>
       </Modal>
     </ScrollView>
-  );
-};
-
-const NewZoneForm: React.FC<{ onCancel: () => void; onDone: () => void }> = ({ onCancel, onDone }) => {
-  const { addZone } = useStore();
-  const [name, setName] = useState('Nuova fila');
-  const [hasCabinDefault, setHasCabinDefault] = useState(false);
-  const [count, setCount] = useState(8);
-
-  return (
-    <View>
-      <Text style={styles.formLabel}>Nome fila / zona</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} />
-      <View style={[styles.rowBetween, { marginTop: spacing.xs }]}>
-        <Text style={styles.formLabel}>Ombrelloni con cabina di default</Text>
-        <Switch value={hasCabinDefault} onValueChange={setHasCabinDefault} />
-      </View>
-      <Text style={[styles.formLabel, { marginTop: spacing.md }]}>Numero di ombrelloni iniziali</Text>
-      <View style={styles.row}>
-        <Button title="−" variant="secondary" onPress={() => setCount((v) => Math.max(1, v - 1))} style={styles.qtyBtn} />
-        <Text style={styles.qtyText}>{count}</Text>
-        <Button title="+" variant="secondary" onPress={() => setCount((v) => v + 1)} style={styles.qtyBtn} />
-      </View>
-      <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
-        <Button
-          title="Crea fila"
-          onPress={() => {
-            addZone(name.trim() || 'Nuova fila', hasCabinDefault, count);
-            onDone();
-          }}
-          style={{ flex: 1 }}
-        />
-        <Button title="Annulla" variant="ghost" onPress={onCancel} style={{ flex: 1 }} />
-      </View>
-    </View>
   );
 };
 
@@ -271,7 +427,9 @@ const UmbrellaEditForm: React.FC<{ umbrellaId: string; onClose: () => void }> = 
 
   return (
     <ScrollView style={{ maxHeight: 500 }}>
-      <Text style={styles.formLabel}>Ombrellone N.{umbrella.number} · {umbrella.zone}</Text>
+      <Text style={styles.formLabel}>
+        Ombrellone N.{umbrella.number} · {umbrella.side === 'nord' ? 'Nord' : 'Sud'} · {umbrella.zone}
+      </Text>
 
       <Text style={[styles.formLabel, { marginTop: spacing.md }]}>Numero</Text>
       <TextInput
@@ -792,6 +950,23 @@ const styles = StyleSheet.create({
   },
   exitBtnText: { color: colors.primaryDark, fontWeight: '700', fontSize: 11 },
   scrollBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  dateSectionHeader: {
+    fontWeight: '800',
+    color: colors.primaryDark,
+    fontSize: 13,
+    textTransform: 'uppercase',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  infoValue: { fontWeight: '700', color: colors.text },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { fontWeight: '700', fontSize: 15, color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 2 },

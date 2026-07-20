@@ -3,10 +3,10 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { QuickBookingForm } from '../components/QuickBookingForm';
-import { Button } from '../components/UI';
+import { Chip, Button } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing, statusColor } from '../theme';
-import { Booking } from '../types';
+import { BeachSide, Booking } from '../types';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 
 const LABEL_WIDTH = 96;
@@ -31,9 +31,15 @@ export const QuadroScreen: React.FC = () => {
   const { umbrellas, bookings, getUmbrella, getCustomer } = useStore();
   const navigation = useNavigation<any>();
   const [windowStart, setWindowStart] = useState(0);
+  const [sideFilter, setSideFilter] = useState<BeachSide | 'tutti'>('nord');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [newBookingSlot, setNewBookingSlot] = useState<{ umbrellaId: string; offset: number } | null>(
     null
+  );
+
+  const visibleUmbrellas = useMemo(
+    () => (sideFilter === 'tutti' ? umbrellas : umbrellas.filter((u) => u.side === sideFilter)),
+    [umbrellas, sideFilter]
   );
 
   const days = useMemo(
@@ -90,14 +96,25 @@ export const QuadroScreen: React.FC = () => {
         </Text>
       </View>
 
+      <View style={[styles.filterRow]}>
+        {(['nord', 'sud', 'tutti'] as const).map((s) => (
+          <Chip
+            key={s}
+            label={s === 'tutti' ? 'Tutti i lati' : s === 'nord' ? 'Lato Nord' : 'Lato Sud'}
+            selected={sideFilter === s}
+            onPress={() => setSideFilter(s)}
+          />
+        ))}
+      </View>
+
       <ScrollView>
         <View style={{ flexDirection: 'row' }}>
           <View style={{ width: LABEL_WIDTH }}>
             <View style={{ height: MONTH_HEADER_HEIGHT + HEADER_HEIGHT }} />
-            {umbrellas.map((u) => (
+            {visibleUmbrellas.map((u) => (
               <View key={u.id} style={[styles.labelCell, { height: ROW_HEIGHT }]}>
                 <Text style={styles.labelText} numberOfLines={1}>
-                  {u.number} · {u.zone.replace('Fila ', 'F.')}
+                  {u.number} · {u.side === 'nord' ? 'N' : 'S'}{u.row + 1}
                 </Text>
               </View>
             ))}
@@ -119,7 +136,7 @@ export const QuadroScreen: React.FC = () => {
                   </View>
                 ))}
               </View>
-              {umbrellas.map((u) => {
+              {visibleUmbrellas.map((u) => {
                 const rowBookings = bookingsByUmbrella.get(u.id) ?? [];
                 return (
                   <View key={u.id} style={{ height: ROW_HEIGHT, width: WINDOW_SIZE * DAY_WIDTH }}>
@@ -233,6 +250,12 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   headerTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
   headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2, marginBottom: spacing.sm },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',

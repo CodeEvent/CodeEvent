@@ -1,33 +1,38 @@
 import {
   Article,
+  BeachSide,
   Booking,
   Conto,
   Customer,
   DailyStat,
   PriceList,
   Umbrella,
-  Zone,
 } from '../types';
 import { isoDate } from '../utils/format';
 
-const ZONES: Zone[] = ['Fila A', 'Fila B', 'Fila C', 'Fila D', 'VIP'];
+const SIDES: BeachSide[] = ['nord', 'sud'];
+export const ROWS_PER_SIDE = 12;
+export const COLS_PER_ROW = 10;
 
 export function buildUmbrellas(): Umbrella[] {
   const umbrellas: Umbrella[] = [];
   let n = 1;
-  ZONES.forEach((zone, rowIdx) => {
-    const perRow = zone === 'VIP' ? 8 : 12;
-    for (let col = 0; col < perRow; col++) {
-      umbrellas.push({
-        id: `u-${n}`,
-        number: n,
-        row: rowIdx,
-        col,
-        zone,
-        hasCabin: zone === 'VIP' || col % 4 === 0,
-        status: 'libero',
-      });
-      n++;
+  SIDES.forEach((side) => {
+    for (let row = 0; row < ROWS_PER_SIDE; row++) {
+      for (let col = 0; col < COLS_PER_ROW; col++) {
+        umbrellas.push({
+          id: `u-${n}`,
+          number: n,
+          side,
+          row,
+          col,
+          zone: `Fila ${row + 1}`,
+          // Front row (closest to the sea) and every 5th spot come with a cabin
+          hasCabin: row === 0 || col % 5 === 0,
+          status: 'libero',
+        });
+        n++;
+      }
     }
   });
   return umbrellas;
@@ -187,9 +192,10 @@ export function buildContiStorico(): Conto[] {
 }
 
 export function applySeasonalAssignments(umbrellas: Umbrella[], customers: Customer[]): void {
-  const vipUmbrellas = umbrellas.filter((u) => u.zone === 'VIP');
+  // Front row (closest to the sea, on both sides) is the premium tier reserved for seasonal subscribers.
+  const frontRow = umbrellas.filter((u) => u.row === 0);
   const vipCustomers = customers.filter((c) => c.vip);
-  vipUmbrellas.slice(0, vipCustomers.length).forEach((u, idx) => {
+  frontRow.slice(0, vipCustomers.length).forEach((u, idx) => {
     const customer = vipCustomers[idx];
     u.assignedCustomerId = customer.id;
     customer.assignedUmbrellaId = u.id;

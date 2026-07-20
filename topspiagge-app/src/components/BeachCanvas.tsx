@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { colors, radius, spacing } from '../theme';
-import { Umbrella } from '../types';
+import { BeachSide, Umbrella } from '../types';
 
 export const CELL = 72;
 export const GAP = 8;
@@ -21,6 +21,43 @@ export function useUmbrellaPositions(umbrellas: Umbrella[]) {
     return positions;
   }, [umbrellas]);
 }
+
+interface SideSwitchProps {
+  value: BeachSide;
+  onChange: (side: BeachSide) => void;
+  counts?: Record<BeachSide, number>;
+}
+
+// Lets staff/customers pick which half of the beach to view, instead of
+// dumping all 240 umbrellas on screen at once.
+export const SideSwitch: React.FC<SideSwitchProps> = ({ value, onChange, counts }) => (
+  <View style={styles.sideSwitch}>
+    {(['nord', 'sud'] as const).map((side) => {
+      const active = value === side;
+      return (
+        <Pressable
+          key={side}
+          onPress={() => onChange(side)}
+          style={[styles.sideBtn, active && styles.sideBtnActive]}
+        >
+          <Ionicons
+            name={side === 'nord' ? 'arrow-up-circle-outline' : 'arrow-down-circle-outline'}
+            size={16}
+            color={active ? colors.white : colors.primary}
+          />
+          <Text style={[styles.sideBtnText, active && styles.sideBtnTextActive]}>
+            {side === 'nord' ? 'Lato Nord' : 'Lato Sud'}
+          </Text>
+          {counts && (
+            <Text style={[styles.sideBtnCount, active && styles.sideBtnCountActive]}>
+              {counts[side]} liberi
+            </Text>
+          )}
+        </Pressable>
+      );
+    })}
+  </View>
+);
 
 export const WaveFooter: React.FC = () => (
   <Svg width="100%" height={22} viewBox="0 0 400 24" preserveAspectRatio="none">
@@ -77,6 +114,27 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({ umbrellas, positions, 
 };
 
 const styles = StyleSheet.create({
+  sideSwitch: {
+    flexDirection: 'row',
+    backgroundColor: colors.bg,
+    borderRadius: radius.lg,
+    padding: 4,
+    gap: 4,
+  },
+  sideBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+  },
+  sideBtnActive: { backgroundColor: colors.primary },
+  sideBtnText: { fontWeight: '700', fontSize: 13, color: colors.primary },
+  sideBtnTextActive: { color: colors.white },
+  sideBtnCount: { fontSize: 11, color: colors.textMuted, marginLeft: 2 },
+  sideBtnCountActive: { color: 'rgba(255,255,255,0.85)' },
   beach: { flex: 1, backgroundColor: colors.sand },
   boardScroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
   boardRow: { flexDirection: 'row' },
