@@ -5,8 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BeachCanvas, GAP, MIN_CELL, useUmbrellaPositions } from '../components/BeachCanvas';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
-import { colors, spacing, statusColor } from '../theme';
+import { colors, spacing } from '../theme';
 import { Umbrella } from '../types';
+import { DISPLAY_STATUSES, displayStatusColor, displayStatusFor, displayStatusLabel } from '../utils/displayStatus';
 
 const TAP_THRESHOLD = 10;
 const ROWS = 12;
@@ -17,9 +18,10 @@ const UmbrellaCell: React.FC<{
   positions: Map<string, { x: number; y: number }>;
   allUmbrellas: Umbrella[];
   cellSize: number;
+  cellColor: string;
   onDrop: (fromId: string, toId: string) => void;
   onTap: (id: string) => void;
-}> = ({ umbrella, position, positions, allUmbrellas, cellSize, onDrop, onTap }) => {
+}> = ({ umbrella, position, positions, allUmbrellas, cellSize, cellColor, onDrop, onTap }) => {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [dragging, setDragging] = useState(false);
 
@@ -75,7 +77,7 @@ const UmbrellaCell: React.FC<{
           width: cellSize,
           height: cellSize,
           borderRadius: cellSize / 2,
-          backgroundColor: statusColor[umbrella.status],
+          backgroundColor: cellColor,
           borderColor: colors.card,
           transform: pan.getTranslateTransform(),
           zIndex: dragging ? 10 : 1,
@@ -87,13 +89,12 @@ const UmbrellaCell: React.FC<{
         {umbrella.number}
       </Text>
       {umbrella.hasCabin && <View style={styles.cabinDot} />}
-      {umbrella.assignedCustomerId && <View style={styles.assigneeDot} />}
     </Animated.View>
   );
 };
 
 export const PiantinaScreen: React.FC = () => {
-  const { umbrellas, swapUmbrellas } = useStore();
+  const { umbrellas, swapUmbrellas, getBooking } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const route = useRoute<any>();
   const { height } = useWindowDimensions();
@@ -125,18 +126,12 @@ export const PiantinaScreen: React.FC = () => {
         <Text style={styles.headerTitle}>Piantina Spiaggia</Text>
         <Text style={styles.headerSubtitle}>Trascina un ombrellone per spostare la prenotazione</Text>
         <View style={styles.legendRow}>
-          {(['libero', 'occupato', 'in_arrivo', 'prenotato'] as const).map((s) => (
+          {DISPLAY_STATUSES.map((s) => (
             <View key={s} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: statusColor[s] }]} />
-              <Text style={styles.legendText}>
-                {s === 'libero' ? 'Libero' : s === 'occupato' ? 'Occupato' : s === 'in_arrivo' ? 'In arrivo' : 'Prenotato'}
-              </Text>
+              <View style={[styles.legendDot, { backgroundColor: displayStatusColor[s] }]} />
+              <Text style={styles.legendText}>{displayStatusLabel[s]}</Text>
             </View>
           ))}
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: colors.accent }]} />
-            <Text style={styles.legendText}>Cliente stagionale</Text>
-          </View>
         </View>
       </View>
 
@@ -154,6 +149,7 @@ export const PiantinaScreen: React.FC = () => {
             positions={positions}
             allUmbrellas={umbrellas}
             cellSize={cellSize}
+            cellColor={displayStatusColor[displayStatusFor(u, getBooking)]}
             onDrop={swapUmbrellas}
             onTap={setSelectedId}
           />
@@ -203,16 +199,5 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.white,
-  },
-  assigneeDot: {
-    position: 'absolute',
-    top: 4,
-    right: 11,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accent,
-    borderWidth: 1.5,
-    borderColor: colors.white,
   },
 });

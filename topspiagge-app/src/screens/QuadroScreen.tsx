@@ -293,7 +293,15 @@ const styles = StyleSheet.create({
   },
   barText: { color: colors.white, fontWeight: '700', fontSize: 10 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: spacing.lg },
-  card: { backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.lg },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    maxHeight: '90%',
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+  },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
   muted: { color: colors.textMuted, fontSize: 13, marginBottom: 2 },
 });

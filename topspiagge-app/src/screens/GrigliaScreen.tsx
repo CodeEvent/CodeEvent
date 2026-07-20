@@ -1,21 +1,29 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { COLS_PER_SIDE } from '../components/BeachCanvas';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { Chip } from '../components/UI';
 import { useStore } from '../store/StoreContext';
-import { colors, radius, spacing, statusColor } from '../theme';
-import { BeachSide, Umbrella, UmbrellaStatus, Zone } from '../types';
+import { colors, radius, spacing } from '../theme';
+import { BeachSide, Umbrella, Zone } from '../types';
+import {
+  DISPLAY_STATUSES,
+  DisplayStatus,
+  displayStatusColor,
+  displayStatusFor,
+  displayStatusLabel,
+} from '../utils/displayStatus';
 
 const ALL_ZONES = 'Tutte';
 const ALL_SIDES = 'tutti';
 
 export const GrigliaScreen: React.FC = () => {
-  const { umbrellas } = useStore();
+  const { umbrellas, getBooking } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sideFilter, setSideFilter] = useState<BeachSide | 'tutti'>(ALL_SIDES);
   const [zoneFilter, setZoneFilter] = useState<string>(ALL_ZONES);
-  const [statusFilter, setStatusFilter] = useState<UmbrellaStatus | 'tutti'>('tutti');
+  const [statusFilter, setStatusFilter] = useState<DisplayStatus | 'tutti'>('tutti');
 
   const zones = useMemo(() => {
     const scoped = sideFilter === ALL_SIDES ? umbrellas : umbrellas.filter((u) => u.side === sideFilter);
@@ -30,35 +38,38 @@ export const GrigliaScreen: React.FC = () => {
         (u) =>
           (sideFilter === ALL_SIDES || u.side === sideFilter) &&
           (zoneFilter === ALL_ZONES || u.zone === zoneFilter) &&
-          (statusFilter === 'tutti' || u.status === statusFilter)
+          (statusFilter === 'tutti' || displayStatusFor(u, getBooking) === statusFilter)
       ),
-    [umbrellas, sideFilter, zoneFilter, statusFilter]
+    [umbrellas, sideFilter, zoneFilter, statusFilter, getBooking]
   );
+
+  // Every row is a fixed line of umbrellas (10 per side, 20 when both sides are shown) --
+  // grouping by row here is what actually reproduces that layout, instead of letting a
+  // flat grid wrap the filtered list at an arbitrary column count.
+  const rowGroups = useMemo(() => {
+    const map = new Map<number, Umbrella[]>();
+    filtered.forEach((u) => {
+      const list = map.get(u.row) ?? [];
+      list.push(u);
+      map.set(u.row, list);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([row, list]) => [row, list.slice().sort((a, b) => a.col - b.col)] as const);
+  }, [filtered]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { libero: 0, occupato: 0, in_arrivo: 0, prenotato: 0 };
-    umbrellas.forEach((u) => (c[u.status] += 1));
+    const c: Record<DisplayStatus, number> = { libero: 0, occupato: 0, da_saldare: 0 };
+    umbrellas.forEach((u) => (c[displayStatusFor(u, getBooking)] += 1));
     return c;
-  }, [umbrellas]);
-
-  const renderItem = ({ item }: { item: Umbrella }) => (
-    <Pressable
-      onPress={() => setSelectedId(item.id)}
-      style={[styles.cell, { backgroundColor: statusColor[item.status] }]}
-    >
-      <Text style={styles.cellNumber}>{item.number}</Text>
-      <Text style={styles.cellZone}>{item.side === 'nord' ? 'N' : 'S'}{item.row + 1}</Text>
-      {item.assignedCustomerId && <View style={styles.assigneeDot} />}
-    </Pressable>
-  );
+  }, [umbrellas, getBooking]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Griglia Ombrelloni</Text>
         <Text style={styles.headerSubtitle}>
-          {counts.libero} liberi · {counts.occupato} occupati · {counts.in_arrivo} in arrivo ·{' '}
-          {counts.prenotato} prenotati
+          {counts.libero} liberi · {counts.occupato} occupati · {counts.da_saldare} da saldare
         </Text>
       </View>
 
@@ -81,10 +92,11 @@ export const GrigliaScreen: React.FC = () => {
         ))}
       </View>
       <View style={styles.filterRow}>
-        {(['tutti', 'libero', 'occupato', 'in_arrivo', 'prenotato'] as const).map((s) => (
+        <Chip label="Tutti gli stati" selected={statusFilter === 'tutti'} onPress={() => setStatusFilter('tutti')} />
+        {DISPLAY_STATUSES.map((s) => (
           <Chip
             key={s}
-            label={s === 'tutti' ? 'Tutti gli stati' : s}
+            label={displayStatusLabel[s]}
             selected={statusFilter === s}
             onPress={() => setStatusFilter(s)}
           />
@@ -92,13 +104,33 @@ export const GrigliaScreen: React.FC = () => {
       </View>
 
       <View style={styles.beach}>
-        <FlatList
-          data={filtered}
-          keyExtractor={(u) => u.id}
-          numColumns={6}
-          contentContainerStyle={{ padding: spacing.lg }}
-          renderItem={renderItem}
-        />
+        <ScrollView contentContainerStyle={styles.scrollBody}>
+          {rowGroups.map(([row, rowUmbrellas]) => (
+            <View key={row} style={styles.rowBlock}>
+              <Text style={styles.rowLabel}>{rowUmbrellas[0].zone}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.rowCells}>
+                  {rowUmbrellas.map((u) => {
+                    const displayStatus = displayStatusFor(u, getBooking);
+                    return (
+                      <React.Fragment key={u.id}>
+                        {u.col === COLS_PER_SIDE && <View style={styles.walkwayDivider} />}
+                        <Pressable
+                          onPress={() => setSelectedId(u.id)}
+                          style={[styles.cell, { backgroundColor: displayStatusColor[displayStatus] }]}
+                        >
+                          <Text style={styles.cellNumber}>{u.number}</Text>
+                          <Text style={styles.cellSide}>{u.side === 'nord' ? 'N' : 'S'}</Text>
+                        </Pressable>
+                      </React.Fragment>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          ))}
+          {rowGroups.length === 0 && <Text style={styles.muted}>Nessun ombrellone corrisponde ai filtri.</Text>}
+        </ScrollView>
         <View style={styles.footerBar}>
           <Text style={styles.footerText}>Risorse in vista: {filtered.length}</Text>
         </View>
@@ -120,10 +152,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   beach: { flex: 1, backgroundColor: colors.sand, marginTop: spacing.sm },
+  scrollBody: { padding: spacing.lg },
+  muted: { color: colors.textMuted, fontSize: 13 },
+  rowBlock: { marginBottom: spacing.md },
+  rowLabel: { fontWeight: '700', color: colors.seaDark, fontSize: 12, marginBottom: 4 },
+  rowCells: { flexDirection: 'row', alignItems: 'center' },
   cell: {
-    flex: 1,
-    aspectRatio: 1,
-    margin: 4,
+    width: 56,
+    height: 56,
+    marginRight: spacing.sm,
     borderRadius: radius.sm,
     borderWidth: 2,
     borderColor: colors.card,
@@ -135,17 +172,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
   },
   cellNumber: { fontWeight: '800', fontSize: 15, color: colors.white },
-  cellZone: { fontSize: 9, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
-  assigneeDot: {
-    position: 'absolute',
-    top: 6,
-    right: 8,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.accent,
-    borderWidth: 1,
-    borderColor: colors.card,
+  cellSide: { fontSize: 9, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
+  walkwayDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.seaDark,
+    opacity: 0.4,
+    marginRight: spacing.sm,
+    alignSelf: 'center',
   },
   footerBar: {
     backgroundColor: colors.seaDark,

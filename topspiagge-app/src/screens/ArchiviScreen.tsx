@@ -10,9 +10,10 @@ import { useAppMode } from '../store/AppModeContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
+import { displayStatusFor } from '../utils/displayStatus';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 
-type Tab = 'prenotazioni' | 'listini' | 'clienti' | 'articoli' | 'disposizione';
+type Tab = 'oggi' | 'prenotazioni' | 'listini' | 'clienti' | 'articoli' | 'disposizione';
 
 const CATEGORY_LABEL: Record<ArticleCategory, string> = {
   ombrellone: 'Spiaggia',
@@ -25,7 +26,7 @@ const CATEGORY_LABEL: Record<ArticleCategory, string> = {
 };
 
 export const ArchiviScreen: React.FC = () => {
-  const [tab, setTab] = useState<Tab>('prenotazioni');
+  const [tab, setTab] = useState<Tab>('oggi');
   const { setMode } = useAppMode();
 
   return (
@@ -39,6 +40,7 @@ export const ArchiviScreen: React.FC = () => {
           </Pressable>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm }}>
+          <Chip label="Oggi" selected={tab === 'oggi'} onPress={() => setTab('oggi')} />
           <Chip label="Prenotazioni" selected={tab === 'prenotazioni'} onPress={() => setTab('prenotazioni')} />
           <Chip label="Disposizione" selected={tab === 'disposizione'} onPress={() => setTab('disposizione')} />
           <Chip label="Listini" selected={tab === 'listini'} onPress={() => setTab('listini')} />
@@ -46,12 +48,131 @@ export const ArchiviScreen: React.FC = () => {
           <Chip label="Articoli" selected={tab === 'articoli'} onPress={() => setTab('articoli')} />
         </View>
       </View>
+      {tab === 'oggi' && <OggiTab />}
       {tab === 'prenotazioni' && <PrenotazioniTab />}
       {tab === 'disposizione' && <DisposizioneTab />}
       {tab === 'listini' && <ListiniTab />}
       {tab === 'clienti' && <ClientiTab />}
       {tab === 'articoli' && <ArticoliTab />}
     </SafeAreaView>
+  );
+};
+
+const OggiTab: React.FC = () => {
+  const navigation = useNavigation<any>();
+  const { bookings, umbrellas, getUmbrella, getCustomer, getBooking, freeUmbrella } = useStore();
+  const alert = useAppAlert();
+  const today = isoDate(0);
+
+  const arrivals = useMemo(() => bookings.filter((b) => b.dateFrom === today), [bookings, today]);
+  const departures = useMemo(() => bookings.filter((b) => b.dateTo === today), [bookings, today]);
+  const daSaldareUmbrellas = useMemo(
+    () => umbrellas.filter((u) => displayStatusFor(u, getBooking) === 'da_saldare'),
+    [umbrellas, getBooking]
+  );
+
+  const confirmFree = (umbrellaId: string, label: string) => {
+    alert('Liberare questo ombrellone?', `${label}. Tornerà disponibile per nuove prenotazioni.`, [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Libera', style: 'destructive', onPress: () => freeUmbrella(umbrellaId) },
+    ]);
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollBody}>
+      <Text style={styles.dateSectionHeader}>Arrivi di oggi ({arrivals.length})</Text>
+      {arrivals.length === 0 && <Text style={styles.muted}>Nessun arrivo previsto oggi.</Text>}
+      {arrivals.map((b) => {
+        const u = getUmbrella(b.umbrellaId);
+        const customer = getCustomer(b.customerId);
+        return (
+          <Card key={b.id} style={{ marginBottom: spacing.md }}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.itemTitle}>
+                Ombrellone N.{u?.number} · {u?.zone}
+              </Text>
+              <Badge status={b.status} />
+            </View>
+            <Text style={styles.muted}>
+              {customer?.name ?? 'Cliente'} · {customer?.phone}
+            </Text>
+            <Button
+              title="Vai alla Piantina"
+              variant="secondary"
+              onPress={() => navigation.navigate('Piantina', { umbrellaId: b.umbrellaId })}
+              style={{ marginTop: spacing.sm, paddingVertical: 6 }}
+            />
+          </Card>
+        );
+      })}
+
+      <Text style={[styles.dateSectionHeader, { marginTop: spacing.lg }]}>
+        Partenze di oggi · da liberare ({departures.length})
+      </Text>
+      {departures.length === 0 && <Text style={styles.muted}>Nessuna partenza prevista oggi.</Text>}
+      {departures.map((b) => {
+        const u = getUmbrella(b.umbrellaId);
+        const customer = getCustomer(b.customerId);
+        const remaining = b.totalPrice - b.paid;
+        return (
+          <Card key={b.id} style={{ marginBottom: spacing.md }}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.itemTitle}>
+                Ombrellone N.{u?.number} · {u?.zone}
+              </Text>
+              <Badge status={b.status} />
+            </View>
+            <Text style={styles.muted}>{customer?.name ?? 'Cliente'}</Text>
+            {remaining > 0 && (
+              <Text style={[styles.muted, { color: colors.occupato, fontWeight: '700' }]}>
+                Da saldare: {formatCurrency(remaining)}
+              </Text>
+            )}
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+              <Button
+                title="Vai al Conto"
+                onPress={() => navigation.navigate('Conto', { umbrellaId: b.umbrellaId })}
+                style={{ flex: 1, paddingVertical: 6 }}
+              />
+              <Button
+                title="Libera ombrellone"
+                variant="danger"
+                onPress={() =>
+                  confirmFree(b.umbrellaId, `${customer?.name ?? 'Cliente'} · Ombrellone N.${u?.number}`)
+                }
+                style={{ flex: 1, paddingVertical: 6 }}
+              />
+            </View>
+          </Card>
+        );
+      })}
+
+      <Text style={[styles.dateSectionHeader, { marginTop: spacing.lg }]}>
+        Da saldare ({daSaldareUmbrellas.length})
+      </Text>
+      {daSaldareUmbrellas.length === 0 && <Text style={styles.muted}>Nessun conto sospeso al momento.</Text>}
+      {daSaldareUmbrellas.map((u) => {
+        const b = getBooking(u.currentBookingId);
+        const customer = getCustomer(b?.customerId);
+        const remaining = b ? b.totalPrice - b.paid : 0;
+        return (
+          <Card key={u.id} style={styles.daSaldareCard}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.itemTitle}>
+                Ombrellone N.{u.number} · {u.zone}
+              </Text>
+              <Text style={styles.daSaldareAmount}>{formatCurrency(remaining)}</Text>
+            </View>
+            <Text style={styles.muted}>{customer?.name ?? 'Cliente'}</Text>
+            <Button
+              title="Vai al Conto"
+              onPress={() => navigation.navigate('Conto', { umbrellaId: u.id })}
+              style={{ marginTop: spacing.sm, paddingVertical: 6 }}
+            />
+          </Card>
+        );
+      })}
+    </ScrollView>
   );
 };
 
@@ -957,6 +1078,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },
+  daSaldareCard: {
+    marginBottom: spacing.md,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.black,
+  },
+  daSaldareAmount: { fontWeight: '800', fontSize: 15, color: colors.black },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

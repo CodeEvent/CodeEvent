@@ -1,11 +1,20 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { Booking, Customer, GuestCount } from '../types';
-import { findCustomerConflict, findUmbrellaConflict } from '../utils/booking';
+import { Booking, Customer } from '../types';
+import {
+  distributeGuests,
+  findCustomerConflict,
+  findNearestUmbrellas,
+  findUmbrellaConflict,
+  MAX_ADULTS_PER_UMBRELLA,
+  umbrellasNeededFor,
+} from '../utils/booking';
 import { DEPOSIT_RATE, refundCutoffDate } from '../utils/cancellation';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
+import { Calendar } from './Calendar';
 import { Button, Chip, Stepper } from './UI';
 
 interface Props {
@@ -14,40 +23,109 @@ interface Props {
   initialFromOffset?: number;
 }
 
+const PERIOD_PRESETS = [
+  { label: '1 giorno', days: 1 },
+  { label: '2 giorni', days: 2 },
+  { label: '3 giorni', days: 3 },
+  { label: '1 settimana', days: 7 },
+];
+
 export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialFromOffset = 0 }) => {
-  const { customers, bookings, createBooking, upsertCustomer, getActivePriceList, getUmbrella } = useStore();
-  const [fromOffset, setFromOffset] = useState(initialFromOffset);
-  const [length, setLength] = useState(1);
+  const { umbrellas, customers, bookings, createBooking, upsertCustomer, getActivePriceList, getUmbrella } =
+    useStore();
+  const [startOffset, setStartOffset] = useState(initialFromOffset);
+  const [days, setDays] = useState(1);
+  const [awaitingEndDate, setAwaitingEndDate] = useState(false);
   const [query, setQuery] = useState('');
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(
-    customers[0]?.id
-  );
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(customers[0]?.id);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [adults, setAdults] = useState(2);
   const [children5to15, setChildren5to15] = useState(0);
   const [childrenUnder5, setChildrenUnder5] = useState(0);
+  const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>([]);
 
+  const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
-  const dateFrom = isoDate(fromOffset);
-  const dateTo = isoDate(fromOffset + length - 1);
-  const total = dailyRate * length;
-  const deposit = Math.round(total * DEPOSIT_RATE);
+  const dateFrom = isoDate(startOffset);
+  const dateTo = isoDate(startOffset + days - 1);
+  const perUmbrellaTotal = dailyRate * days;
+  const perUmbrellaDeposit = Math.round(perUmbrellaTotal * DEPOSIT_RATE);
   const cutoffDate = refundCutoffDate(dateFrom);
+  const isToday = startOffset === 0;
+
+  const isFreeForPeriod = (u: { id: string }) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
+
+  const umbrellasNeeded = umbrellasNeededFor(adults);
+
+  const handleSelectDate = (offset: number) => {
+    if (awaitingEndDate && offset > startOffset) {
+      setDays(offset - startOffset + 1);
+      setAwaitingEndDate(false);
+    } else {
+      setStartOffset(offset);
+      setDays(1);
+      setAwaitingEndDate(true);
+    }
+  };
+
+  const handleSelectDuration = (presetDays: number) => {
+    setDays(presetDays);
+    setAwaitingEndDate(false);
+  };
+
+  const nearbySuggestions = useMemo(() => {
+    if (!umbrella) return [];
+    return findNearestUmbrellas(umbrella, umbrellas, isFreeForPeriod, new Set([umbrella.id]), 8);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [umbrella, umbrellas, bookings, dateFrom, dateTo]);
+
+  // Only adults count against an umbrella's occupancy cap, so extra umbrellas are
+  // suggested based on adult headcount alone -- same mechanic as the customer app.
+  const adjustExtras = (newAdults: number) => {
+    setExtraUmbrellaIds((prev) => {
+      const needed = Math.max(0, umbrellasNeededFor(newAdults) - 1);
+      if (prev.length === needed) return prev;
+      if (prev.length > needed) return prev.slice(0, needed);
+      const excludeIds = new Set([umbrellaId, ...prev]);
+      const additions = umbrella
+        ? findNearestUmbrellas(umbrella, umbrellas, isFreeForPeriod, excludeIds, needed - prev.length)
+        : [];
+      return [...prev, ...additions.map((u) => u.id)];
+    });
+  };
+
+  const changeAdults = (v: number) => {
+    setAdults(v);
+    adjustExtras(v);
+  };
+
+  const toggleExtra = (id: string) => {
+    setExtraUmbrellaIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const allUmbrellaIds = [umbrellaId, ...extraUmbrellaIds];
+  const capacity = allUmbrellaIds.length * MAX_ADULTS_PER_UMBRELLA;
+  const capacityOk = capacity >= adults;
+  const total = perUmbrellaTotal * allUmbrellaIds.length;
+  const deposit = perUmbrellaDeposit * allUmbrellaIds.length;
 
   const filteredCustomers = useMemo(
-    () =>
-      customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6),
+    () => customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6),
     [customers, query]
   );
 
-  const conflict = useMemo(
+  const primaryConflict = useMemo(
     () => findUmbrellaConflict(bookings, umbrellaId, dateFrom, dateTo),
     [bookings, umbrellaId, dateFrom, dateTo]
   );
-  const conflictCustomer = customers.find((c) => c.id === conflict?.customerId);
+  const conflictCustomer = customers.find((c) => c.id === primaryConflict?.customerId);
+  const anyConflict = useMemo(
+    () => allUmbrellaIds.some((id) => findUmbrellaConflict(bookings, id, dateFrom, dateTo)),
+    [bookings, allUmbrellaIds, dateFrom, dateTo]
+  );
 
   const customerConflict = useMemo(() => {
     if (creatingCustomer || !selectedCustomerId) return undefined;
@@ -55,10 +133,10 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   }, [bookings, selectedCustomerId, umbrellaId, dateFrom, dateTo, creatingCustomer]);
   const customerConflictUmbrella = getUmbrella(customerConflict?.umbrellaId ?? '');
 
-  const canConfirm = creatingCustomer ? newName.trim().length > 0 : !!selectedCustomerId;
+  const canConfirm = (creatingCustomer ? newName.trim().length > 0 : !!selectedCustomerId) && capacityOk;
 
   const confirm = () => {
-    if (conflict || customerConflict || !canConfirm) return;
+    if (anyConflict || customerConflict || !canConfirm) return;
 
     let customerId = selectedCustomerId;
     if (creatingCustomer) {
@@ -77,27 +155,29 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     }
     if (!customerId) return;
 
-    const status = fromOffset === 0 ? 'occupato' : 'prenotato';
-    const guests: GuestCount = { adults, children5to15, childrenUnder5 };
-    const booking: Booking = {
-      id: `bk-${umbrellaId}-${Date.now()}`,
-      umbrellaId,
-      customerId,
+    const status = isToday ? 'occupato' : 'prenotato';
+    const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
+    const guestSlots = distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length);
+    const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => ({
+      id: `bk-${uId}-${Date.now()}-${idx}`,
+      umbrellaId: uId,
+      customerId: customerId!,
       dateFrom,
       dateTo,
-      totalPrice: total,
-      deposit: fromOffset === 0 ? 0 : deposit,
-      paid: fromOffset === 0 ? total : deposit,
+      totalPrice: perUmbrellaTotal,
+      deposit: isToday ? 0 : perUmbrellaDeposit,
+      paid: isToday ? perUmbrellaTotal : perUmbrellaDeposit,
       status,
       createdAt: isoDate(0),
-      guests,
-    };
-    createBooking(booking);
+      guests: guestSlots[idx],
+      groupId,
+    }));
+    createdBookings.forEach(createBooking);
     onDone();
   };
 
   return (
-    <ScrollView style={{ maxHeight: 420 }}>
+    <ScrollView style={{ maxHeight: 560 }}>
       <View style={styles.rowBetween}>
         <Text style={styles.label}>Cliente</Text>
         <Button
@@ -154,31 +234,58 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       )}
 
       <Text style={[styles.label, { marginTop: spacing.lg }]}>Periodo</Text>
+      <Calendar startOffset={startOffset} days={days} onSelectDate={handleSelectDate} />
+      <Text style={styles.muted}>
+        {awaitingEndDate ? 'Ora tocca il giorno di partenza' : 'Tocca il giorno di arrivo sul calendario'}
+      </Text>
       <View style={styles.row}>
-        <Text style={styles.periodText}>
-          {fromOffset === 0 ? 'Oggi' : formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
-        </Text>
-      </View>
-      <View style={styles.row}>
-        <Button title="− Inizio" variant="secondary" onPress={() => setFromOffset((v) => Math.max(0, v - 1))} style={styles.smallBtn} />
-        <Button title="+ Inizio" variant="secondary" onPress={() => setFromOffset((v) => v + 1)} style={styles.smallBtn} />
-        <Button title="− Giorni" variant="secondary" onPress={() => setLength((v) => Math.max(1, v - 1))} style={styles.smallBtn} />
-        <Button title="+ Giorni" variant="secondary" onPress={() => setLength((v) => v + 1)} style={styles.smallBtn} />
+        {PERIOD_PRESETS.map((p) => (
+          <Chip key={p.days} label={p.label} selected={days === p.days} onPress={() => handleSelectDuration(p.days)} />
+        ))}
       </View>
       <Text style={styles.muted}>
-        {length} {length === 1 ? 'giorno' : 'giorni'} · {formatCurrency(dailyRate)}/giorno ({priceList.name})
+        {isToday ? 'Oggi' : formatDateShort(dateFrom)} → {formatDateShort(dateTo)} · {days}{' '}
+        {days === 1 ? 'giorno' : 'giorni'} · {formatCurrency(dailyRate)}/giorno ({priceList.name})
       </Text>
 
       <Text style={[styles.label, { marginTop: spacing.lg }]}>Ospiti</Text>
       <View style={styles.guestsBox}>
-        <Stepper label="Adulti" value={adults} min={1} onChange={setAdults} />
+        <Stepper label="Adulti" value={adults} min={1} onChange={changeAdults} />
         <View style={styles.divider} />
         <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={setChildren5to15} />
         <View style={styles.divider} />
         <Stepper label="Bambini sotto i 5 anni" value={childrenUnder5} onChange={setChildrenUnder5} />
       </View>
+      <Text style={styles.muted}>Max {MAX_ADULTS_PER_UMBRELLA} adulti per ombrellone · bambini illimitati</Text>
 
-      {fromOffset > 0 && (
+      {umbrellasNeeded > 1 && (
+        <View style={styles.extraBox}>
+          <Text style={styles.extraBoxTitle}>Ombrelloni aggiuntivi</Text>
+          <Text style={styles.muted}>
+            Per {adults} adulti servono {umbrellasNeeded} ombrelloni. Ti suggeriamo i più vicini a quello scelto.
+          </Text>
+          {nearbySuggestions.map((u) => {
+            const selected = extraUmbrellaIds.includes(u.id);
+            return (
+              <Pressable key={u.id} onPress={() => toggleExtra(u.id)} style={styles.extraRow}>
+                <Ionicons
+                  name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={18}
+                  color={selected ? colors.libero : colors.border}
+                />
+                <Text style={styles.extraRowText}>
+                  Ombrellone N.{u.number} · {u.zone}
+                </Text>
+              </Pressable>
+            );
+          })}
+          <Text style={[styles.muted, { marginTop: spacing.xs }]}>
+            Capienza: max {capacity} adulti in {allUmbrellaIds.length} ombrelloni · nel gruppo: {adults} adulti
+          </Text>
+        </View>
+      )}
+
+      {!isToday && (
         <View style={styles.policyBox}>
           <Text style={styles.policyText}>
             Acconto 20% ({formatCurrency(deposit)}). Rimborsabile se cancellata entro il{' '}
@@ -187,33 +294,37 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         </View>
       )}
 
-      {conflict && (
+      {anyConflict && (
         <View style={styles.conflictBox}>
           <Text style={styles.conflictText}>
-            Non disponibile: già prenotato da {conflictCustomer?.name ?? 'un altro cliente'} dal{' '}
-            {formatDateShort(conflict.dateFrom)} al {formatDateShort(conflict.dateTo)}.
+            Non disponibile: uno degli ombrelloni selezionati è già prenotato
+            {primaryConflict ? ` da ${conflictCustomer?.name ?? 'un altro cliente'}` : ''} dal{' '}
+            {primaryConflict ? formatDateShort(primaryConflict.dateFrom) : ''} al{' '}
+            {primaryConflict ? formatDateShort(primaryConflict.dateTo) : ''}.
           </Text>
         </View>
       )}
 
-      {!conflict && customerConflict && (
+      {!anyConflict && customerConflict && (
         <View style={styles.conflictBox}>
           <Text style={styles.conflictText}>
-            Il cliente ha già l'Ombrellone {customerConflictUmbrella?.number} ({customerConflictUmbrella?.zone}) prenotato dal{' '}
-            {formatDateShort(customerConflict.dateFrom)} al {formatDateShort(customerConflict.dateTo)}.
+            Il cliente ha già l'Ombrellone {customerConflictUmbrella?.number} ({customerConflictUmbrella?.zone})
+            prenotato dal {formatDateShort(customerConflict.dateFrom)} al {formatDateShort(customerConflict.dateTo)}.
           </Text>
         </View>
       )}
 
       <View style={styles.totalRow}>
-        <Text style={styles.totalLabel}>Totale stimato</Text>
+        <Text style={styles.totalLabel}>
+          Totale stimato {allUmbrellaIds.length > 1 ? `(${allUmbrellaIds.length} ombrelloni)` : ''}
+        </Text>
         <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
       </View>
 
       <Button
-        title={fromOffset === 0 ? 'Check-in ora' : 'Conferma prenotazione'}
+        title={isToday ? 'Check-in ora' : 'Conferma prenotazione'}
         onPress={confirm}
-        disabled={!canConfirm || !!conflict || !!customerConflict}
+        disabled={!canConfirm || anyConflict || !!customerConflict}
         style={{ marginTop: spacing.lg }}
       />
     </ScrollView>
@@ -234,8 +345,6 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, flexWrap: 'wrap' },
-  smallBtn: { paddingHorizontal: spacing.sm, paddingVertical: 8, marginRight: spacing.sm, marginBottom: spacing.sm },
-  periodText: { fontSize: 15, fontWeight: '600', color: colors.primaryDark },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: spacing.xs },
   conflictBox: {
     backgroundColor: colors.occupatoBg,
@@ -251,6 +360,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  extraBox: {
+    backgroundColor: colors.in_arrivoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  extraBoxTitle: { fontWeight: '700', color: colors.primaryDark, fontSize: 13, marginBottom: 2 },
+  extraRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  extraRowText: { color: colors.text, fontWeight: '600', fontSize: 13 },
   policyBox: {
     backgroundColor: colors.prenotatoBg,
     borderRadius: radius.md,
