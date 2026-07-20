@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
 import { BeachCanvas, CELL, SideSwitch, useUmbrellaPositions } from '../../components/BeachCanvas';
+import { Calendar } from '../../components/Calendar';
 import { Badge, Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
 import { useStore } from '../../store/StoreContext';
@@ -68,17 +69,22 @@ export const CustomerBookingScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => setMode('select')} style={styles.backLink}>
-          <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-          <Text style={styles.backLinkText}>Cambia modalità</Text>
-        </Pressable>
-        <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Prenota il tuo ombrellone</Text>
-          <Pressable onPress={() => setMyBookingsVisible(true)} style={styles.myBookingsBtn}>
-            <Ionicons name="person-circle-outline" size={16} color={colors.white} />
-            <Text style={styles.myBookingsText}>Le mie prenotazioni</Text>
+        <View style={styles.headerTopRow}>
+          <Pressable onPress={() => setMode('select')} style={styles.backLink}>
+            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+            <Text style={styles.backLinkText}>Cambia modalità</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMyBookingsVisible(true)}
+            style={styles.myBookingsBtn}
+            accessibilityLabel="Le mie prenotazioni"
+          >
+            <Ionicons name="person-circle-outline" size={18} color={colors.primary} />
           </Pressable>
         </View>
+        <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit>
+          Prenota il tuo ombrellone
+        </Text>
         <Text style={styles.headerSubtitle}>Bagno Pietrasanta</Text>
       </View>
 
@@ -149,44 +155,37 @@ const DateStep: React.FC<{
 }> = ({ startOffset, setStartOffset, days, setDays, dateFrom, dateTo, onContinue }) => (
   <ScrollView contentContainerStyle={styles.dateStepBody}>
     <Text style={styles.stepTitle}>Quando vuoi venire?</Text>
-    <Text style={styles.stepSubtitle}>Scegli l'arrivo e la durata del soggiorno</Text>
+    <Text style={styles.stepSubtitle}>Tocca un giorno sul calendario per scegliere l'arrivo</Text>
 
-    <Text style={styles.label}>Arrivo</Text>
-    <View style={styles.row}>
-      <Chip label="Oggi" selected={startOffset === 0} onPress={() => setStartOffset(() => 0)} />
-      <Chip label="Domani" selected={startOffset === 1} onPress={() => setStartOffset(() => 1)} />
-      <Chip label="Dopodomani" selected={startOffset === 2} onPress={() => setStartOffset(() => 2)} />
-      <Pressable onPress={() => setStartOffset((v) => v + 1)} style={styles.stepBtn}>
-        <Ionicons name="add" size={16} color={colors.primary} />
-      </Pressable>
-    </View>
+    <Calendar startOffset={startOffset} days={days} onSelectStartOffset={(o) => setStartOffset(() => o)} />
 
-    <Text style={[styles.label, { marginTop: spacing.lg }]}>Durata</Text>
+    <Text style={[styles.label, { marginTop: spacing.lg }]}>Durata del soggiorno</Text>
     <View style={styles.row}>
       {PERIOD_PRESETS.map((p) => (
         <Chip key={p.days} label={p.label} selected={days === p.days} onPress={() => setDays(() => p.days)} />
       ))}
     </View>
 
-    <View style={styles.periodBox}>
-      <View style={styles.periodRow}>
-        <Text style={styles.periodLabel}>Dal</Text>
-        <Text style={styles.periodDate}>{formatDateLong(dateFrom)}</Text>
-      </View>
-      <View style={styles.periodRow}>
-        <Text style={styles.periodLabel}>Al</Text>
-        <View style={styles.periodDateAdjust}>
-          <Pressable onPress={() => setDays((v) => Math.max(1, v - 1))} style={styles.periodNudgeBtn}>
-            <Ionicons name="remove" size={14} color={colors.primary} />
-          </Pressable>
-          <Text style={styles.periodDate}>{formatDateLong(dateTo)}</Text>
-          <Pressable onPress={() => setDays((v) => v + 1)} style={styles.periodNudgeBtn}>
-            <Ionicons name="add" size={14} color={colors.primary} />
-          </Pressable>
+    <View style={styles.summaryCard}>
+      <View style={styles.summaryCol}>
+        <View style={styles.summaryIconWrap}>
+          <Ionicons name="log-in-outline" size={16} color={colors.primary} />
         </View>
+        <Text style={styles.summaryLabel}>Arrivo</Text>
+        <Text style={styles.summaryDate}>{formatDateLong(dateFrom)}</Text>
+      </View>
+      <View style={styles.summaryDivider}>
+        <Ionicons name="arrow-forward" size={14} color={colors.border} />
+      </View>
+      <View style={styles.summaryCol}>
+        <View style={styles.summaryIconWrap}>
+          <Ionicons name="log-out-outline" size={16} color={colors.primary} />
+        </View>
+        <Text style={styles.summaryLabel}>Partenza</Text>
+        <Text style={styles.summaryDate}>{formatDateLong(dateTo)}</Text>
       </View>
     </View>
-    <Text style={styles.muted}>{days} {days === 1 ? 'giorno' : 'giorni'}</Text>
+    <Text style={styles.muted}>{days} {days === 1 ? 'giorno' : 'giorni'} di soggiorno</Text>
 
     <Button
       title="Cerca disponibilità"
@@ -630,21 +629,24 @@ const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.card },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.sm },
-  backLink: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  backLink: { flexDirection: 'row', alignItems: 'center' },
   backLinkText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
   headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   myBookingsBtn: {
-    flexDirection: 'row',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.prenotatoBg,
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.xl,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    gap: 4,
+    justifyContent: 'center',
   },
-  myBookingsText: { color: colors.white, fontSize: 11, fontWeight: '700' },
 
   dateStepBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   stepTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: spacing.md },
@@ -652,34 +654,37 @@ const styles = StyleSheet.create({
 
   label: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, flexWrap: 'wrap' },
-  stepBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.sm,
-    backgroundColor: colors.sand,
+  summaryCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  periodBox: {
-    backgroundColor: colors.bg,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
     marginTop: spacing.md,
-    gap: spacing.xs,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  periodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  periodLabel: { color: colors.textMuted, fontWeight: '700', fontSize: 12, textTransform: 'uppercase' },
-  periodDate: { color: colors.text, fontWeight: '700', fontSize: 14, textTransform: 'capitalize' },
-  periodDateAdjust: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  periodNudgeBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: radius.sm,
-    backgroundColor: colors.sand,
+  summaryCol: { flex: 1, alignItems: 'center' },
+  summaryIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.prenotatoBg,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 6,
   },
+  summaryDivider: { paddingHorizontal: spacing.sm },
+  summaryLabel: {
+    color: colors.textMuted,
+    fontWeight: '700',
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  summaryDate: { color: colors.text, fontWeight: '700', fontSize: 14, textTransform: 'capitalize', marginTop: 2 },
 
   mapHeader: {
     flexDirection: 'row',
