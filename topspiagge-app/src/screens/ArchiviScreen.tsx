@@ -33,7 +33,9 @@ export const ArchiviScreen: React.FC = () => {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
         <View style={styles.headerRow}>
-          <SectionHeader title="Archivi" subtitle="Prenotazioni, listini, clienti e articoli su misura per il tuo lido" />
+          <View style={styles.headerTitleWrap}>
+            <SectionHeader title="Archivi" subtitle="Prenotazioni, listini, clienti e articoli su misura per il tuo lido" />
+          </View>
           <Pressable onPress={logout} style={styles.exitBtn}>
             <Ionicons name="log-out-outline" size={14} color={colors.primaryDark} />
             <Text style={styles.exitBtnText}>Esci</Text>
@@ -1059,6 +1061,7 @@ const ArticleForm: React.FC<{ article: Article; onSave: (a: Article) => void; on
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  headerTitleWrap: { flex: 1, flexShrink: 1, marginRight: spacing.sm },
   exitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1067,6 +1070,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
+    flexShrink: 0,
   },
   exitBtnText: { color: colors.primaryDark, fontWeight: '700', fontSize: 11 },
   scrollBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },

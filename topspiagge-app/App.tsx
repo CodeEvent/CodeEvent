@@ -24,7 +24,17 @@ const linking: LinkingOptions<RootStackParamList> = {
   config: {
     screens: {
       Customer: '',
-      Operator: 'operator',
+      Operator: {
+        path: 'operator',
+        screens: {
+          Piantina: 'Piantina',
+          Griglia: 'Griglia',
+          Quadro: 'Quadro',
+          Conto: 'Conto',
+          Statistiche: 'Statistiche',
+          Archivi: 'Archivi',
+        },
+      },
     },
   },
 };
