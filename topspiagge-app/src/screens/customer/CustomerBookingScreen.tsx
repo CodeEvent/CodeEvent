@@ -56,6 +56,7 @@ export const CustomerBookingScreen: React.FC = () => {
   const [step, setStep] = useState<Step>('dates');
   const [startOffset, setStartOffset] = useState(0);
   const [days, setDays] = useState(1);
+  const [awaitingEndDate, setAwaitingEndDate] = useState(false);
   const [side, setSide] = useState<BeachSide>('nord');
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
@@ -65,6 +66,22 @@ export const CustomerBookingScreen: React.FC = () => {
 
   const dateFrom = isoDate(startOffset);
   const dateTo = isoDate(startOffset + days - 1);
+
+  const handleSelectDate = (offset: number) => {
+    if (awaitingEndDate && offset > startOffset) {
+      setDays(offset - startOffset + 1);
+      setAwaitingEndDate(false);
+    } else {
+      setStartOffset(offset);
+      setDays(1);
+      setAwaitingEndDate(true);
+    }
+  };
+
+  const handleSelectDuration = (presetDays: number) => {
+    setDays(presetDays);
+    setAwaitingEndDate(false);
+  };
 
   const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
   const sideUmbrellas = umbrellas.filter((u) => u.side === side);
@@ -144,9 +161,10 @@ export const CustomerBookingScreen: React.FC = () => {
       {step === 'dates' ? (
         <DateStep
           startOffset={startOffset}
-          setStartOffset={setStartOffset}
           days={days}
-          setDays={setDays}
+          awaitingEndDate={awaitingEndDate}
+          onSelectDate={handleSelectDate}
+          onSelectDuration={handleSelectDuration}
           dateFrom={dateFrom}
           dateTo={dateTo}
           onContinue={() => setStep('map')}
@@ -217,23 +235,26 @@ export const CustomerBookingScreen: React.FC = () => {
 
 const DateStep: React.FC<{
   startOffset: number;
-  setStartOffset: (updater: (v: number) => number) => void;
   days: number;
-  setDays: (updater: (v: number) => number) => void;
+  awaitingEndDate: boolean;
+  onSelectDate: (offset: number) => void;
+  onSelectDuration: (days: number) => void;
   dateFrom: string;
   dateTo: string;
   onContinue: () => void;
-}> = ({ startOffset, setStartOffset, days, setDays, dateFrom, dateTo, onContinue }) => (
+}> = ({ startOffset, days, awaitingEndDate, onSelectDate, onSelectDuration, dateFrom, dateTo, onContinue }) => (
   <ScrollView contentContainerStyle={styles.dateStepBody}>
     <Text style={styles.stepTitle}>Quando vuoi venire?</Text>
-    <Text style={styles.stepSubtitle}>Tocca un giorno sul calendario per scegliere l'arrivo</Text>
+    <Text style={styles.stepSubtitle}>
+      {awaitingEndDate ? 'Ora tocca il giorno di partenza' : 'Tocca il giorno di arrivo sul calendario'}
+    </Text>
 
-    <Calendar startOffset={startOffset} days={days} onSelectStartOffset={(o) => setStartOffset(() => o)} />
+    <Calendar startOffset={startOffset} days={days} onSelectDate={onSelectDate} />
 
-    <Text style={[styles.label, { marginTop: spacing.lg }]}>Durata del soggiorno</Text>
+    <Text style={[styles.label, { marginTop: spacing.lg }]}>Oppure scegli una durata rapida</Text>
     <View style={styles.row}>
       {PERIOD_PRESETS.map((p) => (
-        <Chip key={p.days} label={p.label} selected={days === p.days} onPress={() => setDays(() => p.days)} />
+        <Chip key={p.days} label={p.label} selected={days === p.days} onPress={() => onSelectDuration(p.days)} />
       ))}
     </View>
 

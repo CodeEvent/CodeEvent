@@ -28,12 +28,15 @@ function dayDiff(a: Date, b: Date): number {
 interface CalendarProps {
   startOffset: number;
   days: number;
-  onSelectStartOffset: (offset: number) => void;
+  onSelectDate: (offset: number) => void;
 }
 
 // Booking date picker: a real month calendar instead of a handful of chips,
 // so the arrival day and the selected range are both visible at a glance.
-export const Calendar: React.FC<CalendarProps> = ({ startOffset, days, onSelectStartOffset }) => {
+// Tapping a date is a two-step gesture handled by the parent: the first tap
+// sets the arrival day, a later second tap completes the range (inclusive of
+// both days), and the parent tracks which phase we're in.
+export const Calendar: React.FC<CalendarProps> = ({ startOffset, days, onSelectDate }) => {
   const today = useMemo(() => startOfDay(new Date()), []);
   const selectedStart = useMemo(() => addDays(today, startOffset), [today, startOffset]);
   const selectedEnd = useMemo(() => addDays(today, startOffset + days - 1), [today, startOffset, days]);
@@ -105,7 +108,7 @@ export const Calendar: React.FC<CalendarProps> = ({ startOffset, days, onSelectS
             <Pressable
               key={i}
               disabled={isPast}
-              onPress={() => onSelectStartOffset(dayDiff(today, date))}
+              onPress={() => onSelectDate(dayDiff(today, date))}
               style={styles.cell}
             >
               <View style={[styles.cellInner, inRange && !isEdge && styles.cellInRange]}>
