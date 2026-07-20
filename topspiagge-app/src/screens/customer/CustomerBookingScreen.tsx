@@ -7,20 +7,34 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
-import { BeachCanvas, CELL, SideSwitch, useUmbrellaPositions } from '../../components/BeachCanvas';
+import { BeachCanvas, GAP, MIN_CELL, SideSwitch, useUmbrellaPositions } from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
 import { Badge, Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useAppMode } from '../../store/AppModeContext';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { BeachSide, Booking, Customer, GuestCount, Umbrella } from '../../types';
-import { findCustomerConflict, findUmbrellaConflict } from '../../utils/booking';
+import {
+  distributeGuests,
+  findCustomerConflict,
+  findNearestUmbrellas,
+  findUmbrellaConflict,
+  MAX_GUESTS_PER_UMBRELLA,
+  totalGuestCount,
+  umbrellasNeededFor,
+} from '../../utils/booking';
 import { DEPOSIT_RATE, isDepositRefundable, refundCutoffDate } from '../../utils/cancellation';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../../utils/format';
+
+const WIDE_BREAKPOINT = 860;
+const SIDEBAR_WIDTH = 380;
+const ROWS_PER_SIDE = 12;
+const COLS_PER_ROW = 10;
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 
@@ -37,21 +51,37 @@ export const CustomerBookingScreen: React.FC = () => {
   const { setMode } = useAppMode();
   const { umbrellas, bookings } = useStore();
   const alert = useAppAlert();
+  const { width, height } = useWindowDimensions();
 
   const [step, setStep] = useState<Step>('dates');
   const [startOffset, setStartOffset] = useState(0);
   const [days, setDays] = useState(1);
   const [side, setSide] = useState<BeachSide>('nord');
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(null);
-  const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+  const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
   const [myBookingsVisible, setMyBookingsVisible] = useState(false);
+
+  const isWide = width >= WIDE_BREAKPOINT;
 
   const dateFrom = isoDate(startOffset);
   const dateTo = isoDate(startOffset + days - 1);
 
   const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
   const sideUmbrellas = umbrellas.filter((u) => u.side === side);
-  const positions = useUmbrellaPositions(sideUmbrellas);
+
+  const labelWidth = isWide ? 84 : 52;
+  const mapAreaWidth = isWide ? width - SIDEBAR_WIDTH : width;
+  const mapAreaHeight = height - 320;
+  const cellSize = Math.max(
+    MIN_CELL,
+    Math.min(
+      72,
+      Math.floor((mapAreaWidth - spacing.lg * 2 - labelWidth) / COLS_PER_ROW) - GAP,
+      Math.floor(mapAreaHeight / ROWS_PER_SIDE) - GAP
+    )
+  );
+
+  const positions = useUmbrellaPositions(sideUmbrellas, cellSize);
   const freeCounts = {
     nord: umbrellas.filter((u) => u.side === 'nord' && isFreeForPeriod(u)).length,
     sud: umbrellas.filter((u) => u.side === 'sud' && isFreeForPeriod(u)).length,
@@ -65,6 +95,29 @@ export const CustomerBookingScreen: React.FC = () => {
       alert('Non disponibile', `L'ombrellone N.${u.number} non è disponibile per il periodo scelto.`);
     }
   };
+
+  const handleConfirmed = (createdBookings: Booking[]) => {
+    setSelectedUmbrellaId(null);
+    setConfirmedGroup(createdBookings);
+  };
+
+  const mapStepEl = (
+    <MapStep
+      umbrellas={sideUmbrellas}
+      positions={positions}
+      cellSize={cellSize}
+      labelWidth={labelWidth}
+      dateFrom={dateFrom}
+      dateTo={dateTo}
+      freeCount={freeCount}
+      side={side}
+      onSideChange={setSide}
+      sideCounts={freeCounts}
+      isFreeForPeriod={isFreeForPeriod}
+      onTap={handleTap}
+      onChangeDates={() => setStep('dates')}
+    />
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -98,43 +151,61 @@ export const CustomerBookingScreen: React.FC = () => {
           dateTo={dateTo}
           onContinue={() => setStep('map')}
         />
+      ) : isWide ? (
+        <View style={styles.wideRow}>
+          <View style={styles.wideMapCol}>{mapStepEl}</View>
+          <View style={styles.sidebarCol}>
+            {selectedUmbrellaId ? (
+              <BookingForm
+                key={selectedUmbrellaId}
+                umbrellaId={selectedUmbrellaId}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                allUmbrellas={umbrellas}
+                isFreeForPeriod={isFreeForPeriod}
+                onClose={() => setSelectedUmbrellaId(null)}
+                onConfirmed={handleConfirmed}
+              />
+            ) : (
+              <View style={styles.sidebarEmpty}>
+                <Ionicons name="umbrella-outline" size={36} color={colors.border} />
+                <Text style={styles.sidebarEmptyText}>Tocca un ombrellone libero sulla mappa per iniziare la prenotazione</Text>
+              </View>
+            )}
+          </View>
+        </View>
       ) : (
-        <MapStep
-          umbrellas={sideUmbrellas}
-          positions={positions}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          freeCount={freeCount}
-          side={side}
-          onSideChange={setSide}
-          sideCounts={freeCounts}
-          isFreeForPeriod={isFreeForPeriod}
-          onTap={handleTap}
-          onChangeDates={() => setStep('dates')}
-        />
+        mapStepEl
       )}
 
-      {selectedUmbrellaId && (
-        <CustomerBookingSheet
-          umbrellaId={selectedUmbrellaId}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onClose={() => setSelectedUmbrellaId(null)}
-          onConfirmed={(booking) => {
-            setSelectedUmbrellaId(null);
-            setConfirmedBooking(booking);
-          }}
-        />
+      {!isWide && selectedUmbrellaId && (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setSelectedUmbrellaId(null)}>
+          <Pressable style={styles.backdrop} onPress={() => setSelectedUmbrellaId(null)}>
+            <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.handle} />
+              <BookingForm
+                key={selectedUmbrellaId}
+                umbrellaId={selectedUmbrellaId}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                allUmbrellas={umbrellas}
+                isFreeForPeriod={isFreeForPeriod}
+                onClose={() => setSelectedUmbrellaId(null)}
+                onConfirmed={handleConfirmed}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
       )}
 
       <ConfirmationModal
-        booking={confirmedBooking}
+        bookings={confirmedGroup}
         onClose={() => {
-          setConfirmedBooking(null);
+          setConfirmedGroup(null);
           setStep('dates');
         }}
         onSeeMyBookings={() => {
-          setConfirmedBooking(null);
+          setConfirmedGroup(null);
           setMyBookingsVisible(true);
         }}
       />
@@ -199,6 +270,8 @@ const DateStep: React.FC<{
 const MapStep: React.FC<{
   umbrellas: Umbrella[];
   positions: Map<string, { x: number; y: number }>;
+  cellSize: number;
+  labelWidth: number;
   dateFrom: string;
   dateTo: string;
   freeCount: number;
@@ -211,6 +284,8 @@ const MapStep: React.FC<{
 }> = ({
   umbrellas,
   positions,
+  cellSize,
+  labelWidth,
   dateFrom,
   dateTo,
   freeCount,
@@ -253,6 +328,8 @@ const MapStep: React.FC<{
     <BeachCanvas
       umbrellas={umbrellas}
       positions={positions}
+      cellSize={cellSize}
+      labelWidth={labelWidth}
       footerText={`${freeCount} ombrelloni liberi per il periodo scelto`}
       renderCell={(u, position) => {
         const free = isFreeForPeriod(u);
@@ -262,10 +339,19 @@ const MapStep: React.FC<{
             onPress={() => onTap(u)}
             style={[
               styles.cell,
-              { left: position.x, top: position.y, backgroundColor: free ? colors.libero : colors.textMuted },
+              {
+                left: position.x,
+                top: position.y,
+                width: cellSize,
+                height: cellSize,
+                borderRadius: cellSize / 2,
+                backgroundColor: free ? colors.libero : colors.textMuted,
+              },
             ]}
           >
-            <Text style={styles.cellNumber}>{u.number}</Text>
+            <Text style={[styles.cellNumber, { fontSize: Math.min(16, Math.max(9, cellSize / 4.5)) }]}>
+              {u.number}
+            </Text>
           </Pressable>
         );
       }}
@@ -273,13 +359,15 @@ const MapStep: React.FC<{
   </>
 );
 
-const CustomerBookingSheet: React.FC<{
+const BookingForm: React.FC<{
   umbrellaId: string;
   dateFrom: string;
   dateTo: string;
+  allUmbrellas: Umbrella[];
+  isFreeForPeriod: (u: Umbrella) => boolean;
   onClose: () => void;
-  onConfirmed: (booking: Booking) => void;
-}> = ({ umbrellaId, dateFrom, dateTo, onClose, onConfirmed }) => {
+  onConfirmed: (bookings: Booking[]) => void;
+}> = ({ umbrellaId, dateFrom, dateTo, allUmbrellas, isFreeForPeriod, onClose, onConfirmed }) => {
   const { getUmbrella, customers, bookings, createBooking, upsertCustomer, getActivePriceList } = useStore();
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
@@ -287,14 +375,60 @@ const CustomerBookingSheet: React.FC<{
   const [children5to15, setChildren5to15] = useState(0);
   const [childrenUnder5, setChildrenUnder5] = useState(0);
   const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>([]);
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
   const days = Math.round((new Date(dateTo + 'T00:00:00').getTime() - new Date(dateFrom + 'T00:00:00').getTime()) / 86400000) + 1;
-  const total = dailyRate * days;
-  const deposit = Math.round(total * DEPOSIT_RATE);
+  const perUmbrellaTotal = dailyRate * days;
+  const perUmbrellaDeposit = Math.round(perUmbrellaTotal * DEPOSIT_RATE);
   const cutoffDate = refundCutoffDate(dateFrom);
+
+  const totalGuests = totalGuestCount({ adults, children5to15, childrenUnder5 });
+  const umbrellasNeeded = umbrellasNeededFor(totalGuests);
+  const extraNeeded = umbrellasNeeded - 1;
+
+  const nearbySuggestions = useMemo(() => {
+    if (!umbrella) return [];
+    return findNearestUmbrellas(umbrella, allUmbrellas, isFreeForPeriod, new Set([umbrella.id]), 8);
+  }, [umbrella, allUmbrellas, isFreeForPeriod]);
+
+  const adjustExtras = (newTotalGuests: number) => {
+    setExtraUmbrellaIds((prev) => {
+      const needed = Math.max(0, umbrellasNeededFor(newTotalGuests) - 1);
+      if (prev.length === needed) return prev;
+      if (prev.length > needed) return prev.slice(0, needed);
+      const excludeIds = new Set([umbrellaId, ...prev]);
+      const additions = umbrella
+        ? findNearestUmbrellas(umbrella, allUmbrellas, isFreeForPeriod, excludeIds, needed - prev.length)
+        : [];
+      return [...prev, ...additions.map((u) => u.id)];
+    });
+  };
+
+  const changeAdults = (v: number) => {
+    setAdults(v);
+    adjustExtras(v + children5to15 + childrenUnder5);
+  };
+  const changeChildren5to15 = (v: number) => {
+    setChildren5to15(v);
+    adjustExtras(adults + v + childrenUnder5);
+  };
+  const changeChildrenUnder5 = (v: number) => {
+    setChildrenUnder5(v);
+    adjustExtras(adults + children5to15 + v);
+  };
+
+  const toggleExtra = (id: string) => {
+    setExtraUmbrellaIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const allUmbrellaIds = [umbrellaId, ...extraUmbrellaIds];
+  const capacity = allUmbrellaIds.length * MAX_GUESTS_PER_UMBRELLA;
+  const capacityOk = capacity >= totalGuests;
+  const total = perUmbrellaTotal * allUmbrellaIds.length;
+  const deposit = perUmbrellaDeposit * allUmbrellaIds.length;
 
   const matchedCustomer = useMemo(() => {
     const p = normalizePhone(phone);
@@ -305,8 +439,8 @@ const CustomerBookingSheet: React.FC<{
   const isNewCustomer = normalizePhone(phone).length >= 6 && !matchedCustomer;
 
   const conflict = useMemo(
-    () => findUmbrellaConflict(bookings, umbrellaId, dateFrom, dateTo),
-    [bookings, umbrellaId, dateFrom, dateTo]
+    () => allUmbrellaIds.some((id) => findUmbrellaConflict(bookings, id, dateFrom, dateTo)),
+    [bookings, allUmbrellaIds, dateFrom, dateTo]
   );
   const customerConflict = useMemo(() => {
     if (!matchedCustomer) return undefined;
@@ -318,6 +452,7 @@ const CustomerBookingSheet: React.FC<{
     (!!matchedCustomer || (isNewCustomer && newName.trim().length > 0)) &&
     !conflict &&
     !customerConflict &&
+    capacityOk &&
     policyAccepted;
 
   const confirm = () => {
@@ -337,154 +472,194 @@ const CustomerBookingSheet: React.FC<{
       upsertCustomer(customer);
       customerId = customer.id;
     }
-    const guests: GuestCount = { adults, children5to15, childrenUnder5 };
-    const booking: Booking = {
-      id: `bk-${umbrellaId}-${Date.now()}`,
-      umbrellaId,
-      customerId,
+    const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
+    const guestSlots = distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length);
+    const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => ({
+      id: `bk-${uId}-${Date.now()}-${idx}`,
+      umbrellaId: uId,
+      customerId: customerId!,
       dateFrom,
       dateTo,
-      totalPrice: total,
-      deposit,
-      paid: deposit,
+      totalPrice: perUmbrellaTotal,
+      deposit: perUmbrellaDeposit,
+      paid: perUmbrellaDeposit,
       status: 'prenotato',
       createdAt: isoDate(0),
-      guests,
-    };
-    createBooking(booking);
-    onConfirmed(booking);
+      guests: guestSlots[idx],
+      groupId,
+    }));
+    createdBookings.forEach(createBooking);
+    onConfirmed(createdBookings);
   };
 
   if (!umbrella) return null;
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>
-            Ombrellone {umbrella.number} · {umbrella.zone}
-          </Text>
+    <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContent}>
+      <Text style={styles.sheetTitle}>
+        Ombrellone {umbrella.number} · {umbrella.zone}
+      </Text>
 
-          <View style={styles.periodHero}>
-            <View style={styles.periodHeroCol}>
-              <Text style={styles.periodHeroLabel}>Dal</Text>
-              <Text style={styles.periodHeroDate}>{formatDateLong(dateFrom)}</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={16} color={colors.white} />
-            <View style={styles.periodHeroCol}>
-              <Text style={styles.periodHeroLabel}>Al</Text>
-              <Text style={styles.periodHeroDate}>{formatDateLong(dateTo)}</Text>
-            </View>
-            <Text style={styles.periodHeroDays}>
-              {days} {days === 1 ? 'giorno' : 'giorni'}
-            </Text>
+      <View style={styles.periodHero}>
+        <View style={styles.periodHeroCol}>
+          <Text style={styles.periodHeroLabel}>Dal</Text>
+          <Text style={styles.periodHeroDate}>{formatDateLong(dateFrom)}</Text>
+        </View>
+        <Ionicons name="arrow-forward" size={16} color={colors.white} />
+        <View style={styles.periodHeroCol}>
+          <Text style={styles.periodHeroLabel}>Al</Text>
+          <Text style={styles.periodHeroDate}>{formatDateLong(dateTo)}</Text>
+        </View>
+        <Text style={styles.periodHeroDays}>
+          {days} {days === 1 ? 'giorno' : 'giorni'}
+        </Text>
+      </View>
+
+      <Text style={styles.sectionLabel}>Chi viaggia con te?</Text>
+      <View style={styles.guestsBox}>
+        <Stepper label="Adulti" value={adults} min={1} onChange={changeAdults} />
+        <View style={styles.divider} />
+        <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={changeChildren5to15} />
+        <View style={styles.divider} />
+        <Stepper label="Bambini sotto i 5 anni" value={childrenUnder5} onChange={changeChildrenUnder5} />
+      </View>
+      <Text style={styles.muted}>Max {MAX_GUESTS_PER_UMBRELLA} persone per ombrellone</Text>
+
+      {umbrellasNeeded > 1 && (
+        <View style={styles.extraBox}>
+          <View style={styles.policyHeaderRow}>
+            <Ionicons name="people-outline" size={16} color={colors.primaryDark} />
+            <Text style={styles.policyTitle}>Ombrelloni aggiuntivi</Text>
           </View>
-
-          <ScrollView style={{ maxHeight: 460 }}>
-            <Text style={styles.sectionLabel}>Chi viaggia con te?</Text>
-            <View style={styles.guestsBox}>
-              <Stepper label="Adulti" value={adults} min={1} onChange={setAdults} />
-              <View style={styles.divider} />
-              <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={setChildren5to15} />
-              <View style={styles.divider} />
-              <Stepper label="Bambini sotto i 5 anni" value={childrenUnder5} onChange={setChildrenUnder5} />
-            </View>
-
-            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="+39 ..."
-              placeholderTextColor={colors.textMuted}
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={setPhone}
-            />
-            {matchedCustomer && (
-              <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
-            )}
-            {isNewCustomer && (
-              <View style={{ marginTop: spacing.sm }}>
-                <Text style={styles.sectionLabel}>Nome e cognome</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Es. Marco Bianchi"
-                  placeholderTextColor={colors.textMuted}
-                  value={newName}
-                  onChangeText={setNewName}
+          <Text style={styles.policyText}>
+            Per {totalGuests} persone servono {umbrellasNeeded} ombrelloni. Ti suggeriamo i più vicini a
+            quello scelto: aggiungine {extraNeeded > extraUmbrellaIds.length ? `almeno ${extraNeeded - extraUmbrellaIds.length} in più` : 'quanti ne servono'}.
+          </Text>
+          {nearbySuggestions.map((u) => {
+            const selected = extraUmbrellaIds.includes(u.id);
+            return (
+              <Pressable key={u.id} onPress={() => toggleExtra(u.id)} style={styles.extraRow}>
+                <Ionicons
+                  name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={20}
+                  color={selected ? colors.libero : colors.border}
                 />
-              </View>
-            )}
-
-            {conflict && (
-              <View style={styles.conflictBox}>
-                <Text style={styles.conflictText}>
-                  Questo ombrellone non è più disponibile per queste date.
+                <Text style={styles.extraRowText}>
+                  Ombrellone N.{u.number} · {u.zone}
                 </Text>
-              </View>
-            )}
-            {!conflict && customerConflict && (
-              <View style={styles.conflictBox}>
-                <Text style={styles.conflictText}>
-                  Hai già l'Ombrellone {customerConflictUmbrella?.number} prenotato dal{' '}
-                  {formatDateShort(customerConflict.dateFrom)} al {formatDateShort(customerConflict.dateTo)}.
-                </Text>
-              </View>
-            )}
+              </Pressable>
+            );
+          })}
+          <Text style={[styles.muted, { marginTop: spacing.xs }]}>
+            Capienza selezionata: {capacity} / {totalGuests} persone in {allUmbrellaIds.length} ombrelloni
+          </Text>
+        </View>
+      )}
 
-            <View style={styles.policyBox}>
-              <View style={styles.policyHeaderRow}>
-                <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
-                <Text style={styles.policyTitle}>Acconto e politica di cancellazione</Text>
-              </View>
-              <Text style={styles.policyText}>
-                Per confermare versi ora un acconto del 20% ({formatCurrency(deposit)}). Il saldo di{' '}
-                {formatCurrency(total - deposit)} si paga in spiaggia.
-              </Text>
-              <Text style={styles.policyText}>
-                Puoi cancellare gratuitamente entro il <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>{' '}
-                (7 giorni prima dell'arrivo): l'acconto ti verrà restituito. Cancellando dopo tale data, o non
-                presentandoti, l'acconto <Text style={styles.policyBold}>non è rimborsabile</Text>.
-              </Text>
-              <View style={{ marginTop: spacing.sm }}>
-                <Checkbox
-                  checked={policyAccepted}
-                  onToggle={() => setPolicyAccepted((v) => !v)}
-                  label="Ho letto e accetto la politica di acconto e cancellazione"
-                />
-              </View>
-            </View>
+      <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="+39 ..."
+        placeholderTextColor={colors.textMuted}
+        keyboardType="phone-pad"
+        value={phone}
+        onChangeText={setPhone}
+      />
+      {matchedCustomer && (
+        <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
+      )}
+      {isNewCustomer && (
+        <View style={{ marginTop: spacing.sm }}>
+          <Text style={styles.sectionLabel}>Nome e cognome</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Es. Marco Bianchi"
+            placeholderTextColor={colors.textMuted}
+            value={newName}
+            onChangeText={setNewName}
+          />
+        </View>
+      )}
 
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Totale soggiorno</Text>
-              <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
-            </View>
-            <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
+      {conflict && (
+        <View style={styles.conflictBox}>
+          <Text style={styles.conflictText}>
+            Uno degli ombrelloni selezionati non è più disponibile per queste date.
+          </Text>
+        </View>
+      )}
+      {!conflict && customerConflict && (
+        <View style={styles.conflictBox}>
+          <Text style={styles.conflictText}>
+            Hai già l'Ombrellone {customerConflictUmbrella?.number} prenotato dal{' '}
+            {formatDateShort(customerConflict.dateFrom)} al {formatDateShort(customerConflict.dateTo)}.
+          </Text>
+        </View>
+      )}
 
-            <Button
-              title="Conferma e prenota"
-              icon="checkmark-circle-outline"
-              onPress={confirm}
-              disabled={!canConfirm}
-              style={{ marginTop: spacing.lg }}
-            />
-            <Button title="Annulla" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+      <View style={styles.policyBox}>
+        <View style={styles.policyHeaderRow}>
+          <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+          <Text style={styles.policyTitle}>Acconto e politica di cancellazione</Text>
+        </View>
+        <Text style={styles.policyText}>
+          Per confermare versi ora un acconto del 20% ({formatCurrency(deposit)}). Il saldo di{' '}
+          {formatCurrency(total - deposit)} si paga in spiaggia.
+        </Text>
+        <Text style={styles.policyText}>
+          Puoi cancellare gratuitamente entro il <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>{' '}
+          (7 giorni prima dell'arrivo): l'acconto ti verrà restituito. Cancellando dopo tale data, o non
+          presentandoti, l'acconto <Text style={styles.policyBold}>non è rimborsabile</Text>.
+        </Text>
+        <View style={{ marginTop: spacing.sm }}>
+          <Checkbox
+            checked={policyAccepted}
+            onToggle={() => setPolicyAccepted((v) => !v)}
+            label="Ho letto e accetto la politica di acconto e cancellazione"
+          />
+        </View>
+      </View>
+
+      <View style={styles.totalRow}>
+        <Text style={styles.totalLabel}>
+          Totale soggiorno {allUmbrellaIds.length > 1 ? `(${allUmbrellaIds.length} ombrelloni)` : ''}
+        </Text>
+        <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
+      </View>
+      <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
+
+      <Button
+        title="Conferma e prenota"
+        icon="checkmark-circle-outline"
+        onPress={confirm}
+        disabled={!canConfirm}
+        style={{ marginTop: spacing.lg }}
+      />
+      <Button title="Annulla" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
+    </ScrollView>
   );
 };
 
 const ConfirmationModal: React.FC<{
-  booking: Booking | null;
+  bookings: Booking[] | null;
   onClose: () => void;
   onSeeMyBookings: () => void;
-}> = ({ booking, onClose, onSeeMyBookings }) => {
+}> = ({ bookings, onClose, onSeeMyBookings }) => {
   const { getUmbrella, getCustomer } = useStore();
-  if (!booking) return null;
-  const umbrella = getUmbrella(booking.umbrellaId);
-  const customer = getCustomer(booking.customerId);
+  if (!bookings || bookings.length === 0) return null;
+  const primary = bookings[0];
+  const umbrellas = bookings.map((b) => getUmbrella(b.umbrellaId));
+  const customer = getCustomer(primary.customerId);
+  const total = bookings.reduce((sum, b) => sum + b.totalPrice, 0);
+  const paid = bookings.reduce((sum, b) => sum + b.paid, 0);
+  const guests = bookings.reduce(
+    (acc, b) => ({
+      adults: acc.adults + (b.guests?.adults ?? 0),
+      children5to15: acc.children5to15 + (b.guests?.children5to15 ?? 0),
+      childrenUnder5: acc.childrenUnder5 + (b.guests?.childrenUnder5 ?? 0),
+    }),
+    { adults: 0, children5to15: 0, childrenUnder5: 0 }
+  );
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -498,32 +673,32 @@ const ConfirmationModal: React.FC<{
 
           <Card style={{ marginTop: spacing.lg, width: '100%' }}>
             <View style={styles.confirmRow}>
-              <Text style={styles.muted}>Ombrellone</Text>
-              <Text style={styles.confirmValue}>N.{umbrella?.number} · {umbrella?.zone}</Text>
+              <Text style={styles.muted}>{umbrellas.length > 1 ? 'Ombrelloni' : 'Ombrellone'}</Text>
+              <Text style={styles.confirmValue}>
+                {umbrellas.map((u) => `N.${u?.number}`).join(', ')}
+              </Text>
             </View>
             <View style={styles.confirmRow}>
               <Text style={styles.muted}>Periodo</Text>
               <Text style={styles.confirmValue}>
-                {formatDateShort(booking.dateFrom)} → {formatDateShort(booking.dateTo)}
+                {formatDateShort(primary.dateFrom)} → {formatDateShort(primary.dateTo)}
               </Text>
             </View>
-            {booking.guests && (
-              <View style={styles.confirmRow}>
-                <Text style={styles.muted}>Ospiti</Text>
-                <Text style={styles.confirmValue}>
-                  {booking.guests.adults} adulti
-                  {booking.guests.children5to15 > 0 ? ` · ${booking.guests.children5to15} bambini 5-15` : ''}
-                  {booking.guests.childrenUnder5 > 0 ? ` · ${booking.guests.childrenUnder5} under 5` : ''}
-                </Text>
-              </View>
-            )}
+            <View style={styles.confirmRow}>
+              <Text style={styles.muted}>Ospiti</Text>
+              <Text style={styles.confirmValue}>
+                {guests.adults} adulti
+                {guests.children5to15 > 0 ? ` · ${guests.children5to15} bambini 5-15` : ''}
+                {guests.childrenUnder5 > 0 ? ` · ${guests.childrenUnder5} under 5` : ''}
+              </Text>
+            </View>
             <View style={styles.confirmRow}>
               <Text style={styles.muted}>Totale</Text>
-              <Text style={styles.confirmValue}>{formatCurrency(booking.totalPrice)}</Text>
+              <Text style={styles.confirmValue}>{formatCurrency(total)}</Text>
             </View>
             <View style={styles.confirmRow}>
               <Text style={styles.muted}>Acconto pagato</Text>
-              <Text style={[styles.confirmValue, { color: colors.libero }]}>{formatCurrency(booking.paid)}</Text>
+              <Text style={[styles.confirmValue, { color: colors.libero }]}>{formatCurrency(paid)}</Text>
             </View>
           </Card>
 
@@ -556,11 +731,18 @@ const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ 
 
   const handleCancel = (booking: Booking) => {
     const refundable = isDepositRefundable(booking.dateFrom, today);
+    const groupSize = booking.groupId
+      ? bookings.filter((b) => b.groupId === booking.groupId).length
+      : 1;
+    const depositTotal = booking.groupId
+      ? bookings.filter((b) => b.groupId === booking.groupId).reduce((sum, b) => sum + b.deposit, 0)
+      : booking.deposit;
+    const groupNote = groupSize > 1 ? ` Verranno cancellati tutti e ${groupSize} gli ombrelloni del gruppo.` : '';
     alert(
       'Cancellare la prenotazione?',
-      refundable
-        ? `L'arrivo è tra almeno 7 giorni: l'acconto di ${formatCurrency(booking.deposit)} ti verrà restituito.`
-        : `L'arrivo è tra meno di 7 giorni (o è già iniziato): l'acconto di ${formatCurrency(booking.deposit)} non è rimborsabile.`,
+      (refundable
+        ? `L'arrivo è tra almeno 7 giorni: l'acconto di ${formatCurrency(depositTotal)} ti verrà restituito.`
+        : `L'arrivo è tra meno di 7 giorni (o è già iniziato): l'acconto di ${formatCurrency(depositTotal)} non è rimborsabile.`) + groupNote,
       [
         { text: 'Non cancellare', style: 'cancel' },
         {
@@ -606,6 +788,7 @@ const MyBookingsModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ 
                     <Text style={styles.muted}>
                       {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
                     </Text>
+                    {b.groupId && <Text style={styles.groupTag}>Gruppo multi-ombrellone</Text>}
                     <Text style={[styles.muted, { color: refundable ? colors.libero : colors.occupato }]}>
                       {refundable ? 'Acconto rimborsabile se cancelli ora' : 'Acconto non rimborsabile'}
                     </Text>
@@ -712,9 +895,6 @@ const styles = StyleSheet.create({
   legendText: { fontSize: 11, color: colors.textMuted },
   cell: {
     position: 'absolute',
-    width: CELL,
-    height: CELL,
-    borderRadius: CELL / 2,
     borderWidth: 3,
     borderColor: colors.card,
     alignItems: 'center',
@@ -726,6 +906,25 @@ const styles = StyleSheet.create({
   },
   cellNumber: { fontWeight: '800', fontSize: 16, color: colors.white },
 
+  wideRow: { flex: 1, flexDirection: 'row' },
+  wideMapCol: { flex: 1 },
+  sidebarCol: {
+    width: SIDEBAR_WIDTH,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  sidebarEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  sidebarEmptyText: { color: colors.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  formScroll: { flex: 1 },
+  formScrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.card,
@@ -734,7 +933,21 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     maxHeight: '88%',
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: spacing.md },
+  formSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingTop: spacing.md,
+    height: '88%',
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
   sheetTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   periodHero: {
@@ -758,6 +971,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  extraBox: {
+    backgroundColor: colors.in_arrivoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  extraRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  extraRowText: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  groupTag: { color: colors.primaryDark, fontWeight: '700', fontSize: 11, marginTop: 2 },
   policyBox: {
     backgroundColor: colors.prenotatoBg,
     borderRadius: radius.md,

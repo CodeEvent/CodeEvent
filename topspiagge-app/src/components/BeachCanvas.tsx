@@ -8,18 +8,19 @@ import { BeachSide, Umbrella } from '../types';
 export const CELL = 72;
 export const GAP = 8;
 export const LABEL_WIDTH = 84;
+export const MIN_CELL = 20;
 
-export function useUmbrellaPositions(umbrellas: Umbrella[]) {
+export function useUmbrellaPositions(umbrellas: Umbrella[], cellSize: number = CELL, gap: number = GAP) {
   return useMemo(() => {
     const positions = new Map<string, { x: number; y: number }>();
     umbrellas.forEach((u) => {
       positions.set(u.id, {
-        x: u.col * (CELL + GAP),
-        y: u.row * (CELL + GAP),
+        x: u.col * (cellSize + gap),
+        y: u.row * (cellSize + gap),
       });
     });
     return positions;
-  }, [umbrellas]);
+  }, [umbrellas, cellSize, gap]);
 }
 
 interface SideSwitchProps {
@@ -70,9 +71,18 @@ interface BeachCanvasProps {
   positions: Map<string, { x: number; y: number }>;
   renderCell: (umbrella: Umbrella, position: { x: number; y: number }) => React.ReactNode;
   footerText: string;
+  cellSize?: number;
+  labelWidth?: number;
 }
 
-export const BeachCanvas: React.FC<BeachCanvasProps> = ({ umbrellas, positions, renderCell, footerText }) => {
+export const BeachCanvas: React.FC<BeachCanvasProps> = ({
+  umbrellas,
+  positions,
+  renderCell,
+  footerText,
+  cellSize = CELL,
+  labelWidth = LABEL_WIDTH,
+}) => {
   const zones = useMemo(() => {
     const seen = new Map<number, string>();
     umbrellas.forEach((u) => seen.set(u.row, u.zone));
@@ -80,18 +90,23 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({ umbrellas, positions, 
   }, [umbrellas]);
 
   const maxCol = Math.max(0, ...umbrellas.map((u) => u.col));
-  const canvasWidth = (maxCol + 1) * (CELL + GAP);
-  const canvasHeight = zones.length * (CELL + GAP);
+  const canvasWidth = (maxCol + 1) * (cellSize + GAP);
+  const canvasHeight = zones.length * (cellSize + GAP);
+  const labelIconSize = Math.min(16, Math.max(10, cellSize / 4.5));
+  const labelFontSize = Math.min(12, Math.max(9, cellSize / 6));
 
   return (
     <View style={styles.beach}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.boardScroll}>
         <View style={styles.boardRow}>
-          <View style={{ width: LABEL_WIDTH, height: canvasHeight }}>
+          <View style={{ width: labelWidth, height: canvasHeight }}>
             {zones.map(([rowIdx, zoneName]) => (
-              <View key={rowIdx} style={[styles.zoneLabel, { top: rowIdx * (CELL + GAP), height: CELL }]}>
-                <Ionicons name="umbrella" size={16} color={colors.seaDark} />
-                <Text style={styles.zoneLabelText} numberOfLines={1}>
+              <View
+                key={rowIdx}
+                style={[styles.zoneLabel, { top: rowIdx * (cellSize + GAP), height: cellSize, width: labelWidth - 12 }]}
+              >
+                <Ionicons name="umbrella" size={labelIconSize} color={colors.seaDark} />
+                <Text style={[styles.zoneLabelText, { fontSize: labelFontSize }]} numberOfLines={1}>
                   {zoneName}
                 </Text>
               </View>

@@ -141,15 +141,20 @@ function reducer(state: AppState, action: Action): AppState {
     case 'CANCEL_BOOKING': {
       const booking = state.bookings.find((b) => b.id === action.bookingId);
       if (!booking) return state;
-      const bookings = state.bookings.filter((b) => b.id !== action.bookingId);
+      const idsToRemove = new Set(
+        booking.groupId
+          ? state.bookings.filter((b) => b.groupId === booking.groupId).map((b) => b.id)
+          : [booking.id]
+      );
+      const bookings = state.bookings.filter((b) => !idsToRemove.has(b.id));
       const umbrellas = state.umbrellas.map((u) =>
-        u.id === booking.umbrellaId && u.currentBookingId === booking.id
+        u.currentBookingId && idsToRemove.has(u.currentBookingId)
           ? { ...u, status: 'libero' as const, currentBookingId: undefined }
           : u
       );
       const customers = state.customers.map((c) =>
         c.id === booking.customerId
-          ? { ...c, bookingHistory: c.bookingHistory.filter((id) => id !== booking.id) }
+          ? { ...c, bookingHistory: c.bookingHistory.filter((id) => !idsToRemove.has(id)) }
           : c
       );
       return { ...state, bookings, umbrellas, customers };
