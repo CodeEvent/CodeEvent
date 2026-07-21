@@ -9,7 +9,7 @@ import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Conto, ContoItem, DocType, PaymentMethod } from '../types';
 import { displayStatusFor } from '../utils/displayStatus';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatDateShort } from '../utils/format';
 
 const CATEGORY_LABEL: Record<ArticleCategory, string> = {
   ombrellone: 'Spiaggia',
@@ -172,8 +172,36 @@ export const ContoScreen: React.FC = () => {
                 <Text style={styles.customerName}>{customer?.name ?? 'Cliente sconosciuto'}</Text>
                 <StatusPill status={displayStatusFor(umbrella, getBooking)} />
               </View>
+
+              {customer && (customer.phone || customer.email) && (
+                <Text style={styles.muted}>
+                  {[customer.phone, customer.email].filter(Boolean).join(' · ')}
+                </Text>
+              )}
+
               {booking && (
                 <>
+                  <Text style={styles.muted}>
+                    Ombrellone N.{umbrella.number} · {umbrella.zone} · {formatDateShort(booking.dateFrom)} →{' '}
+                    {formatDateShort(booking.dateTo)}
+                  </Text>
+                  {booking.reference && (
+                    <Text style={styles.referenceText}>{booking.reference}</Text>
+                  )}
+                  {booking.guests && (
+                    <Text style={styles.muted}>
+                      {booking.guests.adults} adult{booking.guests.adults === 1 ? 'o' : 'i'}
+                      {booking.guests.children5to15 ? ` · ${booking.guests.children5to15} bambini 5-15` : ''}
+                      {booking.guests.childrenUnder5 ? ` · ${booking.guests.childrenUnder5} bambini <5` : ''}
+                    </Text>
+                  )}
+                  {(booking.beds || booking.chairs) && (
+                    <Text style={styles.muted}>
+                      {booking.beds ? `${booking.beds} lettin${booking.beds === 1 ? 'o' : 'i'}` : ''}
+                      {booking.beds && booking.chairs ? ' · ' : ''}
+                      {booking.chairs ? `${booking.chairs} sdra${booking.chairs === 1 ? 'io' : 'i'}` : ''}
+                    </Text>
+                  )}
                   <Text style={styles.muted}>
                     Prenotazione: {formatCurrency(booking.totalPrice)} · Pagato {formatCurrency(booking.paid)}
                   </Text>
@@ -335,6 +363,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   customerName: { fontWeight: '700', fontSize: 15, color: colors.text },
+  referenceText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12, marginTop: 2, letterSpacing: 0.5 },
   articleRow: {
     flexDirection: 'row',
     alignItems: 'center',
