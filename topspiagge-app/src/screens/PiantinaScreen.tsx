@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -7,7 +8,13 @@ import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing } from '../theme';
 import { Umbrella } from '../types';
-import { DISPLAY_STATUSES, displayStatusColor, displayStatusFor, displayStatusLabel } from '../utils/displayStatus';
+import {
+  DISPLAY_STATUSES,
+  DisplayStatus,
+  displayStatusColor,
+  displayStatusFor,
+  displayStatusLabel,
+} from '../utils/displayStatus';
 
 const TAP_THRESHOLD = 10;
 const ROWS = 12;
@@ -18,10 +25,10 @@ const UmbrellaCell: React.FC<{
   positions: Map<string, { x: number; y: number }>;
   allUmbrellas: Umbrella[];
   cellSize: number;
-  cellColor: string;
+  status: DisplayStatus;
   onDrop: (fromId: string, toId: string) => void;
   onTap: (id: string) => void;
-}> = ({ umbrella, position, positions, allUmbrellas, cellSize, cellColor, onDrop, onTap }) => {
+}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, onDrop, onTap }) => {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [dragging, setDragging] = useState(false);
 
@@ -66,6 +73,8 @@ const UmbrellaCell: React.FC<{
     })
   ).current;
 
+  const isSgombera = status === 'sgombera';
+
   return (
     <Animated.View
       {...panResponder.panHandlers}
@@ -77,7 +86,8 @@ const UmbrellaCell: React.FC<{
           width: cellSize,
           height: cellSize,
           borderRadius: cellSize / 2,
-          backgroundColor: cellColor,
+          overflow: 'hidden',
+          backgroundColor: isSgombera ? undefined : displayStatusColor[status],
           borderColor: colors.card,
           transform: pan.getTranslateTransform(),
           zIndex: dragging ? 10 : 1,
@@ -85,9 +95,19 @@ const UmbrellaCell: React.FC<{
         },
       ]}
     >
-      <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
-        {umbrella.number}
-      </Text>
+      {isSgombera && (
+        <View style={StyleSheet.absoluteFill}>
+          <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.libero }} />
+          <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.sgombera }} />
+        </View>
+      )}
+      {status === 'libero' ? (
+        <MaterialCommunityIcons name="umbrella-closed" size={Math.min(24, Math.max(16, cellSize / 3))} color={colors.white} />
+      ) : (
+        <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
+          {umbrella.number}
+        </Text>
+      )}
       {umbrella.hasCabin && <View style={styles.cabinDot} />}
     </Animated.View>
   );
@@ -149,7 +169,7 @@ export const PiantinaScreen: React.FC = () => {
             positions={positions}
             allUmbrellas={umbrellas}
             cellSize={cellSize}
-            cellColor={displayStatusColor[displayStatusFor(u, getBooking)]}
+            status={displayStatusFor(u, getBooking)}
             onDrop={swapUmbrellas}
             onTap={setSelectedId}
           />

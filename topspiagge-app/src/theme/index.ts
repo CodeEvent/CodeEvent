@@ -29,6 +29,8 @@ export const colors = {
   in_arrivoBg: '#FFF3DC',
   prenotato: '#7C93F0',
   prenotatoBg: '#EAEEFE',
+  sgombera: '#F5A623',
+  sgomberaBg: '#FDF1DC',
 
   white: '#FFFFFF',
   black: '#000000',

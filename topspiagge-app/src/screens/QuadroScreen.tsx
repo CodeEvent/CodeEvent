@@ -161,7 +161,7 @@ export const QuadroScreen: React.FC = () => {
                           key={b.id}
                           style={[
                             styles.bar,
-                            { left, width, backgroundColor: displayStatusColor[displayStatusForBooking(b)] },
+                            { left, width, backgroundColor: displayStatusColor[displayStatusForBooking(b, true)] },
                           ]}
                           onPress={() => setSelectedBooking(b)}
                         >

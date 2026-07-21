@@ -93,7 +93,7 @@ const OggiTab: React.FC = () => {
               <Text style={styles.itemTitle}>
                 Ombrellone N.{u?.number} · {u?.zone}
               </Text>
-              <StatusPill status={displayStatusForBooking(b)} />
+              <StatusPill status={displayStatusForBooking(b, true)} />
             </View>
             <Text style={styles.muted}>
               {customer?.name ?? 'Cliente'} · {customer?.phone}
@@ -122,7 +122,7 @@ const OggiTab: React.FC = () => {
               <Text style={styles.itemTitle}>
                 Ombrellone N.{u?.number} · {u?.zone}
               </Text>
-              <StatusPill status={displayStatusForBooking(b)} />
+              <StatusPill status={displayStatusForBooking(b, true)} />
             </View>
             <Text style={styles.muted}>{customer?.name ?? 'Cliente'}</Text>
             {remaining > 0 && (
@@ -238,7 +238,7 @@ const PrenotazioniTab: React.FC = () => {
                     <Text style={styles.itemTitle}>
                       Ombrellone N.{umbrella?.number} · {umbrella?.zone} ({umbrella?.side === 'nord' ? 'Nord' : 'Sud'})
                     </Text>
-                    <StatusPill status={displayStatusForBooking(b)} />
+                    <StatusPill status={displayStatusForBooking(b, true)} />
                   </View>
                   <Text style={[styles.itemTitle, { fontSize: 14, marginTop: 4 }]}>
                     {customer?.name ?? 'Cliente'}

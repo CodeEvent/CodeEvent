@@ -43,6 +43,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
   };
 
   const remaining = booking ? booking.totalPrice - booking.paid : 0;
+  const status = displayStatusFor(umbrella, getBooking);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={close}>
@@ -53,7 +54,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
             <Text style={styles.title}>
               Ombrellone {umbrella.number} · {umbrella.zone}
             </Text>
-            <StatusPill status={displayStatusFor(umbrella, getBooking)} />
+            <StatusPill status={status} />
           </View>
           {umbrella.hasCabin && <Text style={styles.muted}>Con cabina</Text>}
 
@@ -158,7 +159,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
                       />
                     )}
                     <Button
-                      title="Libera ombrellone"
+                      title={status === 'sgombera' ? 'Pulito: libera per domani' : 'Libera ombrellone'}
                       variant="danger"
                       onPress={() => {
                         freeUmbrella(umbrella.id);

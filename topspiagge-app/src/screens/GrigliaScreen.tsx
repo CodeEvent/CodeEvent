@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,7 +60,7 @@ export const GrigliaScreen: React.FC = () => {
   }, [filtered]);
 
   const counts = useMemo(() => {
-    const c: Record<DisplayStatus, number> = { libero: 0, occupato: 0, da_saldare: 0 };
+    const c: Record<DisplayStatus, number> = { libero: 0, occupato: 0, da_saldare: 0, sgombera: 0 };
     umbrellas.forEach((u) => (c[displayStatusFor(u, getBooking)] += 1));
     return c;
   }, [umbrellas, getBooking]);
@@ -69,7 +70,8 @@ export const GrigliaScreen: React.FC = () => {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Griglia Ombrelloni</Text>
         <Text style={styles.headerSubtitle}>
-          {counts.libero} liberi · {counts.occupato} occupati · {counts.da_saldare} da saldare
+          {counts.libero} liberi · {counts.occupato} occupati · {counts.da_saldare} da saldare ·{' '}
+          {counts.sgombera} da sgomberare
         </Text>
       </View>
 
@@ -112,14 +114,28 @@ export const GrigliaScreen: React.FC = () => {
                 <View style={styles.rowCells}>
                   {rowUmbrellas.map((u) => {
                     const displayStatus = displayStatusFor(u, getBooking);
+                    const isSgombera = displayStatus === 'sgombera';
                     return (
                       <React.Fragment key={u.id}>
                         {u.col === COLS_PER_SIDE && <View style={styles.walkwayDivider} />}
                         <Pressable
                           onPress={() => setSelectedId(u.id)}
-                          style={[styles.cell, { backgroundColor: displayStatusColor[displayStatus] }]}
+                          style={[
+                            styles.cell,
+                            { backgroundColor: isSgombera ? undefined : displayStatusColor[displayStatus], overflow: 'hidden' },
+                          ]}
                         >
-                          <Text style={styles.cellNumber}>{u.number}</Text>
+                          {isSgombera && (
+                            <View style={StyleSheet.absoluteFill}>
+                              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.libero }} />
+                              <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.sgombera }} />
+                            </View>
+                          )}
+                          {displayStatus === 'libero' ? (
+                            <MaterialCommunityIcons name="umbrella-closed" size={20} color={colors.white} />
+                          ) : (
+                            <Text style={styles.cellNumber}>{u.number}</Text>
+                          )}
                           <Text style={styles.cellSide}>{u.side === 'nord' ? 'N' : 'S'}</Text>
                         </Pressable>
                       </React.Fragment>
