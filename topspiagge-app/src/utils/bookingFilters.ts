@@ -1,5 +1,5 @@
 import { Booking, BeachSide, Customer, Umbrella } from '../types';
-import { DisplayStatus, displayStatusFor } from './displayStatus';
+import { DisplayStatus, displayStatusFor, isStagionaleBooking } from './displayStatus';
 
 // Single shared filter model reused by Piantina, Griglia, Quadro and Archivi's Filtri tab --
 // keeping the matching logic in one place avoids the kind of screen-to-screen drift that
@@ -131,6 +131,8 @@ export function bookingMatchesFilters(
     const status =
       booking.paid < booking.totalPrice
         ? 'da_saldare'
+        : isStagionaleBooking(booking)
+        ? 'stagionale'
         : includeSgombera && booking.dateTo === today
         ? 'sgombera'
         : 'occupato';

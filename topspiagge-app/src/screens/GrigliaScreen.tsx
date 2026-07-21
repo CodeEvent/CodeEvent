@@ -61,7 +61,7 @@ export const GrigliaScreen: React.FC = () => {
   }, [filtered]);
 
   const counts = useMemo(() => {
-    const c: Record<DisplayStatus, number> = { libero: 0, occupato: 0, da_saldare: 0, sgombera: 0 };
+    const c: Record<DisplayStatus, number> = { libero: 0, occupato: 0, da_saldare: 0, sgombera: 0, stagionale: 0 };
     umbrellas.forEach((u) => (c[displayStatusFor(u, getBooking)] += 1));
     return c;
   }, [umbrellas, getBooking]);
@@ -74,7 +74,7 @@ export const GrigliaScreen: React.FC = () => {
             <Text style={styles.headerTitle}>Griglia Ombrelloni</Text>
             <Text style={styles.headerSubtitle}>
               {counts.libero} liberi · {counts.occupato} occupati · {counts.da_saldare} da saldare ·{' '}
-              {counts.sgombera} da sgomberare
+              {counts.sgombera} da sgomberare · {counts.stagionale} stagionali
             </Text>
           </View>
           <Pressable onPress={() => setFiltersOpen((v) => !v)} style={styles.filterToggle}>
@@ -102,6 +102,8 @@ export const GrigliaScreen: React.FC = () => {
                     const displayStatus = displayStatusFor(u, getBooking);
                     const baseStatus = baseDisplayStatusFor(u, getBooking);
                     const isSgombera = baseStatus === 'sgombera';
+                    const isStagionale = baseStatus === 'stagionale';
+                    const isSplit = isSgombera || isStagionale;
                     const unpaid = hasOutstandingBalance(u, getBooking);
                     const caption = captionFor(displayStatus, u, getBooking, getCustomer);
                     return (
@@ -112,13 +114,19 @@ export const GrigliaScreen: React.FC = () => {
                             onPress={() => setSelectedId(u.id)}
                             style={[
                               styles.cell,
-                              { backgroundColor: isSgombera ? undefined : displayStatusColor[baseStatus], overflow: 'hidden' },
+                              { backgroundColor: isSplit ? undefined : displayStatusColor[baseStatus], overflow: 'hidden' },
                             ]}
                           >
                             {isSgombera && (
                               <View style={StyleSheet.absoluteFill}>
                                 <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.occupato }} />
                                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.sgombera }} />
+                              </View>
+                            )}
+                            {isStagionale && (
+                              <View style={StyleSheet.absoluteFill}>
+                                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.occupato }} />
+                                <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.prenotato }} />
                               </View>
                             )}
                             {baseStatus === 'libero' ? (

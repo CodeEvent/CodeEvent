@@ -15,7 +15,7 @@ import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
 import { BookingFilters, bookingMatchesFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
 import { computeCustomerStats, CustomerStats } from '../utils/customerStats';
-import { baseDisplayStatusForBooking, bookingHasOutstandingBalance, displayStatusFor } from '../utils/displayStatus';
+import { baseDisplayStatusForBooking, bookingHasOutstandingBalance, displayStatusFor, isStagionaleBooking } from '../utils/displayStatus';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
@@ -329,20 +329,43 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
   const umbrella = getUmbrella(booking.umbrellaId);
   const remaining = booking.totalPrice - booking.paid;
 
+  const doCancel = () => {
+    cancelBooking(booking.id);
+    onClose();
+  };
+
   const confirmCancel = () => {
+    // A stagionale (30+ day, pre-paid) booking takes two confirmations before it can be
+    // cancelled -- everything else keeps the original single confirm.
+    if (isStagionaleBooking(booking)) {
+      alert(
+        'Prenotazione stagionale',
+        `${customer?.name ?? 'Cliente'} · Ombrellone N.${umbrella?.number}. È una prenotazione stagionale (30+ giorni) già pagata. Vuoi davvero cancellarla?`,
+        [
+          { text: 'Annulla', style: 'cancel' },
+          {
+            text: 'Continua',
+            style: 'destructive',
+            onPress: () =>
+              alert(
+                'Conferma definitiva',
+                'La prenotazione stagionale pre-pagata verrà persa e non potrà essere recuperata. Confermi la cancellazione?',
+                [
+                  { text: 'Annulla', style: 'cancel' },
+                  { text: 'Cancella definitivamente', style: 'destructive', onPress: doCancel },
+                ]
+              ),
+          },
+        ]
+      );
+      return;
+    }
     alert(
       'Cancellare questa prenotazione?',
       `${customer?.name ?? 'Cliente'} · Ombrellone N.${umbrella?.number} (${umbrella?.zone}). L'operazione non è reversibile.`,
       [
         { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Cancella prenotazione',
-          style: 'destructive',
-          onPress: () => {
-            cancelBooking(booking.id);
-            onClose();
-          },
-        },
+        { text: 'Cancella prenotazione', style: 'destructive', onPress: doCancel },
       ]
     );
   };

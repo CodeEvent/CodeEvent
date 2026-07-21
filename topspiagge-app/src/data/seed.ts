@@ -102,8 +102,15 @@ const NAMES = [
   'Simone Costa', 'Martina Fontana', 'Paolo Rinaldi', 'Federica Barbieri',
 ];
 
+// Dedicated long-stay ("stagionale") clients: each holds one 90-day booking (see buildBookings),
+// so they render as the red/blue Stagionale status and are findable in the CRM by the tag.
+const STAGIONALE_NAMES = [
+  'Antonio Marini', 'Lucia Ferretti', 'Giuseppe Villa',
+  'Paola Serena', 'Enrico Longhi', 'Marta Estivi',
+];
+
 export function buildCustomers(): Customer[] {
-  return NAMES.map((name, i) => ({
+  const base: Customer[] = NAMES.map((name, i) => ({
     id: `cust-${i + 1}`,
     name,
     phone: `+39 3${(20 + i).toString().padStart(2, '0')} 555${(1000 + i)}`,
@@ -114,7 +121,23 @@ export function buildCustomers(): Customer[] {
     createdAt: isoDate(-200 + i * 3),
     tags: i % 5 === 0 ? ['cliente storico'] : i % 3 === 0 ? ['famiglia'] : [],
   }));
+  const stagionali: Customer[] = STAGIONALE_NAMES.map((name, i) => ({
+    id: `cust-stag-${i + 1}`,
+    name,
+    phone: `+39 3${(40 + i)} 555${(2000 + i)}`,
+    email: `${name.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+    notes: 'Cliente stagionale — prenotazione 30+ giorni pagata in anticipo',
+    vip: true,
+    bookingHistory: [],
+    createdAt: isoDate(-150 + i * 4),
+    tags: ['stagionale'],
+  }));
+  return [...base, ...stagionali];
 }
+
+// Umbrellas reserved for the seeded stagionale bookings -- spread across Fila 2 and Fila 3 so
+// they're visible near the top of the map. Skipped by the regular today/future seed loops.
+const STAGIONALE_UMBRELLA_INDICES = new Set([20, 22, 24, 40, 42, 44]);
 
 export function buildBookings(umbrellas: Umbrella[], customers: Customer[]): Booking[] {
   const bookings: Booking[] = [];
@@ -123,6 +146,8 @@ export function buildBookings(umbrellas: Umbrella[], customers: Customer[]): Boo
   ];
 
   umbrellas.forEach((u, idx) => {
+    // Reserved for the stagionale block below -- don't give them a regular short booking.
+    if (STAGIONALE_UMBRELLA_INDICES.has(idx)) return;
     // Assign a status pattern so the beach looks "alive"
     const status = statusesForToday[idx % statusesForToday.length];
     if (status === 'libero') return;
@@ -169,6 +194,34 @@ export function buildBookings(umbrellas: Umbrella[], customers: Customer[]): Boo
       reference: generateBookingReference(),
     };
     bookings.push(booking);
+    customer.bookingHistory.push(booking.id);
+  });
+
+  // Stagionale (long-stay) bookings: ~90 days, fully paid up front, spanning today -- so their
+  // umbrellas render as the red/blue Stagionale status right now and are protected by the
+  // double-confirm guards before an operator can free them.
+  Array.from(STAGIONALE_UMBRELLA_INDICES).forEach((umbIdx, i) => {
+    const u = umbrellas[umbIdx];
+    if (!u) return;
+    const customer = customers.find((c) => c.id === `cust-stag-${i + 1}`) ?? customers[i % customers.length];
+    const total = 18 * 90;
+    const booking: Booking = {
+      id: `bk-stag-${u.id}`,
+      umbrellaId: u.id,
+      customerId: customer.id,
+      dateFrom: isoDate(-10),
+      dateTo: isoDate(80),
+      totalPrice: total,
+      deposit: total,
+      paid: total,
+      status: 'occupato',
+      createdAt: isoDate(-20),
+      reference: generateBookingReference(),
+      guests: { adults: 2, children5to15: 1, childrenUnder5: 0 },
+    };
+    bookings.push(booking);
+    u.status = 'occupato';
+    u.currentBookingId = booking.id;
     customer.bookingHistory.push(booking.id);
   });
 

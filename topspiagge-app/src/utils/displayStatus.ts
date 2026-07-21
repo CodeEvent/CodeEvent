@@ -1,6 +1,17 @@
 import { colors } from '../theme';
 import { Booking, Umbrella } from '../types';
-import { isoDate } from './format';
+import { daysBetween, isoDate } from './format';
+
+// A "stagionale" booking is a long-stay: booked for at least a full month. These are already
+// paid in full up front and effectively lock the umbrella for the whole season, so they get
+// their own status (a red/blue split on the map) and extra guard rails before an operator can
+// free them -- see the double-confirm sites. Derived purely from the booking's date span, so
+// there's no stored flag to keep in sync.
+export const STAGIONALE_MIN_DAYS = 30;
+
+export function isStagionaleBooking(booking: Booking): boolean {
+  return daysBetween(booking.dateFrom, booking.dateTo) >= STAGIONALE_MIN_DAYS;
+}
 
 // The staff floor-plan views (Piantina/Griglia) only need to answer one question at a
 // glance: is this umbrella free, occupied, or occupied-but-unpaid? In arrivo, prenotato
@@ -9,7 +20,9 @@ import { isoDate } from './format';
 // promotes a cell to 'da_saldare'. 'sgombera' additionally flags an occupied, fully-paid
 // umbrella whose guest is checking out today -- it still needs its chairs/beds cleared
 // before it's truly free for tomorrow, so staff shouldn't read it as plain 'occupato'.
-export type DisplayStatus = 'libero' | 'occupato' | 'da_saldare' | 'sgombera';
+// 'stagionale' is a long-stay booking (30+ days) -- shown ahead of sgombera so a season-long
+// guest doesn't read as "checking out" just because today happens to be their last day.
+export type DisplayStatus = 'libero' | 'occupato' | 'da_saldare' | 'sgombera' | 'stagionale';
 
 export function displayStatusFor(
   umbrella: Umbrella,
@@ -18,6 +31,7 @@ export function displayStatusFor(
   if (umbrella.status === 'libero') return 'libero';
   const booking = getBooking(umbrella.currentBookingId);
   if (booking && booking.paid < booking.totalPrice) return 'da_saldare';
+  if (booking && isStagionaleBooking(booking)) return 'stagionale';
   if (booking && booking.dateTo === isoDate(0)) return 'sgombera';
   return 'occupato';
 }
@@ -29,6 +43,7 @@ export function displayStatusFor(
 // lookup leaves it off so a guest never sees internal "needs clearing" language.
 export function displayStatusForBooking(booking: Booking, includeSgombera = false): DisplayStatus {
   if (booking.paid < booking.totalPrice) return 'da_saldare';
+  if (isStagionaleBooking(booking)) return 'stagionale';
   if (includeSgombera && booking.dateTo === isoDate(0)) return 'sgombera';
   return 'occupato';
 }
@@ -38,6 +53,7 @@ export const displayStatusColor: Record<DisplayStatus, string> = {
   occupato: colors.occupato,
   da_saldare: colors.black,
   sgombera: colors.sgombera,
+  stagionale: colors.prenotato,
 };
 
 export const displayStatusBg: Record<DisplayStatus, string> = {
@@ -45,6 +61,7 @@ export const displayStatusBg: Record<DisplayStatus, string> = {
   occupato: colors.occupatoBg,
   da_saldare: '#E5E6E8',
   sgombera: colors.sgomberaBg,
+  stagionale: colors.prenotatoBg,
 };
 
 export const displayStatusLabel: Record<DisplayStatus, string> = {
@@ -52,15 +69,16 @@ export const displayStatusLabel: Record<DisplayStatus, string> = {
   occupato: 'Occupato',
   da_saldare: 'Da saldare',
   sgombera: 'Sgombera',
+  stagionale: 'Stagionale',
 };
 
-export const DISPLAY_STATUSES: DisplayStatus[] = ['libero', 'occupato', 'da_saldare', 'sgombera'];
+export const DISPLAY_STATUSES: DisplayStatus[] = ['libero', 'occupato', 'da_saldare', 'sgombera', 'stagionale'];
 
 // Piantina reserves black for a small "unpaid" dot overlay rather than recoloring the whole
 // umbrella -- red/green/orange should always show the real occupancy state at a glance, with
 // the payment flag layered on top instead of replacing it. These two helpers give that base
 // status (never 'da_saldare') plus a separate boolean for the dot.
-export type BaseDisplayStatus = 'libero' | 'occupato' | 'sgombera';
+export type BaseDisplayStatus = 'libero' | 'occupato' | 'sgombera' | 'stagionale';
 
 export function baseDisplayStatusFor(
   umbrella: Umbrella,
@@ -68,6 +86,7 @@ export function baseDisplayStatusFor(
 ): BaseDisplayStatus {
   if (umbrella.status === 'libero') return 'libero';
   const booking = getBooking(umbrella.currentBookingId);
+  if (booking && isStagionaleBooking(booking)) return 'stagionale';
   if (booking && booking.dateTo === isoDate(0)) return 'sgombera';
   return 'occupato';
 }
@@ -81,8 +100,9 @@ export function hasOutstandingBalance(
 }
 
 // Booking-record equivalents (Quadro's Gantt bars, Archivi's lists) -- a booking is always
-// occupied, so this only ever resolves to 'occupato' or 'sgombera', never 'libero'.
+// occupied, so this only ever resolves to 'occupato'/'sgombera'/'stagionale', never 'libero'.
 export function baseDisplayStatusForBooking(booking: Booking, includeSgombera = true): BaseDisplayStatus {
+  if (isStagionaleBooking(booking)) return 'stagionale';
   if (includeSgombera && booking.dateTo === isoDate(0)) return 'sgombera';
   return 'occupato';
 }

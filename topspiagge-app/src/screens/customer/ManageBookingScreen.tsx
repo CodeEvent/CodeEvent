@@ -7,7 +7,7 @@ import { Button, Card, StatusPill } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { Booking, Customer } from '../../types';
-import { displayStatusForBooking } from '../../utils/displayStatus';
+import { displayStatusForBooking, isStagionaleBooking } from '../../utils/displayStatus';
 import { isDepositRefundable } from '../../utils/cancellation';
 import { formatCurrency, formatDateShort, isoDate } from '../../utils/format';
 import { referencesMatch } from '../../utils/reference';
@@ -58,6 +58,9 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
   const total = result.group.reduce((sum, b) => sum + b.totalPrice, 0);
   const paid = result.group.reduce((sum, b) => sum + b.paid, 0);
   const primary = result.group[0];
+  // A stagionale (30+ day, pre-paid) booking can only be changed by the lido operator -- the
+  // customer can see it here but not edit or cancel it themselves.
+  const hasStagionale = result.group.some((b) => isStagionaleBooking(b));
 
   const handleCancel = () => {
     if (!primary) return;
@@ -170,18 +173,30 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
               </Text>
             </View>
 
-            <Button
-              title="Modifica prenotazione"
-              icon="create-outline"
-              onPress={() => onEdit(result.group, result.customer!)}
-              style={{ marginTop: spacing.lg }}
-            />
-            <Button
-              title="Cancella prenotazione"
-              variant="danger"
-              onPress={handleCancel}
-              style={{ marginTop: spacing.sm }}
-            />
+            {hasStagionale ? (
+              <View style={styles.stagionaleBox}>
+                <Ionicons name="lock-closed-outline" size={16} color={colors.primaryDark} />
+                <Text style={styles.stagionaleText}>
+                  Prenotazione stagionale: per modificarla o cancellarla contatta direttamente il
+                  gestore del lido.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Button
+                  title="Modifica prenotazione"
+                  icon="create-outline"
+                  onPress={() => onEdit(result.group, result.customer!)}
+                  style={{ marginTop: spacing.lg }}
+                />
+                <Button
+                  title="Cancella prenotazione"
+                  variant="danger"
+                  onPress={handleCancel}
+                  style={{ marginTop: spacing.sm }}
+                />
+              </>
+            )}
           </View>
         )}
       </ScrollView>
@@ -228,4 +243,14 @@ const styles = StyleSheet.create({
   },
   totalLabel: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
   totalValue: { color: colors.primaryDark, fontWeight: '800', fontSize: 15 },
+  stagionaleBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  stagionaleText: { flex: 1, color: colors.primaryDark, fontWeight: '600', fontSize: 13 },
 });

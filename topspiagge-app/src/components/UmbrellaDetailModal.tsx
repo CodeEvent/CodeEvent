@@ -3,8 +3,9 @@ import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { baseDisplayStatusFor, hasOutstandingBalance } from '../utils/displayStatus';
+import { baseDisplayStatusFor, hasOutstandingBalance, isStagionaleBooking } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort } from '../utils/format';
+import { useAppAlert } from './AppAlert';
 import { QuickBookingForm } from './QuickBookingForm';
 import { Button, Chip, StatusPill } from './UI';
 
@@ -16,6 +17,7 @@ interface Props {
 export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) => {
   const { getUmbrella, getBooking, getCustomer, freeUmbrella, customers, assignCustomer } = useStore();
   const navigation = useNavigation<any>();
+  const alert = useAppAlert();
   const [mode, setMode] = useState<'detail' | 'new_booking'>('detail');
   const [assigningCustomer, setAssigningCustomer] = useState(false);
   const [assigneeQuery, setAssigneeQuery] = useState('');
@@ -45,6 +47,42 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
   const remaining = booking ? booking.totalPrice - booking.paid : 0;
   const status = baseDisplayStatusFor(umbrella, getBooking);
   const unpaid = hasOutstandingBalance(umbrella, getBooking);
+  const isStagionale = !!booking && isStagionaleBooking(booking);
+
+  const doFree = () => {
+    freeUmbrella(umbrella.id);
+    close();
+  };
+
+  // A stagionale (30+ day, pre-paid) booking can't be freed on a single tap: freeing it throws
+  // away weeks of paid booking, so it takes two explicit confirmations. Everything else keeps
+  // the original single-tap behavior.
+  const requestFree = () => {
+    if (!isStagionale) {
+      doFree();
+      return;
+    }
+    alert(
+      'Ombrellone stagionale',
+      'Questo ombrellone ha una prenotazione stagionale (30+ giorni) già pagata. Vuoi davvero liberarlo?',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Continua',
+          style: 'destructive',
+          onPress: () =>
+            alert(
+              'Conferma definitiva',
+              'La prenotazione stagionale pre-pagata verrà persa e non potrà essere recuperata. Confermi la liberazione?',
+              [
+                { text: 'Annulla', style: 'cancel' },
+                { text: 'Libera definitivamente', style: 'destructive', onPress: doFree },
+              ]
+            ),
+        },
+      ]
+    );
+  };
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={close}>
@@ -175,12 +213,15 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
                       />
                     )}
                     <Button
-                      title={status === 'sgombera' ? 'Pulito: libera per domani' : 'Libera ombrellone'}
+                      title={
+                        isStagionale
+                          ? 'Libera ombrellone stagionale'
+                          : status === 'sgombera'
+                          ? 'Pulito: libera per domani'
+                          : 'Libera ombrellone'
+                      }
                       variant="danger"
-                      onPress={() => {
-                        freeUmbrella(umbrella.id);
-                        close();
-                      }}
+                      onPress={requestFree}
                     />
                   </View>
                 </View>

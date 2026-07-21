@@ -26,6 +26,7 @@ const PIANTINA_LEGEND: { key: BaseDisplayStatus; label: string }[] = [
   { key: 'libero', label: 'Libero' },
   { key: 'occupato', label: 'Occupato' },
   { key: 'sgombera', label: 'Sgombera' },
+  { key: 'stagionale', label: 'Stagionale' },
 ];
 
 function captionFor(
@@ -101,6 +102,8 @@ const UmbrellaCell: React.FC<{
   ).current;
 
   const isSgombera = status === 'sgombera';
+  const isStagionale = status === 'stagionale';
+  const isSplit = isSgombera || isStagionale;
 
   return (
     <View style={{ position: 'absolute', left: position.x, top: position.y, width: cellSize, opacity: dimmed ? 0.25 : 1 }}>
@@ -113,7 +116,7 @@ const UmbrellaCell: React.FC<{
             height: cellSize,
             borderRadius: cellSize / 2,
             overflow: 'hidden',
-            backgroundColor: isSgombera ? undefined : displayStatusColor[status],
+            backgroundColor: isSplit ? undefined : displayStatusColor[status],
             borderColor: colors.card,
             transform: pan.getTranslateTransform(),
             zIndex: dragging ? 10 : 1,
@@ -125,6 +128,12 @@ const UmbrellaCell: React.FC<{
           <View style={StyleSheet.absoluteFill}>
             <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.occupato }} />
             <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.sgombera }} />
+          </View>
+        )}
+        {isStagionale && (
+          <View style={StyleSheet.absoluteFill}>
+            <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.occupato }} />
+            <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.prenotato }} />
           </View>
         )}
         {status === 'libero' ? (
