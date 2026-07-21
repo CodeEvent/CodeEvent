@@ -12,7 +12,7 @@ import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
 import { BookingFilters, bookingMatchesFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
-import { displayStatusFor, displayStatusForBooking } from '../utils/displayStatus';
+import { baseDisplayStatusForBooking, bookingHasOutstandingBalance, displayStatusFor } from '../utils/displayStatus';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
@@ -98,7 +98,7 @@ const OggiTab: React.FC = () => {
               <Text style={styles.itemTitle}>
                 Ombrellone N.{u?.number} · {u?.zone}
               </Text>
-              <StatusPill status={displayStatusForBooking(b, true)} />
+              <StatusPill status={baseDisplayStatusForBooking(b)} unpaid={bookingHasOutstandingBalance(b)} />
             </View>
             <Text style={styles.muted}>
               {customer?.name ?? 'Cliente'} · {customer?.phone}
@@ -127,7 +127,7 @@ const OggiTab: React.FC = () => {
               <Text style={styles.itemTitle}>
                 Ombrellone N.{u?.number} · {u?.zone}
               </Text>
-              <StatusPill status={displayStatusForBooking(b, true)} />
+              <StatusPill status={baseDisplayStatusForBooking(b)} unpaid={bookingHasOutstandingBalance(b)} />
             </View>
             <Text style={styles.muted}>{customer?.name ?? 'Cliente'}</Text>
             {remaining > 0 && (
@@ -243,7 +243,7 @@ const PrenotazioniTab: React.FC = () => {
                     <Text style={styles.itemTitle}>
                       Ombrellone N.{umbrella?.number} · {umbrella?.zone} ({umbrella?.side === 'nord' ? 'Nord' : 'Sud'})
                     </Text>
-                    <StatusPill status={displayStatusForBooking(b, true)} />
+                    <StatusPill status={baseDisplayStatusForBooking(b)} unpaid={bookingHasOutstandingBalance(b)} />
                   </View>
                   <Text style={[styles.itemTitle, { fontSize: 14, marginTop: 4 }]}>
                     {customer?.name ?? 'Cliente'}
@@ -582,7 +582,7 @@ const FiltriTab: React.FC = () => {
               <Text style={styles.itemTitle}>
                 Ombrellone N.{u?.number} · {u?.zone}
               </Text>
-              <StatusPill status={displayStatusForBooking(b, true)} />
+              <StatusPill status={baseDisplayStatusForBooking(b)} unpaid={bookingHasOutstandingBalance(b)} />
             </View>
             <Text style={styles.muted}>
               {c?.name ?? 'Cliente'} · {c?.phone}

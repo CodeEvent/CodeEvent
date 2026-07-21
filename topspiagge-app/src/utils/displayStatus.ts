@@ -79,3 +79,14 @@ export function hasOutstandingBalance(
   const booking = getBooking(umbrella.currentBookingId);
   return !!booking && booking.paid < booking.totalPrice;
 }
+
+// Booking-record equivalents (Quadro's Gantt bars, Archivi's lists) -- a booking is always
+// occupied, so this only ever resolves to 'occupato' or 'sgombera', never 'libero'.
+export function baseDisplayStatusForBooking(booking: Booking, includeSgombera = true): BaseDisplayStatus {
+  if (includeSgombera && booking.dateTo === isoDate(0)) return 'sgombera';
+  return 'occupato';
+}
+
+export function bookingHasOutstandingBalance(booking: Booking): boolean {
+  return booking.paid < booking.totalPrice;
+}

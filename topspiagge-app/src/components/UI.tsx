@@ -38,12 +38,24 @@ export const Badge: React.FC<{ status: UmbrellaStatus }> = ({ status }) => (
 // The operator screens (Piantina, Griglia, Quadro, Conto, Archivi) all use the same
 // merged 3-color language -- libero/occupato/da saldare -- instead of the raw 4-value
 // booking status, so a cell's color always matches what its detail view shows.
-export const StatusPill: React.FC<{ status: DisplayStatus }> = ({ status }) => (
-  <View style={[styles.badge, { backgroundColor: displayStatusBg[status] }]}>
-    <View style={[styles.dot, { backgroundColor: displayStatusColor[status] }]} />
-    <Text style={[styles.badgeText, { color: displayStatusColor[status] }]}>{displayStatusLabel[status]}</Text>
-  </View>
-);
+// `unpaid` overlays a small black ring on the dot and appends "· Da saldare" to the label,
+// instead of the badge itself turning solid black -- so it always shows the real occupancy
+// color (Occupato/Sgombera) with the payment flag layered on top, matching the map cells.
+export const StatusPill: React.FC<{ status: DisplayStatus; unpaid?: boolean }> = ({ status, unpaid }) => {
+  const showsUnpaidSuffix = unpaid && status !== 'da_saldare';
+  return (
+    <View style={[styles.badge, { backgroundColor: displayStatusBg[status] }]}>
+      <View style={styles.dotWrap}>
+        <View style={[styles.dot, { backgroundColor: displayStatusColor[status] }]} />
+        {showsUnpaidSuffix && <View style={styles.unpaidRing} />}
+      </View>
+      <Text style={[styles.badgeText, { color: displayStatusColor[status] }]}>
+        {displayStatusLabel[status]}
+        {showsUnpaidSuffix ? ' · Da saldare' : ''}
+      </Text>
+    </View>
+  );
+};
 
 export const Button: React.FC<{
   title: string;
@@ -96,7 +108,10 @@ export const Chip: React.FC<{
   label: string;
   selected?: boolean;
   onPress?: () => void;
-}> = ({ label, selected, onPress }) => (
+  /** Small colored dot before the label -- lets a status chip echo its map color. */
+  dotColor?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+}> = ({ label, selected, onPress, dotColor, icon }) => (
   <Pressable
     onPress={onPress}
     style={[
@@ -104,6 +119,10 @@ export const Chip: React.FC<{
       { backgroundColor: selected ? colors.primary : colors.sand },
     ]}
   >
+    {!!dotColor && <View style={[styles.chipDot, { backgroundColor: dotColor }]} />}
+    {!!icon && (
+      <Ionicons name={icon} size={13} color={selected ? colors.white : colors.textMuted} style={{ marginRight: 4 }} />
+    )}
     <Text style={{ color: selected ? colors.white : colors.text, fontWeight: '600', fontSize: 13 }}>
       {label}
     </Text>
@@ -248,7 +267,17 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 6,
+  },
+  dotWrap: { position: 'relative', width: 8, height: 8, marginRight: 6 },
+  unpaidRing: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.black,
   },
   badgeText: {
     fontSize: 12,
@@ -270,12 +299,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
     borderRadius: radius.xl,
     marginRight: spacing.sm,
     marginBottom: spacing.sm,
   },
+  chipDot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
   iconButton: {
     width: 36,
     height: 36,

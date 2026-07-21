@@ -36,8 +36,16 @@ export function useUmbrellaPositions(
   }, [umbrellas, cellSize, gap, rowHeight]);
 }
 
-export const WaveFooter: React.FC = () => (
-  <Svg width="100%" height={22} viewBox="0 0 400 24" preserveAspectRatio="none">
+// `flip` mirrors the wave vertically so it can sit above the first row (sea fill on top,
+// curve dipping down into the sand) instead of only working as a footer (sand on top).
+export const WaveFooter: React.FC<{ flip?: boolean }> = ({ flip }) => (
+  <Svg
+    width="100%"
+    height={22}
+    viewBox="0 0 400 24"
+    preserveAspectRatio="none"
+    style={flip ? { transform: [{ scaleY: -1 }] } : undefined}
+  >
     <Path d="M0,12 C50,24 150,0 200,12 C250,24 350,0 400,12 L400,24 L0,24 Z" fill={colors.sea} />
   </Svg>
 );
@@ -84,6 +92,10 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
 
   return (
     <View style={styles.beach}>
+      {/* Fila 1 is the front row, closest to the water (hasCabin/VIP-assignment logic
+          treats row 0 as the premium sea-front tier) -- the wave sits above it, not
+          below Fila 12, so the map reads shoreline-first the way the real beach does. */}
+      <WaveFooter flip />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.boardScroll}>
         <View style={styles.boardRow}>
           <View style={{ width: labelWidth, height: GROUP_HEADER_HEIGHT + canvasHeight }}>
@@ -144,7 +156,6 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
         </View>
       </ScrollView>
 
-      <WaveFooter />
       <View style={styles.footerBar}>
         <Text style={styles.footerText}>{footerText}</Text>
       </View>

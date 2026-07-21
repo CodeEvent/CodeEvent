@@ -10,7 +10,7 @@ import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Booking } from '../types';
 import { BookingFilters, bookingMatchesFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
-import { displayStatusColor, displayStatusForBooking } from '../utils/displayStatus';
+import { baseDisplayStatusForBooking, bookingHasOutstandingBalance, displayStatusColor } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 
 const LABEL_WIDTH = 96;
@@ -165,18 +165,28 @@ export const QuadroScreen: React.FC = () => {
                       if (endIdx < startIdx) return null;
                       const left = startIdx * DAY_WIDTH + 1;
                       const width = (endIdx - startIdx + 1) * DAY_WIDTH - 2;
+                      const baseStatus = baseDisplayStatusForBooking(b, true);
+                      const isSgombera = baseStatus === 'sgombera';
+                      const unpaid = bookingHasOutstandingBalance(b);
                       return (
                         <Pressable
                           key={b.id}
                           style={[
                             styles.bar,
-                            { left, width, backgroundColor: displayStatusColor[displayStatusForBooking(b, true)] },
+                            { left, width, backgroundColor: isSgombera ? undefined : displayStatusColor[baseStatus] },
                           ]}
                           onPress={() => setSelectedBooking(b)}
                         >
+                          {isSgombera && (
+                            <View style={StyleSheet.absoluteFill}>
+                              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: width / 2, backgroundColor: colors.occupato }} />
+                              <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: width / 2, backgroundColor: colors.sgombera }} />
+                            </View>
+                          )}
                           <Text style={styles.barText} numberOfLines={1}>
                             {getCustomer(b.customerId)?.name.split(' ')[0] ?? 'Cliente'}
                           </Text>
+                          {unpaid && <View style={styles.unpaidDot} />}
                         </Pressable>
                       );
                     })}
@@ -319,8 +329,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     justifyContent: 'center',
     paddingHorizontal: 6,
+    overflow: 'hidden',
   },
   barText: { color: colors.white, fontWeight: '700', fontSize: 10 },
+  unpaidDot: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.black,
+    borderWidth: 1.5,
+    borderColor: colors.white,
+  },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: spacing.lg },
   card: {
     backgroundColor: colors.card,

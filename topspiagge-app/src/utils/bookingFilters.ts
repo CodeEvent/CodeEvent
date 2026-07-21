@@ -6,9 +6,10 @@ import { DisplayStatus, displayStatusFor } from './displayStatus';
 // happened when Sgombera's color was fixed in one place but not another.
 export interface BookingFilters {
   side: BeachSide | 'tutti';
+  // 'da_saldare' here already means "has an outstanding balance" -- there is deliberately no
+  // separate "unpaid" toggle, since that would just be the same condition asked twice.
   status: DisplayStatus | 'tutti';
   onlyVip: boolean;
-  onlyUnpaid: boolean;
   checkinToday: boolean;
   checkoutToday: boolean;
   hasCabin: boolean | null; // null = don't care
@@ -22,7 +23,6 @@ export const DEFAULT_BOOKING_FILTERS: BookingFilters = {
   side: 'tutti',
   status: 'tutti',
   onlyVip: false,
-  onlyUnpaid: false,
   checkinToday: false,
   checkoutToday: false,
   hasCabin: null,
@@ -46,7 +46,6 @@ function bookingPasses(
   today: string
 ): boolean {
   if (filters.onlyVip && !customer?.vip) return false;
-  if (filters.onlyUnpaid && booking.paid >= booking.totalPrice) return false;
   if (filters.checkinToday && booking.dateFrom !== today) return false;
   if (filters.checkoutToday && booking.dateTo !== today) return false;
   if (filters.minAdults > 0 && (booking.guests?.adults ?? 0) < filters.minAdults) return false;
@@ -76,7 +75,6 @@ function bookingPasses(
 function needsBooking(filters: BookingFilters): boolean {
   return (
     filters.onlyVip ||
-    filters.onlyUnpaid ||
     filters.checkinToday ||
     filters.checkoutToday ||
     filters.minAdults > 0 ||

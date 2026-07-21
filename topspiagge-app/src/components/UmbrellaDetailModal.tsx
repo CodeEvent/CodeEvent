@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { displayStatusFor } from '../utils/displayStatus';
+import { baseDisplayStatusFor, hasOutstandingBalance } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort } from '../utils/format';
 import { QuickBookingForm } from './QuickBookingForm';
 import { Button, Chip, StatusPill } from './UI';
@@ -43,7 +43,8 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
   };
 
   const remaining = booking ? booking.totalPrice - booking.paid : 0;
-  const status = displayStatusFor(umbrella, getBooking);
+  const status = baseDisplayStatusFor(umbrella, getBooking);
+  const unpaid = hasOutstandingBalance(umbrella, getBooking);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={close}>
@@ -54,7 +55,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
             <Text style={styles.title}>
               Ombrellone {umbrella.number} · {umbrella.zone}
             </Text>
-            <StatusPill status={status} />
+            <StatusPill status={status} unpaid={unpaid} />
           </View>
           {umbrella.hasCabin && <Text style={styles.muted}>Con cabina</Text>}
 

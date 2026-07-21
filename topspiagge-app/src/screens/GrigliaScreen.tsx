@@ -9,7 +9,13 @@ import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Umbrella, Zone } from '../types';
 import { DEFAULT_BOOKING_FILTERS, umbrellaMatchesFilters } from '../utils/bookingFilters';
-import { DisplayStatus, displayStatusColor, displayStatusFor } from '../utils/displayStatus';
+import {
+  baseDisplayStatusFor,
+  DisplayStatus,
+  displayStatusColor,
+  displayStatusFor,
+  hasOutstandingBalance,
+} from '../utils/displayStatus';
 import { isoDate } from '../utils/format';
 
 const ALL_ZONES = 'Tutte';
@@ -117,7 +123,9 @@ export const GrigliaScreen: React.FC = () => {
                 <View style={styles.rowCells}>
                   {rowUmbrellas.map((u) => {
                     const displayStatus = displayStatusFor(u, getBooking);
-                    const isSgombera = displayStatus === 'sgombera';
+                    const baseStatus = baseDisplayStatusFor(u, getBooking);
+                    const isSgombera = baseStatus === 'sgombera';
+                    const unpaid = hasOutstandingBalance(u, getBooking);
                     const caption = captionFor(displayStatus, u, getBooking, getCustomer);
                     return (
                       <React.Fragment key={u.id}>
@@ -127,7 +135,7 @@ export const GrigliaScreen: React.FC = () => {
                             onPress={() => setSelectedId(u.id)}
                             style={[
                               styles.cell,
-                              { backgroundColor: isSgombera ? undefined : displayStatusColor[displayStatus], overflow: 'hidden' },
+                              { backgroundColor: isSgombera ? undefined : displayStatusColor[baseStatus], overflow: 'hidden' },
                             ]}
                           >
                             {isSgombera && (
@@ -136,7 +144,7 @@ export const GrigliaScreen: React.FC = () => {
                                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.sgombera }} />
                               </View>
                             )}
-                            {displayStatus === 'libero' ? (
+                            {baseStatus === 'libero' ? (
                               <>
                                 <MaterialCommunityIcons name="umbrella-closed" size={14} color={colors.white} />
                                 <Text style={[styles.cellNumber, { fontSize: 12 }]}>{u.number}</Text>
@@ -145,6 +153,7 @@ export const GrigliaScreen: React.FC = () => {
                               <Text style={styles.cellNumber}>{u.number}</Text>
                             )}
                             <Text style={styles.cellSide}>{u.side === 'nord' ? 'N' : 'S'}</Text>
+                            {unpaid && <View style={styles.unpaidDot} />}
                           </Pressable>
                           {!!caption && (
                             <Text numberOfLines={1} style={styles.cellCaption}>
@@ -214,6 +223,17 @@ const styles = StyleSheet.create({
   },
   cellNumber: { fontWeight: '800', fontSize: 15, color: colors.white },
   cellSide: { fontSize: 9, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
+  unpaidDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.black,
+    borderWidth: 1.5,
+    borderColor: colors.white,
+  },
   cellCaption: {
     marginTop: 2,
     fontSize: 9,
