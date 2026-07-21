@@ -1,19 +1,22 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BeachCanvas, GAP, MIN_CELL, useUmbrellaPositions } from '../components/BeachCanvas';
+import { BookingFilterBar } from '../components/BookingFilterBar';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing } from '../theme';
 import { Umbrella } from '../types';
+import { DEFAULT_BOOKING_FILTERS, umbrellaMatchesFilters } from '../utils/bookingFilters';
 import {
   BaseDisplayStatus,
   baseDisplayStatusFor,
   displayStatusColor,
   hasOutstandingBalance,
 } from '../utils/displayStatus';
+import { isoDate } from '../utils/format';
 
 const TAP_THRESHOLD = 10;
 const ROWS = 12;
@@ -49,9 +52,10 @@ const UmbrellaCell: React.FC<{
   status: BaseDisplayStatus;
   unpaid?: boolean;
   caption?: string;
+  dimmed?: boolean;
   onDrop: (fromId: string, toId: string) => void;
   onTap: (id: string) => void;
-}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, unpaid, caption, onDrop, onTap }) => {
+}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, unpaid, caption, dimmed, onDrop, onTap }) => {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [dragging, setDragging] = useState(false);
 
@@ -99,7 +103,7 @@ const UmbrellaCell: React.FC<{
   const isSgombera = status === 'sgombera';
 
   return (
-    <View style={{ position: 'absolute', left: position.x, top: position.y, width: cellSize }}>
+    <View style={{ position: 'absolute', left: position.x, top: position.y, width: cellSize, opacity: dimmed ? 0.25 : 1 }}>
       <Animated.View
         {...panResponder.panHandlers}
         style={[
@@ -124,7 +128,10 @@ const UmbrellaCell: React.FC<{
           </View>
         )}
         {status === 'libero' ? (
-          <MaterialCommunityIcons name="umbrella-closed" size={Math.min(24, Math.max(16, cellSize / 3))} color={colors.white} />
+          <>
+            <MaterialCommunityIcons name="umbrella-closed" size={Math.min(18, Math.max(12, cellSize / 4))} color={colors.white} />
+            <Text style={[styles.cellNumber, { fontSize: Math.min(13, Math.max(10, cellSize / 5.5)) }]}>{umbrella.number}</Text>
+          </>
         ) : (
           <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
             {umbrella.number}
@@ -145,8 +152,11 @@ const UmbrellaCell: React.FC<{
 export const PiantinaScreen: React.FC = () => {
   const { umbrellas, swapUmbrellas, getBooking, getCustomer } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filters, setFilters] = useState(DEFAULT_BOOKING_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const route = useRoute<any>();
   const { height } = useWindowDimensions();
+  const today = isoDate(0);
 
   const labelWidth = 60;
   // 20 seats per row (10 Nord + walkway + 10 Sud) rarely fit a screen width without
@@ -173,8 +183,16 @@ export const PiantinaScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Piantina Spiaggia</Text>
-        <Text style={styles.headerSubtitle}>Trascina un ombrellone per spostare la prenotazione</Text>
+        <View style={styles.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Piantina Spiaggia</Text>
+            <Text style={styles.headerSubtitle}>Trascina un ombrellone per spostare la prenotazione</Text>
+          </View>
+          <Pressable onPress={() => setFiltersOpen((v) => !v)} style={styles.filterToggle}>
+            <Ionicons name="options-outline" size={14} color={colors.primaryDark} />
+            <Text style={styles.filterToggleText}>Filtri</Text>
+          </Pressable>
+        </View>
         <View style={styles.legendRow}>
           {PIANTINA_LEGEND.map(({ key, label }) => (
             <View key={key} style={styles.legendItem}>
@@ -187,6 +205,11 @@ export const PiantinaScreen: React.FC = () => {
             <Text style={styles.legendText}>Da saldare</Text>
           </View>
         </View>
+        {filtersOpen && (
+          <View style={{ marginTop: spacing.sm }}>
+            <BookingFilterBar filters={filters} onChange={setFilters} />
+          </View>
+        )}
       </View>
 
       <BeachCanvas
@@ -209,6 +232,7 @@ export const PiantinaScreen: React.FC = () => {
               status={status}
               unpaid={hasOutstandingBalance(u, getBooking)}
               caption={captionFor(status, u, getBooking, getCustomer)}
+              dimmed={!umbrellaMatchesFilters(u, filters, getBooking, getCustomer, today)}
               onDrop={swapUmbrellas}
               onTap={setSelectedId}
             />
@@ -231,8 +255,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start' },
   headerTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
   headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.prenotatoBg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  filterToggleText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12 },
   legendRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

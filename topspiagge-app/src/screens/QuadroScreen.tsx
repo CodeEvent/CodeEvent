@@ -1,12 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BookingFilterBar } from '../components/BookingFilterBar';
 import { QuickBookingForm } from '../components/QuickBookingForm';
-import { Chip, Button } from '../components/UI';
+import { Button } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { BeachSide, Booking } from '../types';
+import { Booking } from '../types';
+import { BookingFilters, bookingMatchesFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
 import { displayStatusColor, displayStatusForBooking } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 
@@ -32,15 +35,17 @@ export const QuadroScreen: React.FC = () => {
   const { umbrellas, bookings, getUmbrella, getCustomer } = useStore();
   const navigation = useNavigation<any>();
   const [windowStart, setWindowStart] = useState(0);
-  const [sideFilter, setSideFilter] = useState<BeachSide | 'tutti'>('nord');
+  const [filters, setFilters] = useState<BookingFilters>({ ...DEFAULT_BOOKING_FILTERS, side: 'nord' });
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [newBookingSlot, setNewBookingSlot] = useState<{ umbrellaId: string; offset: number } | null>(
     null
   );
+  const today = isoDate(0);
 
   const visibleUmbrellas = useMemo(
-    () => (sideFilter === 'tutti' ? umbrellas : umbrellas.filter((u) => u.side === sideFilter)),
-    [umbrellas, sideFilter]
+    () => (filters.side === 'tutti' ? umbrellas : umbrellas.filter((u) => u.side === filters.side)),
+    [umbrellas, filters.side]
   );
 
   const days = useMemo(
@@ -84,8 +89,16 @@ export const QuadroScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Il Quadro</Text>
-        <Text style={styles.headerSubtitle}>Planning stagionale · tocca una cella libera per prenotare</Text>
+        <View style={styles.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Il Quadro</Text>
+            <Text style={styles.headerSubtitle}>Planning stagionale · tocca una cella libera per prenotare</Text>
+          </View>
+          <Pressable onPress={() => setFiltersOpen((v) => !v)} style={styles.filterToggle}>
+            <Ionicons name="options-outline" size={14} color={colors.primaryDark} />
+            <Text style={styles.filterToggleText}>Filtri</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.navRow}>
@@ -97,16 +110,11 @@ export const QuadroScreen: React.FC = () => {
         </Text>
       </View>
 
-      <View style={[styles.filterRow]}>
-        {(['nord', 'sud', 'tutti'] as const).map((s) => (
-          <Chip
-            key={s}
-            label={s === 'tutti' ? 'Tutti i lati' : s === 'nord' ? 'Lato Nord' : 'Lato Sud'}
-            selected={sideFilter === s}
-            onPress={() => setSideFilter(s)}
-          />
-        ))}
-      </View>
+      {filtersOpen && (
+        <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
+          <BookingFilterBar filters={filters} onChange={setFilters} />
+        </View>
+      )}
 
       <ScrollView>
         <View style={{ flexDirection: 'row' }}>
@@ -151,6 +159,7 @@ export const QuadroScreen: React.FC = () => {
                       ))}
                     </View>
                     {rowBookings.map((b) => {
+                      if (!bookingMatchesFilters(b, u, getCustomer(b.customerId), filters, today)) return null;
                       const startIdx = Math.max(0, dayIndexInWindow(b.dateFrom, windowStartIso));
                       const endIdx = Math.min(WINDOW_SIZE - 1, dayIndexInWindow(b.dateTo, windowStartIso));
                       if (endIdx < startIdx) return null;
@@ -264,14 +273,19 @@ const BookingInfo: React.FC<{ booking: Booking; onClose: () => void; onGoToConto
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start' },
   headerTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
   headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2, marginBottom: spacing.sm },
-  filterRow: {
+  filterToggle: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.prenotatoBg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
+  filterToggleText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12 },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',

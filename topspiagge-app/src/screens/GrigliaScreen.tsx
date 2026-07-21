@@ -3,21 +3,16 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLS_PER_SIDE } from '../components/BeachCanvas';
+import { BookingFilterBar } from '../components/BookingFilterBar';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
-import { Chip } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { BeachSide, Umbrella, Zone } from '../types';
-import {
-  DISPLAY_STATUSES,
-  DisplayStatus,
-  displayStatusColor,
-  displayStatusFor,
-  displayStatusLabel,
-} from '../utils/displayStatus';
+import { Umbrella, Zone } from '../types';
+import { DEFAULT_BOOKING_FILTERS, umbrellaMatchesFilters } from '../utils/bookingFilters';
+import { DisplayStatus, displayStatusColor, displayStatusFor } from '../utils/displayStatus';
+import { isoDate } from '../utils/format';
 
 const ALL_ZONES = 'Tutte';
-const ALL_SIDES = 'tutti';
 
 function captionFor(
   status: DisplayStatus,
@@ -37,26 +32,26 @@ function captionFor(
 export const GrigliaScreen: React.FC = () => {
   const { umbrellas, getBooking, getCustomer } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [sideFilter, setSideFilter] = useState<BeachSide | 'tutti'>(ALL_SIDES);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState(DEFAULT_BOOKING_FILTERS);
   const [zoneFilter, setZoneFilter] = useState<string>(ALL_ZONES);
-  const [statusFilter, setStatusFilter] = useState<DisplayStatus | 'tutti'>('tutti');
+  const today = isoDate(0);
 
   const zones = useMemo(() => {
-    const scoped = sideFilter === ALL_SIDES ? umbrellas : umbrellas.filter((u) => u.side === sideFilter);
+    const scoped = filters.side === 'tutti' ? umbrellas : umbrellas.filter((u) => u.side === filters.side);
     const set = new Set<Zone>();
     scoped.forEach((u) => set.add(u.zone));
     return [ALL_ZONES, ...Array.from(set).sort((a, b) => a.localeCompare(b, 'it', { numeric: true }))];
-  }, [umbrellas, sideFilter]);
+  }, [umbrellas, filters.side]);
 
   const filtered = useMemo(
     () =>
       umbrellas.filter(
         (u) =>
-          (sideFilter === ALL_SIDES || u.side === sideFilter) &&
           (zoneFilter === ALL_ZONES || u.zone === zoneFilter) &&
-          (statusFilter === 'tutti' || displayStatusFor(u, getBooking) === statusFilter)
+          umbrellaMatchesFilters(u, filters, getBooking, getCustomer, today)
       ),
-    [umbrellas, sideFilter, zoneFilter, statusFilter, getBooking]
+    [umbrellas, zoneFilter, filters, getBooking, getCustomer, today]
   );
 
   // Every row is a fixed line of umbrellas (10 per side, 20 when both sides are shown) --
@@ -83,42 +78,35 @@ export const GrigliaScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Griglia Ombrelloni</Text>
-        <Text style={styles.headerSubtitle}>
-          {counts.libero} liberi · {counts.occupato} occupati · {counts.da_saldare} da saldare ·{' '}
-          {counts.sgombera} da sgomberare
-        </Text>
+        <View style={styles.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Griglia Ombrelloni</Text>
+            <Text style={styles.headerSubtitle}>
+              {counts.libero} liberi · {counts.occupato} occupati · {counts.da_saldare} da saldare ·{' '}
+              {counts.sgombera} da sgomberare
+            </Text>
+          </View>
+          <Pressable onPress={() => setFiltersOpen((v) => !v)} style={styles.filterToggle}>
+            <MaterialCommunityIcons name="tune-variant" size={14} color={colors.primaryDark} />
+            <Text style={styles.filterToggleText}>Filtri</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.filterRow}>
-        {(['tutti', 'nord', 'sud'] as const).map((s) => (
-          <Chip
-            key={s}
-            label={s === 'tutti' ? 'Tutti i lati' : s === 'nord' ? 'Lato Nord' : 'Lato Sud'}
-            selected={sideFilter === s}
-            onPress={() => {
-              setSideFilter(s);
-              setZoneFilter(ALL_ZONES);
+      {filtersOpen && (
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <BookingFilterBar
+            filters={filters}
+            onChange={(next) => {
+              if (next.side !== filters.side) setZoneFilter(ALL_ZONES);
+              setFilters(next);
             }}
+            zones={zones}
+            zone={zoneFilter}
+            onZoneChange={setZoneFilter}
           />
-        ))}
-      </View>
-      <View style={styles.filterRow}>
-        {zones.map((z) => (
-          <Chip key={z} label={z} selected={zoneFilter === z} onPress={() => setZoneFilter(z)} />
-        ))}
-      </View>
-      <View style={styles.filterRow}>
-        <Chip label="Tutti gli stati" selected={statusFilter === 'tutti'} onPress={() => setStatusFilter('tutti')} />
-        {DISPLAY_STATUSES.map((s) => (
-          <Chip
-            key={s}
-            label={displayStatusLabel[s]}
-            selected={statusFilter === s}
-            onPress={() => setStatusFilter(s)}
-          />
-        ))}
-      </View>
+        </View>
+      )}
 
       <View style={styles.beach}>
         <ScrollView contentContainerStyle={styles.scrollBody}>
@@ -149,7 +137,10 @@ export const GrigliaScreen: React.FC = () => {
                               </View>
                             )}
                             {displayStatus === 'libero' ? (
-                              <MaterialCommunityIcons name="umbrella-closed" size={20} color={colors.white} />
+                              <>
+                                <MaterialCommunityIcons name="umbrella-closed" size={14} color={colors.white} />
+                                <Text style={[styles.cellNumber, { fontSize: 12 }]}>{u.number}</Text>
+                              </>
                             ) : (
                               <Text style={styles.cellNumber}>{u.number}</Text>
                             )}
@@ -183,7 +174,18 @@ export const GrigliaScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.card },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start' },
   headerTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.prenotatoBg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  filterToggleText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12 },
   headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2, marginBottom: spacing.sm },
   filterRow: {
     flexDirection: 'row',

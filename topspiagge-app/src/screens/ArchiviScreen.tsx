@@ -1,19 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
 import { COLS_PER_SIDE } from '../components/BeachCanvas';
+import { BookingFilterBar } from '../components/BookingFilterBar';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
 import { useOperatorAuth } from '../store/OperatorAuthContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
+import { BookingFilters, bookingMatchesFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
 import { displayStatusFor, displayStatusForBooking } from '../utils/displayStatus';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
+import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
-type Tab = 'oggi' | 'prenotazioni' | 'listini' | 'clienti' | 'articoli' | 'disposizione';
+type Tab = 'oggi' | 'prenotazioni' | 'filtri' | 'listini' | 'clienti' | 'articoli' | 'disposizione';
 
 const CATEGORY_LABEL: Record<ArticleCategory, string> = {
   ombrellone: 'Spiaggia',
@@ -44,6 +47,7 @@ export const ArchiviScreen: React.FC = () => {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm }}>
           <Chip label="Oggi" selected={tab === 'oggi'} onPress={() => setTab('oggi')} />
           <Chip label="Prenotazioni" selected={tab === 'prenotazioni'} onPress={() => setTab('prenotazioni')} />
+          <Chip label="Filtri" selected={tab === 'filtri'} onPress={() => setTab('filtri')} />
           <Chip label="Disposizione" selected={tab === 'disposizione'} onPress={() => setTab('disposizione')} />
           <Chip label="Listini" selected={tab === 'listini'} onPress={() => setTab('listini')} />
           <Chip label="Clienti (CRM)" selected={tab === 'clienti'} onPress={() => setTab('clienti')} />
@@ -52,6 +56,7 @@ export const ArchiviScreen: React.FC = () => {
       </View>
       {tab === 'oggi' && <OggiTab />}
       {tab === 'prenotazioni' && <PrenotazioniTab />}
+      {tab === 'filtri' && <FiltriTab />}
       {tab === 'disposizione' && <DisposizioneTab />}
       {tab === 'listini' && <ListiniTab />}
       {tab === 'clienti' && <ClientiTab />}
@@ -415,6 +420,179 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
         <Button title="Cancella prenotazione" variant="danger" onPress={confirmCancel} />
       </View>
       <Button title="Chiudi" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
+    </ScrollView>
+  );
+};
+
+interface SavedPreset {
+  name: string;
+  filters: BookingFilters;
+}
+
+const PRESETS_STORAGE_KEY = 'topspiagge_filter_presets';
+
+// The single place an operator can combine any of the shared filter dimensions, save the
+// combination as a named rule for next time, and print/export the resulting booking list --
+// reuses the exact same BookingFilters model as Piantina/Griglia/Quadro so results here always
+// match what those screens would show for the same filter settings.
+const FiltriTab: React.FC = () => {
+  const { bookings, getUmbrella, getCustomer } = useStore();
+  const alert = useAppAlert();
+  const [filters, setFilters] = useState<BookingFilters>(DEFAULT_BOOKING_FILTERS);
+  const [presets, setPresets] = useState<SavedPreset[]>([]);
+  const [presetName, setPresetName] = useState('');
+  const today = isoDate(0);
+
+  useEffect(() => {
+    safeGetItem(PRESETS_STORAGE_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setPresets(parsed);
+      } catch {
+        // corrupted preset payload -- ignore, start with an empty list
+      }
+    });
+  }, []);
+
+  const persistPresets = (next: SavedPreset[]) => {
+    setPresets(next);
+    safeSetItem(PRESETS_STORAGE_KEY, JSON.stringify(next));
+  };
+
+  const results = useMemo(
+    () =>
+      bookings
+        .filter((b) => bookingMatchesFilters(b, getUmbrella(b.umbrellaId), getCustomer(b.customerId), filters, today))
+        .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom)),
+    [bookings, filters, getUmbrella, getCustomer, today]
+  );
+
+  const handleSavePreset = () => {
+    const name = presetName.trim();
+    if (!name) return;
+    persistPresets([...presets.filter((p) => p.name !== name), { name, filters }]);
+    setPresetName('');
+  };
+
+  const handlePrint = () => {
+    if (results.length === 0) {
+      alert('Nessun risultato', 'Nessuna prenotazione corrisponde ai filtri selezionati.');
+      return;
+    }
+    const rows = results
+      .map((b) => {
+        const u = getUmbrella(b.umbrellaId);
+        const c = getCustomer(b.customerId);
+        return `<tr>
+          <td>${b.reference}</td>
+          <td>${c?.name ?? ''}</td>
+          <td>${c?.phone ?? ''}</td>
+          <td>N.${u?.number ?? ''} · ${u?.zone ?? ''}</td>
+          <td>${formatDateShort(b.dateFrom)} → ${formatDateShort(b.dateTo)}</td>
+          <td>${b.guests?.adults ?? ''}</td>
+          <td>${b.beds ?? 0}L / ${b.chairs ?? 0}S</td>
+          <td>${formatCurrency(b.totalPrice)}</td>
+          <td>${formatCurrency(b.paid)}</td>
+        </tr>`;
+      })
+      .join('');
+    const html = `<!doctype html><html><head><title>Top Spiagge - Report</title>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: -apple-system, Arial, sans-serif; padding: 24px; color:#233044; }
+        h1 { font-size: 18px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+        th, td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
+        th { background: #f4f6f9; }
+      </style></head><body>
+      <h1>Top Spiagge — Report prenotazioni (${results.length})</h1>
+      <p>Generato il ${formatDateLong(today)}</p>
+      <table><thead><tr>
+        <th>Codice</th><th>Cliente</th><th>Telefono</th><th>Ombrellone</th><th>Periodo</th><th>Adulti</th><th>Attrezzatura</th><th>Totale</th><th>Pagato</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+      </body></html>`;
+    try {
+      const win = window.open('', '_blank');
+      if (!win) throw new Error('popup blocked');
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      win.print();
+    } catch {
+      alert('Stampa non disponibile', 'Il browser ha bloccato la finestra di stampa. Controlla il blocco popup del browser e riprova.');
+    }
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollBody}>
+      <Text style={styles.dateSectionHeader}>Filtri e condizioni</Text>
+      <BookingFilterBar filters={filters} onChange={setFilters} />
+
+      <View style={{ marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        <TextInput
+          style={[styles.input, { flex: 1, marginBottom: 0 }]}
+          placeholder="Nome regola (es. VIP da saldare)"
+          placeholderTextColor={colors.textMuted}
+          value={presetName}
+          onChangeText={setPresetName}
+        />
+        <Button title="Salva regola" variant="secondary" onPress={handleSavePreset} style={{ paddingVertical: 8 }} />
+      </View>
+
+      {presets.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.sm }}>
+          {presets.map((p) => (
+            <View key={p.name} style={styles.presetChipWrap}>
+              <Chip label={p.name} onPress={() => setFilters(p.filters)} />
+              <Pressable
+                onPress={() => persistPresets(presets.filter((x) => x.name !== p.name))}
+                style={styles.presetDelete}
+                hitSlop={6}
+              >
+                <Ionicons name="close" size={12} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <View style={styles.rowBetween}>
+        <Text style={[styles.dateSectionHeader, { marginTop: spacing.lg, marginBottom: 0 }]}>
+          Risultati ({results.length})
+        </Text>
+        <Button
+          title="Stampa"
+          icon="print-outline"
+          variant="info"
+          onPress={handlePrint}
+          style={{ paddingVertical: 6, marginTop: spacing.lg }}
+        />
+      </View>
+
+      {results.length === 0 && (
+        <Text style={[styles.muted, { marginTop: spacing.sm }]}>Nessuna prenotazione corrisponde ai filtri.</Text>
+      )}
+      {results.map((b) => {
+        const u = getUmbrella(b.umbrellaId);
+        const c = getCustomer(b.customerId);
+        return (
+          <Card key={b.id} style={{ marginTop: spacing.sm }}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.itemTitle}>
+                Ombrellone N.{u?.number} · {u?.zone}
+              </Text>
+              <StatusPill status={displayStatusForBooking(b, true)} />
+            </View>
+            <Text style={styles.muted}>
+              {c?.name ?? 'Cliente'} · {c?.phone}
+            </Text>
+            <Text style={styles.muted}>
+              {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
+            </Text>
+          </Card>
+        );
+      })}
     </ScrollView>
   );
 };
@@ -1154,6 +1332,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   formLabel: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs, marginTop: spacing.xs },
+  presetChipWrap: { position: 'relative', marginRight: spacing.xs, marginBottom: spacing.xs },
+  presetDelete: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.card,
