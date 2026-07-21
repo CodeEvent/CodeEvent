@@ -750,6 +750,7 @@ const BookingForm: React.FC<{
         vip: false,
         bookingHistory: [],
         createdAt: isoDate(0),
+        tags: [],
       };
       upsertCustomer(customer);
       customerId = customer.id;

@@ -112,6 +112,7 @@ export function buildCustomers(): Customer[] {
     vip: i % 4 === 0,
     bookingHistory: [],
     createdAt: isoDate(-200 + i * 3),
+    tags: i % 5 === 0 ? ['cliente storico'] : i % 3 === 0 ? ['famiglia'] : [],
   }));
 }
 

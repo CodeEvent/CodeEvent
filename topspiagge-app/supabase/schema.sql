@@ -60,6 +60,7 @@ create table if not exists customers (
   booking_history text[] not null default '{}',
   assigned_umbrella_id text,
   created_at text not null,
+  tags text[] not null default '{}',
   primary key (beach_id, id)
 );
 create index if not exists customers_beach_id_idx on customers (beach_id);

@@ -14,6 +14,7 @@ import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
 import { BookingFilters, bookingMatchesFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
+import { computeCustomerStats, CustomerStats } from '../utils/customerStats';
 import { baseDisplayStatusForBooking, bookingHasOutstandingBalance, displayStatusFor } from '../utils/displayStatus';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 import { safeGetItem, safeSetItem } from '../utils/safeStorage';
@@ -1084,11 +1085,16 @@ const PriceListForm: React.FC<{
   );
 };
 
+const NO_RECENT_VISIT_DAYS = 90;
+
 const ClientiTab: React.FC = () => {
   const { customers, bookings, upsertCustomer, deleteCustomer } = useStore();
   const alert = useAppAlert();
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Customer | null>(null);
+  const [vipOnly, setVipOnly] = useState(false);
+  const [tagQuery, setTagQuery] = useState('');
+  const [noRecentVisitOnly, setNoRecentVisitOnly] = useState(false);
 
   const confirmDelete = (c: Customer) => {
     alert(`Eliminare ${c.name}?`, 'Operazione non reversibile.', [
@@ -1097,9 +1103,29 @@ const ClientiTab: React.FC = () => {
     ]);
   };
 
+  const statsById = useMemo(() => {
+    const map = new Map<string, CustomerStats>();
+    customers.forEach((c) => map.set(c.id, computeCustomerStats(c, bookings)));
+    return map;
+  }, [customers, bookings]);
+
+  const recentCutoff = isoDate(-NO_RECENT_VISIT_DAYS);
+
   const filtered = useMemo(
-    () => customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())),
-    [customers, query]
+    () =>
+      customers.filter((c) => {
+        if (!c.name.toLowerCase().includes(query.toLowerCase())) return false;
+        if (vipOnly && !c.vip) return false;
+        if (tagQuery.trim() && !c.tags.some((t) => t.toLowerCase().includes(tagQuery.trim().toLowerCase()))) {
+          return false;
+        }
+        if (noRecentVisitOnly) {
+          const lastVisit = statsById.get(c.id)?.lastVisitDate ?? null;
+          if (lastVisit && lastVisit >= recentCutoff) return false;
+        }
+        return true;
+      }),
+    [customers, query, vipOnly, tagQuery, noRecentVisitOnly, statsById, recentCutoff]
   );
 
   const newCustomer = (): Customer => ({
@@ -1111,7 +1137,46 @@ const ClientiTab: React.FC = () => {
     vip: false,
     bookingHistory: [],
     createdAt: isoDate(0),
+    tags: [],
   });
+
+  const handleExportCsv = () => {
+    if (filtered.length === 0) {
+      alert('Nessun risultato', 'Nessun cliente corrisponde ai filtri selezionati.');
+      return;
+    }
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const header = ['Nome', 'Telefono', 'Email', 'VIP', 'Tag', 'Prenotazioni', 'Spesa totale', 'Ultima visita'];
+    const rows = filtered.map((c) => {
+      const stats = statsById.get(c.id);
+      return [
+        c.name,
+        c.phone,
+        c.email ?? '',
+        c.vip ? 'Si' : 'No',
+        c.tags.join('; '),
+        String(stats?.visitCount ?? 0),
+        (stats?.totalSpend ?? 0).toFixed(2),
+        stats?.lastVisitDate ? formatDateShort(stats.lastVisitDate) : '',
+      ]
+        .map(escape)
+        .join(',');
+    });
+    const csv = [header.map(escape).join(','), ...rows].join('\n');
+    try {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `clienti-${isoDate(0)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Esportazione non disponibile', 'Il download CSV funziona solo dalla versione web di questa app.');
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
@@ -1122,24 +1187,62 @@ const ClientiTab: React.FC = () => {
         value={query}
         onChangeText={setQuery}
       />
-      {filtered.map((c) => (
-        <Card key={c.id} style={{ marginTop: spacing.md }}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.itemTitle}>
-              {c.name} {c.vip ? '⭐' : ''}
-            </Text>
-            <Text style={styles.muted}>{c.bookingHistory.length} prenotazioni</Text>
-          </View>
-          <Text style={styles.muted}>{c.phone}</Text>
-          {!!c.notes && <Text style={styles.notes}>"{c.notes}"</Text>}
-          {c.assignedUmbrellaId && (
-            <Text style={styles.assignedTag}>🏖 Ombrellone stagionale assegnato</Text>
-          )}
-          <View style={{ marginTop: spacing.sm }}>
-            <EditDeleteRow onEdit={() => setEditing(c)} onDelete={() => confirmDelete(c)} />
-          </View>
-        </Card>
-      ))}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        <Chip label="Solo VIP" selected={vipOnly} onPress={() => setVipOnly((v) => !v)} />
+        <Chip
+          label="Nessuna visita recente"
+          selected={noRecentVisitOnly}
+          onPress={() => setNoRecentVisitOnly((v) => !v)}
+        />
+      </View>
+      <TextInput
+        style={[styles.input, { marginTop: spacing.sm }]}
+        placeholder="Filtra per tag (es. famiglia)..."
+        placeholderTextColor={colors.textMuted}
+        value={tagQuery}
+        onChangeText={setTagQuery}
+      />
+      <Button
+        title={`Esporta CSV (${filtered.length})`}
+        variant="secondary"
+        onPress={handleExportCsv}
+        style={{ marginTop: spacing.sm }}
+      />
+
+      {filtered.map((c) => {
+        const stats = statsById.get(c.id);
+        return (
+          <Card key={c.id} style={{ marginTop: spacing.md }}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.itemTitle}>
+                {c.name} {c.vip ? '⭐' : ''}
+              </Text>
+              <Text style={styles.muted}>{stats?.visitCount ?? 0} prenotazioni</Text>
+            </View>
+            <Text style={styles.muted}>{c.phone}</Text>
+            {!!stats && stats.visitCount > 0 && (
+              <Text style={styles.muted}>
+                Spesa: {formatCurrency(stats.totalSpend)} · Ultima visita:{' '}
+                {stats.lastVisitDate ? formatDateShort(stats.lastVisitDate) : '—'}
+              </Text>
+            )}
+            {c.tags.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.xs }}>
+                {c.tags.map((t) => (
+                  <Chip key={t} label={t} onPress={() => {}} />
+                ))}
+              </View>
+            )}
+            {!!c.notes && <Text style={styles.notes}>"{c.notes}"</Text>}
+            {c.assignedUmbrellaId && (
+              <Text style={styles.assignedTag}>🏖 Ombrellone stagionale assegnato</Text>
+            )}
+            <View style={{ marginTop: spacing.sm }}>
+              <EditDeleteRow onEdit={() => setEditing(c)} onDelete={() => confirmDelete(c)} />
+            </View>
+          </Card>
+        );
+      })}
       <Button title="+ Nuovo cliente" variant="ghost" onPress={() => setEditing(newCustomer())} style={{ marginTop: spacing.md }} />
 
       <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
@@ -1148,7 +1251,6 @@ const ClientiTab: React.FC = () => {
             {editing && (
               <CustomerForm
                 customer={editing}
-                bookingCount={bookings.filter((b) => b.customerId === editing.id).length}
                 history={bookings.filter((b) => b.customerId === editing.id)}
                 onCancel={() => setEditing(null)}
                 onSave={(c) => {
@@ -1166,7 +1268,6 @@ const ClientiTab: React.FC = () => {
 
 const CustomerForm: React.FC<{
   customer: Customer;
-  bookingCount: number;
   history: Booking[];
   onSave: (c: Customer) => void;
   onCancel: () => void;
@@ -1177,6 +1278,8 @@ const CustomerForm: React.FC<{
   const [phone, setPhone] = useState(customer.phone);
   const [notes, setNotes] = useState(customer.notes ?? '');
   const [vip, setVip] = useState(customer.vip);
+  const [tags, setTags] = useState<string[]>(customer.tags);
+  const [tagInput, setTagInput] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [umbrellaQuery, setUmbrellaQuery] = useState('');
 
@@ -1184,9 +1287,39 @@ const CustomerForm: React.FC<{
   const filteredUmbrellas = umbrellas
     .filter((u) => String(u.number).includes(umbrellaQuery) || u.zone.toLowerCase().includes(umbrellaQuery.toLowerCase()))
     .slice(0, 8);
+  const stats = useMemo(() => computeCustomerStats(customer, history), [customer, history]);
+
+  const addTag = () => {
+    const value = tagInput.trim();
+    if (!value || tags.includes(value)) {
+      setTagInput('');
+      return;
+    }
+    setTags((prev) => [...prev, value]);
+    setTagInput('');
+  };
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
+      <View style={styles.statRow}>
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{formatCurrency(stats.totalSpend)}</Text>
+          <Text style={styles.statLabel}>Spesa totale</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{stats.visitCount}</Text>
+          <Text style={styles.statLabel}>Visite</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{stats.lastVisitDate ? formatDateShort(stats.lastVisitDate) : '—'}</Text>
+          <Text style={styles.statLabel}>Ultima visita</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={styles.statValue}>{stats.avgNights ? stats.avgNights.toFixed(1) : '—'}</Text>
+          <Text style={styles.statLabel}>Notti medie</Text>
+        </View>
+      </View>
+
       <Text style={styles.formLabel}>Nome</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} />
       <Text style={styles.formLabel}>Telefono</Text>
@@ -1196,6 +1329,29 @@ const CustomerForm: React.FC<{
       <View style={[styles.rowBetween, { marginTop: spacing.md }]}>
         <Text style={styles.formLabel}>Cliente VIP</Text>
         <Switch value={vip} onValueChange={setVip} />
+      </View>
+
+      <Text style={[styles.formLabel, { marginTop: spacing.md }]}>Tag</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {tags.map((t) => (
+          <View key={t} style={styles.presetChipWrap}>
+            <Chip label={t} onPress={() => {}} />
+            <Pressable style={styles.presetDelete} onPress={() => setTags((prev) => prev.filter((x) => x !== t))}>
+              <Ionicons name="close" size={10} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
+        <TextInput
+          style={[styles.input, { flex: 1, marginBottom: 0 }]}
+          placeholder="Aggiungi tag (es. famiglia)..."
+          placeholderTextColor={colors.textMuted}
+          value={tagInput}
+          onChangeText={setTagInput}
+          onSubmitEditing={addTag}
+        />
+        <Button title="+" onPress={addTag} style={{ paddingHorizontal: spacing.lg }} />
       </View>
 
       <Text style={[styles.formLabel, { marginTop: spacing.lg }]}>Ombrellone stagionale</Text>
@@ -1252,15 +1408,25 @@ const CustomerForm: React.FC<{
         <>
           <Text style={[styles.formLabel, { marginTop: spacing.lg }]}>Storico prenotazioni</Text>
           {history.map((b) => (
-            <Text key={b.id} style={styles.notes}>
-              {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
-            </Text>
+            <Pressable
+              key={b.id}
+              style={styles.historyRow}
+              onPress={() => {
+                onCancel();
+                navigation.navigate('Piantina', { umbrellaId: b.umbrellaId });
+              }}
+            >
+              <Text style={styles.notes}>
+                {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </Pressable>
           ))}
         </>
       )}
 
       <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
-        <Button title="Salva" onPress={() => onSave({ ...customer, name, phone, notes, vip })} style={{ flex: 1 }} />
+        <Button title="Salva" onPress={() => onSave({ ...customer, name, phone, notes, vip, tags })} style={{ flex: 1 }} />
         <Button title="Annulla" variant="ghost" onPress={onCancel} style={{ flex: 1 }} />
       </View>
     </ScrollView>
@@ -1489,6 +1655,22 @@ const styles = StyleSheet.create({
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   notes: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic', marginTop: 4 },
   assignedTag: { color: colors.primaryDark, fontSize: 11, fontWeight: '700', marginTop: 4 },
+  statRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  statCell: { flex: 1, alignItems: 'center' },
+  statValue: { fontWeight: '800', color: colors.text, fontSize: 13 },
+  statLabel: { color: colors.textMuted, fontSize: 10, marginTop: 2, textAlign: 'center' },
+  historyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
   priceLine: { color: colors.text, fontSize: 13, marginTop: 4, fontWeight: '600' },
   seasonBadge: {
     fontSize: 11,

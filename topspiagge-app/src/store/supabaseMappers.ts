@@ -48,6 +48,7 @@ export function rowToCustomer(r: any): Customer {
     bookingHistory: r.booking_history ?? [],
     assignedUmbrellaId: r.assigned_umbrella_id ?? undefined,
     createdAt: r.created_at,
+    tags: r.tags ?? [],
   };
 }
 
@@ -63,6 +64,7 @@ export function customerToRow(c: Customer, beachId: string) {
     booking_history: c.bookingHistory,
     assigned_umbrella_id: c.assignedUmbrellaId ?? null,
     created_at: c.createdAt,
+    tags: c.tags,
   };
 }
 

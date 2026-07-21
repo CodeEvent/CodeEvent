@@ -29,6 +29,7 @@ export interface Customer {
   bookingHistory: string[]; // booking ids
   assignedUmbrellaId?: string; // reverse pointer of Umbrella.assignedCustomerId
   createdAt: string;
+  tags: string[]; // freeform CRM segments, e.g. "famiglia", "cliente storico"
 }
 
 export type PaymentMethod = 'contanti' | 'carta' | 'misto';

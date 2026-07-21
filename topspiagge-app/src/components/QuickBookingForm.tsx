@@ -176,6 +176,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         vip: false,
         bookingHistory: [],
         createdAt: isoDate(0),
+        tags: [],
       };
       upsertCustomer(customer);
       customerId = customer.id;
