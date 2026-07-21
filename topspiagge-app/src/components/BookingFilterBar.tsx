@@ -1,11 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, radius, spacing } from '../theme';
 import { BeachSide } from '../types';
 import { DISPLAY_STATUSES, displayStatusColor, displayStatusLabel } from '../utils/displayStatus';
-import { BookingFilters, DEFAULT_BOOKING_FILTERS, isDefaultFilters } from '../utils/bookingFilters';
+import { BookingFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
+import { formatDateShort, isoDate, toDateKey } from '../utils/format';
 import { Button, Chip } from './UI';
+import { DateRangePicker } from './DateRangePicker';
+
+function endOfMonthIso(): string {
+  const now = new Date();
+  return toDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+}
 
 interface Props {
   filters: BookingFilters;
@@ -30,6 +37,22 @@ const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label
 export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, zones, zone, onZoneChange }) => {
   const patch = (p: Partial<BookingFilters>) => onChange({ ...filters, ...p });
   const activeCount = countActiveFilters(filters, zone);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const today = isoDate(0);
+  const isQuickRange = (from: string, to: string) => filters.rangeFrom === from && filters.rangeTo === to;
+  const toggleQuickRange = (from: string, to: string) =>
+    patch(isQuickRange(from, to) ? { rangeFrom: null, rangeTo: null } : { rangeFrom: from, rangeTo: to });
+
+  const rangeLabel = filters.rangeFrom && filters.rangeTo
+    ? filters.rangeFrom === filters.rangeTo
+      ? formatDateShort(filters.rangeFrom)
+      : `${formatDateShort(filters.rangeFrom)} → ${formatDateShort(filters.rangeTo)}`
+    : filters.rangeFrom
+    ? `Dal ${formatDateShort(filters.rangeFrom)}`
+    : filters.rangeTo
+    ? `Fino al ${formatDateShort(filters.rangeTo)}`
+    : null;
 
   return (
     <View style={styles.card}>
@@ -56,6 +79,29 @@ export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, zones, zo
         {zones && onZoneChange && zones.map((z) => (
           <Chip key={z} label={z} selected={zone === z} onPress={() => onZoneChange(z)} />
         ))}
+      </Section>
+
+      <Section label="Quando">
+        <Chip label="Oggi" selected={isQuickRange(today, today)} onPress={() => toggleQuickRange(today, today)} />
+        <Chip
+          label="Prossimi 7 giorni"
+          selected={isQuickRange(today, isoDate(6))}
+          onPress={() => toggleQuickRange(today, isoDate(6))}
+        />
+        <Chip
+          label="Questo mese"
+          selected={isQuickRange(today, endOfMonthIso())}
+          onPress={() => toggleQuickRange(today, endOfMonthIso())}
+        />
+        <Chip
+          icon="calendar-outline"
+          label={rangeLabel ?? 'Scegli date...'}
+          selected={!!rangeLabel}
+          onPress={() => setPickerOpen(true)}
+        />
+        {!!rangeLabel && (
+          <Chip icon="close" label="Cancella" onPress={() => patch({ rangeFrom: null, rangeTo: null })} />
+        )}
       </Section>
 
       <Section label="Stato">
@@ -139,6 +185,29 @@ export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, zones, zo
           />
         )}
       </View>
+
+      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setPickerOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sheetTitle}>Scegli il periodo</Text>
+            <Text style={styles.sheetHint}>Tocca una data di inizio, poi una data di fine.</Text>
+            <DateRangePicker
+              from={filters.rangeFrom}
+              to={filters.rangeTo}
+              onChange={(rangeFrom, rangeTo) => patch({ rangeFrom, rangeTo })}
+            />
+            <View style={styles.sheetActions}>
+              <Button
+                title="Cancella"
+                variant="ghost"
+                onPress={() => patch({ rangeFrom: null, rangeTo: null })}
+                style={{ flex: 1 }}
+              />
+              <Button title="Fatto" onPress={() => setPickerOpen(false)} style={{ flex: 1 }} />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -151,6 +220,7 @@ function countActiveFilters(filters: BookingFilters, zone?: string): number {
   if (filters.onlyVip) n++;
   if (filters.checkinToday) n++;
   if (filters.checkoutToday) n++;
+  if (filters.rangeFrom || filters.rangeTo) n++;
   if (filters.groupOnly) n++;
   if (filters.hasCabin !== null) n++;
   if (filters.hasEquipment !== null) n++;
@@ -204,4 +274,15 @@ const styles = StyleSheet.create({
   },
   activeCountText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   resetBtn: { paddingVertical: 4, paddingHorizontal: spacing.sm },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    maxHeight: '85%',
+  },
+  sheetTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  sheetHint: { fontSize: 12, color: colors.textMuted, marginTop: 2, marginBottom: spacing.md },
+  sheetActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
 });

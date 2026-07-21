@@ -17,6 +17,10 @@ export interface BookingFilters {
   groupOnly: boolean; // party spread across multiple umbrellas
   minAdults: number; // 0 = no filter
   query: string; // matches customer name/phone/email, booking reference, umbrella number/zone
+  // The period the operator wants to look at -- a booking matches if its stay overlaps this
+  // range at all, not just if it starts/ends inside it. Either bound alone means open-ended.
+  rangeFrom: string | null;
+  rangeTo: string | null;
 }
 
 export const DEFAULT_BOOKING_FILTERS: BookingFilters = {
@@ -30,6 +34,8 @@ export const DEFAULT_BOOKING_FILTERS: BookingFilters = {
   groupOnly: false,
   minAdults: 0,
   query: '',
+  rangeFrom: null,
+  rangeTo: null,
 };
 
 export function isDefaultFilters(f: BookingFilters): boolean {
@@ -48,6 +54,8 @@ function bookingPasses(
   if (filters.onlyVip && !customer?.vip) return false;
   if (filters.checkinToday && booking.dateFrom !== today) return false;
   if (filters.checkoutToday && booking.dateTo !== today) return false;
+  if (filters.rangeFrom && booking.dateTo < filters.rangeFrom) return false;
+  if (filters.rangeTo && booking.dateFrom > filters.rangeTo) return false;
   if (filters.minAdults > 0 && (booking.guests?.adults ?? 0) < filters.minAdults) return false;
   if (filters.hasEquipment !== null) {
     const has = !!(booking.beds || booking.chairs);
@@ -80,7 +88,9 @@ function needsBooking(filters: BookingFilters): boolean {
     filters.minAdults > 0 ||
     filters.hasEquipment !== null ||
     filters.groupOnly ||
-    filters.query.trim().length > 0
+    filters.query.trim().length > 0 ||
+    !!filters.rangeFrom ||
+    !!filters.rangeTo
   );
 }
 
