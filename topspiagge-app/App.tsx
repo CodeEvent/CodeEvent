@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppAlertProvider } from './src/components/AppAlert';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { CustomerApp } from './src/screens/customer/CustomerApp';
 import { OperatorApp } from './src/screens/operator/OperatorApp';
 import { OperatorAuthProvider } from './src/store/OperatorAuthContext';
@@ -56,17 +57,19 @@ const RootNavigator: React.FC = () => (
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AppAlertProvider>
-        <StoreProvider>
-          <OperatorAuthProvider>
-            <StatusBar style="dark" />
-            <NavigationContainer linking={linking}>
-              <RootNavigator />
-            </NavigationContainer>
-          </OperatorAuthProvider>
-        </StoreProvider>
-      </AppAlertProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <AppAlertProvider>
+          <StoreProvider>
+            <OperatorAuthProvider>
+              <StatusBar style="dark" />
+              <NavigationContainer linking={linking}>
+                <RootNavigator />
+              </NavigationContainer>
+            </OperatorAuthProvider>
+          </StoreProvider>
+        </AppAlertProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }

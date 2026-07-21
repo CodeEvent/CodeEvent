@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { safeGetItem, safeRemoveItem, safeSetItem } from '../utils/safeStorage';
 
 const STORAGE_KEY = 'topspiagge_operator_logged_in';
 
@@ -20,7 +20,7 @@ export const OperatorAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [isHydrating, setIsHydrating] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
+    safeGetItem(STORAGE_KEY)
       .then((value) => setIsLoggedIn(value === 'true'))
       .finally(() => setIsHydrating(false));
   }, []);
@@ -29,14 +29,14 @@ export const OperatorAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const ok = username.trim() === 'admin' && password === 'admin';
     if (ok) {
       setIsLoggedIn(true);
-      AsyncStorage.setItem(STORAGE_KEY, 'true');
+      safeSetItem(STORAGE_KEY, 'true');
     }
     return ok;
   };
 
   const logout = () => {
     setIsLoggedIn(false);
-    AsyncStorage.removeItem(STORAGE_KEY);
+    safeRemoveItem(STORAGE_KEY);
   };
 
   const value = useMemo(() => ({ isLoggedIn, isHydrating, login, logout }), [isLoggedIn, isHydrating]);

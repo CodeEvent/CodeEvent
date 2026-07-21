@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, {
   createContext,
   useCallback,
@@ -27,6 +26,7 @@ import {
   Umbrella,
 } from '../types';
 import { isoDate } from '../utils/format';
+import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
 const STORAGE_KEY = 'topspiagge:v1';
 
@@ -347,23 +347,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
+      const raw = await safeGetItem(STORAGE_KEY);
+      if (raw) {
+        try {
           const parsed = JSON.parse(raw);
           dispatch({ type: 'HYDRATE', payload: { ...parsed, hydrated: true } });
-        } else {
-          dispatch({ type: 'HYDRATE', payload: { ...buildInitialState(), hydrated: true } });
+          return;
+        } catch {
+          // corrupted storage payload -- fall through to a fresh seed below
         }
-      } catch {
-        dispatch({ type: 'HYDRATE', payload: { ...buildInitialState(), hydrated: true } });
       }
+      dispatch({ type: 'HYDRATE', payload: { ...buildInitialState(), hydrated: true } });
     })();
   }, []);
 
   useEffect(() => {
     if (!state.hydrated) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => {});
+    safeSetItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
   const swapUmbrellas = useCallback((fromId: string, toId: string) => {
