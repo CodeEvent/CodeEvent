@@ -129,6 +129,20 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
                       </Text>
                     </View>
                   )}
+                  {(booking.beds || booking.chairs) && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.muted}>Attrezzatura</Text>
+                      <Text style={styles.infoValue}>
+                        {booking.beds ?? 0} lettini · {booking.chairs ?? 0} sdraio
+                      </Text>
+                    </View>
+                  )}
+                  {booking.reference && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.muted}>Codice</Text>
+                      <Text style={styles.infoValue}>{booking.reference}</Text>
+                    </View>
+                  )}
                   <View style={styles.infoRow}>
                     <Text style={styles.muted}>Totale</Text>
                     <Text style={styles.infoValue}>{formatCurrency(booking.totalPrice)}</Text>

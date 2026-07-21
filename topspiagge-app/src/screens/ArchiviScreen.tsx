@@ -260,6 +260,20 @@ const PrenotazioniTab: React.FC = () => {
                       </Text>
                     </View>
                   )}
+                  {(b.beds || b.chairs) && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.muted}>Attrezzatura</Text>
+                      <Text style={styles.infoValue}>
+                        {b.beds ?? 0} lettini · {b.chairs ?? 0} sdraio
+                      </Text>
+                    </View>
+                  )}
+                  {b.reference && (
+                    <View style={styles.infoRow}>
+                      <Text style={styles.muted}>Codice</Text>
+                      <Text style={styles.infoValue}>{b.reference}</Text>
+                    </View>
+                  )}
                   <View style={styles.infoRow}>
                     <Text style={styles.muted}>Totale</Text>
                     <Text style={styles.infoValue}>{formatCurrency(b.totalPrice)}</Text>
@@ -351,6 +365,20 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
             {booking.guests.children5to15 > 0 ? ` · ${booking.guests.children5to15} bambini 5-15` : ''}
             {booking.guests.childrenUnder5 > 0 ? ` · ${booking.guests.childrenUnder5} under 5` : ''}
           </Text>
+        </View>
+      )}
+      {(booking.beds || booking.chairs) && (
+        <View style={styles.infoRow}>
+          <Text style={styles.muted}>Attrezzatura</Text>
+          <Text style={styles.infoValue}>
+            {booking.beds ?? 0} lettini · {booking.chairs ?? 0} sdraio
+          </Text>
+        </View>
+      )}
+      {booking.reference && (
+        <View style={styles.infoRow}>
+          <Text style={styles.muted}>Codice</Text>
+          <Text style={styles.infoValue}>{booking.reference}</Text>
         </View>
       )}
       <View style={styles.infoRow}>

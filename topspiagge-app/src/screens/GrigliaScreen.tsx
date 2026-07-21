@@ -19,8 +19,23 @@ import {
 const ALL_ZONES = 'Tutte';
 const ALL_SIDES = 'tutti';
 
+function captionFor(
+  status: DisplayStatus,
+  umbrella: Umbrella,
+  getBooking: (id?: string) => import('../types').Booking | undefined,
+  getCustomer: (id?: string) => import('../types').Customer | undefined
+): string | undefined {
+  if (status === 'libero') return undefined;
+  const booking = getBooking(umbrella.currentBookingId);
+  if (!booking) return undefined;
+  const customer = getCustomer(booking.customerId);
+  const surname = customer?.name.trim().split(/\s+/).slice(-1)[0] ?? '';
+  const equipment = booking.beds || booking.chairs ? `${booking.beds ?? 0}L ${booking.chairs ?? 0}S` : '';
+  return [surname, equipment].filter(Boolean).join(' · ');
+}
+
 export const GrigliaScreen: React.FC = () => {
-  const { umbrellas, getBooking } = useStore();
+  const { umbrellas, getBooking, getCustomer } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sideFilter, setSideFilter] = useState<BeachSide | 'tutti'>(ALL_SIDES);
   const [zoneFilter, setZoneFilter] = useState<string>(ALL_ZONES);
@@ -115,29 +130,37 @@ export const GrigliaScreen: React.FC = () => {
                   {rowUmbrellas.map((u) => {
                     const displayStatus = displayStatusFor(u, getBooking);
                     const isSgombera = displayStatus === 'sgombera';
+                    const caption = captionFor(displayStatus, u, getBooking, getCustomer);
                     return (
                       <React.Fragment key={u.id}>
                         {u.col === COLS_PER_SIDE && <View style={styles.walkwayDivider} />}
-                        <Pressable
-                          onPress={() => setSelectedId(u.id)}
-                          style={[
-                            styles.cell,
-                            { backgroundColor: isSgombera ? undefined : displayStatusColor[displayStatus], overflow: 'hidden' },
-                          ]}
-                        >
-                          {isSgombera && (
-                            <View style={StyleSheet.absoluteFill}>
-                              <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.libero }} />
-                              <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.sgombera }} />
-                            </View>
+                        <View style={styles.cellWrap}>
+                          <Pressable
+                            onPress={() => setSelectedId(u.id)}
+                            style={[
+                              styles.cell,
+                              { backgroundColor: isSgombera ? undefined : displayStatusColor[displayStatus], overflow: 'hidden' },
+                            ]}
+                          >
+                            {isSgombera && (
+                              <View style={StyleSheet.absoluteFill}>
+                                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.libero }} />
+                                <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.sgombera }} />
+                              </View>
+                            )}
+                            {displayStatus === 'libero' ? (
+                              <MaterialCommunityIcons name="umbrella-closed" size={20} color={colors.white} />
+                            ) : (
+                              <Text style={styles.cellNumber}>{u.number}</Text>
+                            )}
+                            <Text style={styles.cellSide}>{u.side === 'nord' ? 'N' : 'S'}</Text>
+                          </Pressable>
+                          {!!caption && (
+                            <Text numberOfLines={1} style={styles.cellCaption}>
+                              {caption}
+                            </Text>
                           )}
-                          {displayStatus === 'libero' ? (
-                            <MaterialCommunityIcons name="umbrella-closed" size={20} color={colors.white} />
-                          ) : (
-                            <Text style={styles.cellNumber}>{u.number}</Text>
-                          )}
-                          <Text style={styles.cellSide}>{u.side === 'nord' ? 'N' : 'S'}</Text>
-                        </Pressable>
+                        </View>
                       </React.Fragment>
                     );
                   })}
@@ -172,11 +195,11 @@ const styles = StyleSheet.create({
   muted: { color: colors.textMuted, fontSize: 13 },
   rowBlock: { marginBottom: spacing.md },
   rowLabel: { fontWeight: '700', color: colors.seaDark, fontSize: 12, marginBottom: 4 },
-  rowCells: { flexDirection: 'row', alignItems: 'center' },
+  rowCells: { flexDirection: 'row', alignItems: 'flex-start' },
+  cellWrap: { width: 56, marginRight: spacing.sm },
   cell: {
     width: 56,
     height: 56,
-    marginRight: spacing.sm,
     borderRadius: radius.sm,
     borderWidth: 2,
     borderColor: colors.card,
@@ -189,6 +212,13 @@ const styles = StyleSheet.create({
   },
   cellNumber: { fontWeight: '800', fontSize: 15, color: colors.white },
   cellSide: { fontSize: 9, color: 'rgba(255,255,255,0.85)', marginTop: 2, fontWeight: '600' },
+  cellCaption: {
+    marginTop: 2,
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+  },
   walkwayDivider: {
     width: 1,
     height: 40,

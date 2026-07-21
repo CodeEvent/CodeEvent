@@ -234,9 +234,23 @@ const BookingInfo: React.FC<{ booking: Booking; onClose: () => void; onGoToConto
       <Text style={styles.modalTitle}>
         Ombrellone {umbrella?.number} ({umbrella?.zone}) · {customer?.name ?? 'Cliente'}
       </Text>
+      {!!customer?.phone && <Text style={styles.muted}>{customer.phone}</Text>}
       <Text style={styles.muted}>
         {formatDateShort(booking.dateFrom)} → {formatDateShort(booking.dateTo)}
       </Text>
+      {booking.guests && (
+        <Text style={styles.muted}>
+          {booking.guests.adults} adulti
+          {booking.guests.children5to15 > 0 ? ` · ${booking.guests.children5to15} bambini 5-15` : ''}
+          {booking.guests.childrenUnder5 > 0 ? ` · ${booking.guests.childrenUnder5} under 5` : ''}
+        </Text>
+      )}
+      {(booking.beds || booking.chairs) && (
+        <Text style={styles.muted}>
+          {booking.beds ?? 0} lettini · {booking.chairs ?? 0} sdraio
+        </Text>
+      )}
+      {!!booking.reference && <Text style={styles.muted}>Codice: {booking.reference}</Text>}
       <Text style={styles.muted}>Totale: {formatCurrency(booking.totalPrice)}</Text>
       <Text style={styles.muted}>Acconto/Pagato: {formatCurrency(booking.paid)}</Text>
       <View style={{ marginTop: spacing.md, gap: spacing.sm }}>

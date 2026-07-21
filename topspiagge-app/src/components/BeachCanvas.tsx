@@ -18,17 +18,22 @@ function colOffset(col: number, cellSize: number, gap: number): number {
   return col >= COLS_PER_SIDE ? base + WALKWAY_WIDTH : base;
 }
 
-export function useUmbrellaPositions(umbrellas: Umbrella[], cellSize: number = CELL, gap: number = GAP) {
+export function useUmbrellaPositions(
+  umbrellas: Umbrella[],
+  cellSize: number = CELL,
+  gap: number = GAP,
+  rowHeight: number = cellSize
+) {
   return useMemo(() => {
     const positions = new Map<string, { x: number; y: number }>();
     umbrellas.forEach((u) => {
       positions.set(u.id, {
         x: colOffset(u.col, cellSize, gap),
-        y: u.row * (cellSize + gap),
+        y: u.row * (rowHeight + gap),
       });
     });
     return positions;
-  }, [umbrellas, cellSize, gap]);
+  }, [umbrellas, cellSize, gap, rowHeight]);
 }
 
 export const WaveFooter: React.FC = () => (
@@ -44,6 +49,7 @@ interface BeachCanvasProps {
   footerText: string;
   cellSize?: number;
   labelWidth?: number;
+  rowHeight?: number;
 }
 
 // Every row is one continuous line of umbrellas split by a walkway: seats on
@@ -57,6 +63,7 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
   footerText,
   cellSize = CELL,
   labelWidth = LABEL_WIDTH,
+  rowHeight = cellSize,
 }) => {
   const zones = useMemo(() => {
     const seen = new Map<number, string>();
@@ -67,7 +74,7 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
   const maxCol = Math.max(0, ...umbrellas.map((u) => u.col));
   const hasWalkway = maxCol >= COLS_PER_SIDE;
   const canvasWidth = colOffset(maxCol, cellSize, GAP) + cellSize;
-  const canvasHeight = zones.length * (cellSize + GAP);
+  const canvasHeight = zones.length * (rowHeight + GAP);
   const labelIconSize = Math.min(16, Math.max(12, cellSize / 4));
   const labelFontSize = Math.min(13, Math.max(11, cellSize / 5));
 
@@ -86,8 +93,8 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
                 style={[
                   styles.zoneLabel,
                   {
-                    top: GROUP_HEADER_HEIGHT + rowIdx * (cellSize + GAP),
-                    height: cellSize,
+                    top: GROUP_HEADER_HEIGHT + rowIdx * (rowHeight + GAP),
+                    height: rowHeight,
                     width: labelWidth - 12,
                   },
                 ]}

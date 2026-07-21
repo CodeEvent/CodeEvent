@@ -18,6 +18,22 @@ import {
 
 const TAP_THRESHOLD = 10;
 const ROWS = 12;
+const CAPTION_HEIGHT = 16;
+
+function captionFor(
+  status: DisplayStatus,
+  umbrella: Umbrella,
+  getBooking: (id?: string) => import('../types').Booking | undefined,
+  getCustomer: (id?: string) => import('../types').Customer | undefined
+): string | undefined {
+  if (status === 'libero') return undefined;
+  const booking = getBooking(umbrella.currentBookingId);
+  if (!booking) return undefined;
+  const customer = getCustomer(booking.customerId);
+  const surname = customer?.name.trim().split(/\s+/).slice(-1)[0] ?? '';
+  const equipment = booking.beds || booking.chairs ? `${booking.beds ?? 0}L ${booking.chairs ?? 0}S` : '';
+  return [surname, equipment].filter(Boolean).join(' · ');
+}
 
 const UmbrellaCell: React.FC<{
   umbrella: Umbrella;
@@ -26,9 +42,10 @@ const UmbrellaCell: React.FC<{
   allUmbrellas: Umbrella[];
   cellSize: number;
   status: DisplayStatus;
+  caption?: string;
   onDrop: (fromId: string, toId: string) => void;
   onTap: (id: string) => void;
-}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, onDrop, onTap }) => {
+}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, caption, onDrop, onTap }) => {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [dragging, setDragging] = useState(false);
 
@@ -76,45 +93,50 @@ const UmbrellaCell: React.FC<{
   const isSgombera = status === 'sgombera';
 
   return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.cell,
-        {
-          left: position.x,
-          top: position.y,
-          width: cellSize,
-          height: cellSize,
-          borderRadius: cellSize / 2,
-          overflow: 'hidden',
-          backgroundColor: isSgombera ? undefined : displayStatusColor[status],
-          borderColor: colors.card,
-          transform: pan.getTranslateTransform(),
-          zIndex: dragging ? 10 : 1,
-          elevation: dragging ? 8 : 2,
-        },
-      ]}
-    >
-      {isSgombera && (
-        <View style={StyleSheet.absoluteFill}>
-          <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.libero }} />
-          <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.sgombera }} />
-        </View>
-      )}
-      {status === 'libero' ? (
-        <MaterialCommunityIcons name="umbrella-closed" size={Math.min(24, Math.max(16, cellSize / 3))} color={colors.white} />
-      ) : (
-        <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
-          {umbrella.number}
+    <View style={{ position: 'absolute', left: position.x, top: position.y, width: cellSize }}>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.cell,
+          {
+            width: cellSize,
+            height: cellSize,
+            borderRadius: cellSize / 2,
+            overflow: 'hidden',
+            backgroundColor: isSgombera ? undefined : displayStatusColor[status],
+            borderColor: colors.card,
+            transform: pan.getTranslateTransform(),
+            zIndex: dragging ? 10 : 1,
+            elevation: dragging ? 8 : 2,
+          },
+        ]}
+      >
+        {isSgombera && (
+          <View style={StyleSheet.absoluteFill}>
+            <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.libero }} />
+            <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.sgombera }} />
+          </View>
+        )}
+        {status === 'libero' ? (
+          <MaterialCommunityIcons name="umbrella-closed" size={Math.min(24, Math.max(16, cellSize / 3))} color={colors.white} />
+        ) : (
+          <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
+            {umbrella.number}
+          </Text>
+        )}
+        {umbrella.hasCabin && <View style={styles.cabinDot} />}
+      </Animated.View>
+      {!!caption && (
+        <Text numberOfLines={1} style={styles.caption}>
+          {caption}
         </Text>
       )}
-      {umbrella.hasCabin && <View style={styles.cabinDot} />}
-    </Animated.View>
+    </View>
   );
 };
 
 export const PiantinaScreen: React.FC = () => {
-  const { umbrellas, swapUmbrellas, getBooking } = useStore();
+  const { umbrellas, swapUmbrellas, getBooking, getCustomer } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const route = useRoute<any>();
   const { height } = useWindowDimensions();
@@ -124,9 +146,10 @@ export const PiantinaScreen: React.FC = () => {
   // shrinking cells past legibility, so cell size is driven by height only -- the
   // canvas scrolls horizontally to reveal the rest, same as the customer-facing map.
   const mapAreaHeight = height - 240;
-  const cellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / ROWS) - GAP));
+  const cellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / (ROWS * 1.2)) - GAP));
+  const rowHeight = cellSize + CAPTION_HEIGHT;
 
-  const positions = useUmbrellaPositions(umbrellas, cellSize);
+  const positions = useUmbrellaPositions(umbrellas, cellSize, GAP, rowHeight);
 
   useEffect(() => {
     if (route.params?.umbrellaId) setSelectedId(route.params.umbrellaId);
@@ -159,21 +182,26 @@ export const PiantinaScreen: React.FC = () => {
         umbrellas={umbrellas}
         positions={positions}
         cellSize={cellSize}
+        rowHeight={rowHeight}
         labelWidth={labelWidth}
         footerText={`Liberi oggi: ${freeCounts.nord + freeCounts.sud} (Nord ${freeCounts.nord} · Sud ${freeCounts.sud})`}
-        renderCell={(u, position) => (
-          <UmbrellaCell
-            key={u.id}
-            umbrella={u}
-            position={position}
-            positions={positions}
-            allUmbrellas={umbrellas}
-            cellSize={cellSize}
-            status={displayStatusFor(u, getBooking)}
-            onDrop={swapUmbrellas}
-            onTap={setSelectedId}
-          />
-        )}
+        renderCell={(u, position) => {
+          const status = displayStatusFor(u, getBooking);
+          return (
+            <UmbrellaCell
+              key={u.id}
+              umbrella={u}
+              position={position}
+              positions={positions}
+              allUmbrellas={umbrellas}
+              cellSize={cellSize}
+              status={status}
+              caption={captionFor(status, u, getBooking, getCustomer)}
+              onDrop={swapUmbrellas}
+              onTap={setSelectedId}
+            />
+          );
+        }}
       />
 
       <UmbrellaDetailModal umbrellaId={selectedId} onClose={() => setSelectedId(null)} />
@@ -202,7 +230,6 @@ const styles = StyleSheet.create({
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
   legendText: { fontSize: 11, color: colors.textMuted },
   cell: {
-    position: 'absolute',
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -219,5 +246,12 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.white,
+  },
+  caption: {
+    marginTop: 2,
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
   },
 });
