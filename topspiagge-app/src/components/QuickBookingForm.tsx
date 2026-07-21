@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Booking, Customer } from '../types';
@@ -211,7 +211,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   };
 
   return (
-    <ScrollView style={{ maxHeight: 560 }}>
+    <View>
       <View style={styles.rowBetween}>
         <Text style={styles.label}>Cliente</Text>
         <Button
@@ -390,7 +390,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         disabled={!canConfirm || anyConflict || !!customerConflict}
         style={{ marginTop: spacing.lg }}
       />
-    </ScrollView>
+    </View>
   );
 };
 

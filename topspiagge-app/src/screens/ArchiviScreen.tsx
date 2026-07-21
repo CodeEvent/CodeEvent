@@ -343,7 +343,7 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
   };
 
   return (
-    <ScrollView style={{ maxHeight: 520 }}>
+    <ScrollView showsVerticalScrollIndicator={false}>
       <Text style={styles.formLabel}>
         Ombrellone N.{umbrella?.number} · {umbrella?.side === 'nord' ? 'Nord' : 'Sud'} · {umbrella?.zone}
       </Text>
@@ -754,7 +754,7 @@ const UmbrellaEditForm: React.FC<{ umbrellaId: string; onClose: () => void }> = 
   };
 
   return (
-    <ScrollView style={{ maxHeight: 500 }}>
+    <ScrollView showsVerticalScrollIndicator={false}>
       <Text style={styles.formLabel}>
         Ombrellone N.{umbrella.number} · {umbrella.side === 'nord' ? 'Nord' : 'Sud'} · {umbrella.zone}
       </Text>
@@ -927,7 +927,7 @@ const PriceListForm: React.FC<{
   );
 
   return (
-    <ScrollView style={{ maxHeight: 460 }}>
+    <ScrollView showsVerticalScrollIndicator={false}>
       <Text style={styles.formLabel}>Nome listino</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} />
       <Text style={styles.formLabel}>Stagione</Text>
@@ -1073,7 +1073,7 @@ const CustomerForm: React.FC<{
     .slice(0, 8);
 
   return (
-    <ScrollView style={{ maxHeight: 480 }}>
+    <ScrollView showsVerticalScrollIndicator={false}>
       <Text style={styles.formLabel}>Nome</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} />
       <Text style={styles.formLabel}>Telefono</Text>
@@ -1237,7 +1237,7 @@ const ArticleForm: React.FC<{ article: Article; onSave: (a: Article) => void; on
   const [unit, setUnit] = useState(article.unit);
 
   return (
-    <ScrollView style={{ maxHeight: 460 }}>
+    <ScrollView showsVerticalScrollIndicator={false}>
       <Text style={styles.formLabel}>Nome articolo</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} />
       <Text style={styles.formLabel}>Categoria</Text>

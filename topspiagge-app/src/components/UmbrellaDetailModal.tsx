@@ -1,6 +1,6 @@
 import { useNavigation } from '@react-navigation/native';
 import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { baseDisplayStatusFor, hasOutstandingBalance } from '../utils/displayStatus';
@@ -51,6 +51,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
       <Pressable style={styles.backdrop} onPress={close}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.handle} />
+          <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.headerRow}>
             <Text style={styles.title}>
               Ombrellone {umbrella.number} · {umbrella.zone}
@@ -201,6 +202,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
               <QuickBookingForm umbrellaId={umbrella.id} onDone={close} />
             </View>
           )}
+          </ScrollView>
 
           <Button title="Chiudi" variant="ghost" onPress={close} style={{ marginTop: spacing.md }} />
         </Pressable>

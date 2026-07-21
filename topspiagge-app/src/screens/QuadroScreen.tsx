@@ -203,16 +203,18 @@ export const QuadroScreen: React.FC = () => {
       <Modal visible={!!selectedBooking} transparent animationType="fade" onRequestClose={closeModals}>
         <Pressable style={styles.backdrop} onPress={closeModals}>
           <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-            {selectedBooking && (
-              <BookingInfo
-                booking={selectedBooking}
-                onClose={closeModals}
-                onGoToConto={() => {
-                  closeModals();
-                  navigation.navigate('Conto', { umbrellaId: selectedBooking.umbrellaId });
-                }}
-              />
-            )}
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {selectedBooking && (
+                <BookingInfo
+                  booking={selectedBooking}
+                  onClose={closeModals}
+                  onGoToConto={() => {
+                    closeModals();
+                    navigation.navigate('Conto', { umbrellaId: selectedBooking.umbrellaId });
+                  }}
+                />
+              )}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -221,18 +223,20 @@ export const QuadroScreen: React.FC = () => {
       <Modal visible={!!newBookingSlot} transparent animationType="slide" onRequestClose={closeModals}>
         <Pressable style={styles.backdrop} onPress={closeModals}>
           <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>
-              Nuova prenotazione ·{' '}
-              {newBookingSlot &&
-                `Ombrellone ${getUmbrella(newBookingSlot.umbrellaId)?.number} · ${getUmbrella(newBookingSlot.umbrellaId)?.zone}`}
-            </Text>
-            {newBookingSlot && (
-              <QuickBookingForm
-                umbrellaId={newBookingSlot.umbrellaId}
-                initialFromOffset={newBookingSlot.offset}
-                onDone={closeModals}
-              />
-            )}
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>
+                Nuova prenotazione ·{' '}
+                {newBookingSlot &&
+                  `Ombrellone ${getUmbrella(newBookingSlot.umbrellaId)?.number} · ${getUmbrella(newBookingSlot.umbrellaId)?.zone}`}
+              </Text>
+              {newBookingSlot && (
+                <QuickBookingForm
+                  umbrellaId={newBookingSlot.umbrellaId}
+                  initialFromOffset={newBookingSlot.offset}
+                  onDone={closeModals}
+                />
+              )}
+            </ScrollView>
             <Button title="Annulla" variant="ghost" onPress={closeModals} style={{ marginTop: spacing.sm }} />
           </Pressable>
         </Pressable>
