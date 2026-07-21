@@ -144,7 +144,7 @@ export const GrigliaScreen: React.FC = () => {
                           >
                             {isSgombera && (
                               <View style={StyleSheet.absoluteFill}>
-                                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.libero }} />
+                                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.occupato }} />
                                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.sgombera }} />
                               </View>
                             )}
