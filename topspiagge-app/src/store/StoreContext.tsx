@@ -18,6 +18,8 @@ import {
   buildDailyStats,
   buildPriceLists,
   buildUmbrellas,
+  COLS_PER_SIDE,
+  TOTAL_COLS,
 } from '../data/seed';
 import {
   Article,
@@ -88,6 +90,7 @@ function buildInitialState(): AppState {
 
 type Action =
   | { type: 'HYDRATE'; payload: AppState }
+  | { type: 'ADD_ROW'; umbrellas: Umbrella[] }
   | { type: 'SWAP_UMBRELLAS'; fromId: string; toId: string }
   | { type: 'CREATE_BOOKING'; booking: Booking }
   | { type: 'FREE_UMBRELLA'; umbrellaId: string }
@@ -121,6 +124,9 @@ function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'HYDRATE':
       return { ...action.payload, hydrated: true };
+
+    case 'ADD_ROW':
+      return { ...state, umbrellas: [...state.umbrellas, ...action.umbrellas] };
 
     case 'SWAP_UMBRELLAS': {
       const { fromId, toId } = action;
@@ -392,6 +398,10 @@ function reducer(state: AppState, action: Action): AppState {
 }
 
 interface StoreContextValue extends AppState {
+  // The beach this store instance is scoped to -- null in local-only mode (no Supabase
+  // configured) or while a Supabase-backed instance is still resolving it on mount.
+  beachId: string | null;
+  addRow: () => void;
   swapUmbrellas: (fromId: string, toId: string) => void;
   createBooking: (booking: Booking) => void;
   freeUmbrella: (umbrellaId: string) => void;
@@ -601,6 +611,37 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       client.removeChannel(channel);
     };
   }, [beachId]);
+
+  // Appends one fresh row of 20 umbrellas (10 nord + 10 sud, no cabins, all libero) -- the only
+  // way to grow a layout beyond what the seed script created, needed so a brand-new beach
+  // (which starts with zero umbrellas) has something to build from in Disposizione.
+  const addRow = useCallback(() => {
+    const prev = stateRef.current;
+    const maxRow = prev.umbrellas.length ? Math.max(...prev.umbrellas.map((u) => u.row)) : -1;
+    const newRow = maxRow + 1;
+    const maxIdNum = prev.umbrellas.length
+      ? Math.max(...prev.umbrellas.map((u) => parseInt(u.id.replace(/^u-/, ''), 10) || 0))
+      : 0;
+    const newUmbrellas: Umbrella[] = [];
+    for (let col = 0; col < TOTAL_COLS; col++) {
+      newUmbrellas.push({
+        id: `u-${maxIdNum + col + 1}`,
+        number: col + 1,
+        side: col < COLS_PER_SIDE ? 'nord' : 'sud',
+        row: newRow,
+        col,
+        zone: `Fila ${newRow + 1}`,
+        hasCabin: false,
+        status: 'libero',
+      });
+    }
+    dispatch({ type: 'ADD_ROW', umbrellas: newUmbrellas });
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
+      runSync(client.from('umbrellas').insert(newUmbrellas.map((u) => umbrellaToRow(u, beachId))));
+    }
+  }, []);
 
   const swapUmbrellas = useCallback((fromId: string, toId: string) => {
     const action: Action = { type: 'SWAP_UMBRELLAS', fromId, toId };
@@ -875,6 +916,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
   const value = useMemo<StoreContextValue>(
     () => ({
       ...state,
+      beachId,
+      addRow,
       swapUmbrellas,
       createBooking,
       freeUmbrella,
@@ -900,6 +943,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     }),
     [
       state,
+      beachId,
+      addRow,
       swapUmbrellas,
       createBooking,
       freeUmbrella,

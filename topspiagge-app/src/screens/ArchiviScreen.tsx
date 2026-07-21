@@ -7,6 +7,8 @@ import { useAppAlert } from '../components/AppAlert';
 import { COLS_PER_SIDE } from '../components/BeachCanvas';
 import { BookingFilterBar } from '../components/BookingFilterBar';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
+import { inviteOperator } from '../lib/inviteOperator';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { useOperatorAuth } from '../store/OperatorAuthContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
@@ -16,7 +18,7 @@ import { baseDisplayStatusForBooking, bookingHasOutstandingBalance, displayStatu
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
-type Tab = 'oggi' | 'prenotazioni' | 'filtri' | 'listini' | 'clienti' | 'articoli' | 'disposizione';
+type Tab = 'oggi' | 'prenotazioni' | 'filtri' | 'listini' | 'clienti' | 'articoli' | 'disposizione' | 'team';
 
 const CATEGORY_LABEL: Record<ArticleCategory, string> = {
   ombrellone: 'Spiaggia',
@@ -52,6 +54,7 @@ export const ArchiviScreen: React.FC = () => {
           <Chip label="Listini" selected={tab === 'listini'} onPress={() => setTab('listini')} />
           <Chip label="Clienti (CRM)" selected={tab === 'clienti'} onPress={() => setTab('clienti')} />
           <Chip label="Articoli" selected={tab === 'articoli'} onPress={() => setTab('articoli')} />
+          <Chip label="Team" selected={tab === 'team'} onPress={() => setTab('team')} />
         </View>
       </View>
       {tab === 'oggi' && <OggiTab />}
@@ -61,6 +64,7 @@ export const ArchiviScreen: React.FC = () => {
       {tab === 'listini' && <ListiniTab />}
       {tab === 'clienti' && <ClientiTab />}
       {tab === 'articoli' && <ArticoliTab />}
+      {tab === 'team' && <TeamTab />}
     </SafeAreaView>
   );
 };
@@ -598,7 +602,7 @@ const FiltriTab: React.FC = () => {
 };
 
 const DisposizioneTab: React.FC = () => {
-  const { umbrellas, getCustomer, renameZone, reorderZone } = useStore();
+  const { umbrellas, getCustomer, renameZone, reorderZone, addRow } = useStore();
   const [editingUmbrellaId, setEditingUmbrellaId] = useState<string | null>(null);
   const [renamingRow, setRenamingRow] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -617,10 +621,23 @@ const DisposizioneTab: React.FC = () => {
   return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
       <Text style={styles.helperText}>
-        Layout fisso: ogni fila ha 20 ombrelloni, 10 lato Nord e 10 lato Sud separati da un
-        camminamento. Puoi rinominare le file, riordinarle, gestire le cabine e assegnare un cliente
-        stagionale direttamente da qui.
+        Ogni fila ha 20 ombrelloni, 10 lato Nord e 10 lato Sud separati da un camminamento. Puoi
+        rinominare le file, riordinarle, gestire le cabine e assegnare un cliente stagionale
+        direttamente da qui.
       </Text>
+
+      {zones.length === 0 && (
+        <Card style={{ marginTop: spacing.md, alignItems: 'center', padding: spacing.xl }}>
+          <Ionicons name="sunny-outline" size={32} color={colors.textMuted} />
+          <Text style={[styles.itemTitle, { marginTop: spacing.sm, textAlign: 'center' }]}>
+            Nessun ombrellone ancora
+          </Text>
+          <Text style={[styles.helperText, { textAlign: 'center', marginTop: spacing.xs }]}>
+            Il tuo lido è vuoto. Aggiungi la prima fila per iniziare a disegnare la disposizione.
+          </Text>
+          <Button title="Aggiungi la prima fila" onPress={addRow} style={{ marginTop: spacing.md }} />
+        </Card>
+      )}
 
       {zones.map(([row, { name, umbrellas: rowUmbrellas }], idx) => (
         <Card key={row} style={{ marginTop: spacing.md }}>
@@ -689,6 +706,15 @@ const DisposizioneTab: React.FC = () => {
           </ScrollView>
         </Card>
       ))}
+
+      {zones.length > 0 && (
+        <Button
+          title="Aggiungi un'altra fila"
+          variant="secondary"
+          onPress={addRow}
+          style={{ marginTop: spacing.md }}
+        />
+      )}
 
       <Modal
         visible={!!editingUmbrellaId}
@@ -1264,6 +1290,74 @@ const ArticleForm: React.FC<{ article: Article; onSave: (a: Article) => void; on
   );
 };
 
+const TeamTab: React.FC = () => {
+  const { beachId } = useStore();
+  const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
+  const handleInvite = async () => {
+    if (!beachId) return;
+    setMessage(null);
+    if (!email.trim()) {
+      setMessage({ text: 'Inserisci un indirizzo email.', isError: true });
+      return;
+    }
+    setSubmitting(true);
+    const result = await inviteOperator(email.trim(), beachId);
+    setSubmitting(false);
+    if (result.ok) {
+      setMessage({ text: `Invito inviato a ${email.trim()}.`, isError: false });
+      setEmail('');
+    } else {
+      setMessage({ text: result.error, isError: true });
+    }
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollBody}>
+      <Text style={styles.helperText}>
+        Invita un collaboratore ad accedere all'area operatori di questo lido. Riceverà un'email
+        per impostare la propria password.
+      </Text>
+      {!isSupabaseConfigured ? (
+        <Card>
+          <Text style={styles.itemTitle}>Non disponibile in modalità locale</Text>
+          <Text style={[styles.helperText, { marginTop: spacing.xs, marginBottom: 0 }]}>
+            Gli inviti al team richiedono un backend Supabase configurato per questo lido.
+          </Text>
+        </Card>
+      ) : !beachId ? (
+        <Card>
+          <Text style={styles.helperText}>Caricamento del lido in corso...</Text>
+        </Card>
+      ) : (
+        <Card>
+          <Text style={styles.formLabel}>Email del collaboratore</Text>
+          <TextInput
+            style={styles.input}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="collega@illido.it"
+            placeholderTextColor={colors.textMuted}
+            value={email}
+            onChangeText={setEmail}
+          />
+          {message && (
+            <Text style={message.isError ? styles.errorText : styles.noticeText}>{message.text}</Text>
+          )}
+          <Button
+            title={submitting ? 'Invio in corso...' : 'Invita'}
+            onPress={handleInvite}
+            disabled={submitting}
+            style={{ marginTop: spacing.md }}
+          />
+        </Card>
+      )}
+    </ScrollView>
+  );
+};
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -1355,6 +1449,8 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
   },
   helperText: { color: colors.textMuted, fontSize: 12, marginBottom: spacing.md },
+  errorText: { color: colors.danger, fontSize: 12, fontWeight: '600', marginTop: spacing.sm },
+  noticeText: { color: colors.primaryDark, fontSize: 12, fontWeight: '600', marginTop: spacing.sm },
   iconBtn: {
     width: 30,
     height: 30,

@@ -181,6 +181,30 @@ as $$
   select bo.beach_id from beach_operators bo where bo.user_id = auth.uid();
 $$;
 
+-- Self-service "create your own beach" signup (Phase 2 onboarding). This has to be a
+-- security-definer function rather than two plain client-side inserts: the normal
+-- beach_operators policy only lets an operator see/manage a beach they're ALREADY a member
+-- of, so a brand-new user has no way to insert their own first membership row (or the
+-- beaches row itself) under ordinary RLS -- that's exactly the chicken-and-egg this function
+-- exists to break, by doing both inserts atomically as the table owner and making the
+-- calling user ('auth.uid()', i.e. whoever is logged in when they call this) the new beach's
+-- sole owner. It can never be used to join or modify an existing beach.
+create or replace function create_beach_and_become_owner(beach_name text, beach_slug text)
+returns text
+language plpgsql
+security definer
+as $$
+declare
+  new_id text := 'beach-' || beach_slug;
+begin
+  insert into beaches (id, name, slug, created_at) values (new_id, beach_name, beach_slug, now()::text);
+  insert into beach_operators (beach_id, user_id, role) values (new_id, auth.uid(), 'owner');
+  return new_id;
+end;
+$$;
+
+grant execute on function create_beach_and_become_owner(text, text) to authenticated;
+
 create policy "operators manage own beaches" on beaches for all to authenticated
   using (id in (select beach_id from current_user_beach_ids()))
   with check (id in (select beach_id from current_user_beach_ids()));
