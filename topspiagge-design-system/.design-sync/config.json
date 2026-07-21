@@ -1,0 +1,7 @@
+{
+  "pkg": "topspiagge-design-system",
+  "globalName": "TopSpiaggeDS",
+  "cssEntry": "dist/styles.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "projectId": "dff0ac8d-e2cc-4c06-8aac-237d611509f6"
+}
