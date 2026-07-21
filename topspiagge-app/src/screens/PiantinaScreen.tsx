@@ -9,6 +9,7 @@ import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing } from '../theme';
 import { Umbrella } from '../types';
+import { ROWS } from '../data/seed';
 import { DEFAULT_BOOKING_FILTERS, umbrellaMatchesFilters } from '../utils/bookingFilters';
 import {
   BaseDisplayStatus,
@@ -19,7 +20,6 @@ import {
 import { isoDate } from '../utils/format';
 
 const TAP_THRESHOLD = 10;
-const ROWS = 12;
 const CAPTION_HEIGHT = 16;
 
 const PIANTINA_LEGEND: { key: BaseDisplayStatus; label: string }[] = [

@@ -18,6 +18,7 @@ import { Button, Card, Checkbox, Chip, StepProgressBar, Stepper } from '../../co
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { Booking, Customer, Umbrella } from '../../types';
+import { ROWS } from '../../data/seed';
 import {
   distributeGuests,
   findCustomerConflict,
@@ -29,11 +30,17 @@ import {
 } from '../../utils/booking';
 import { DEPOSIT_RATE, refundCutoffDate } from '../../utils/cancellation';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate, offsetFromToday } from '../../utils/format';
+import {
+  bundleForUmbrella,
+  baseUmbrellaPricePerDay,
+  computeDiscounts,
+  isSameDayWalkIn,
+  isStudentDiscountEligibleRow,
+} from '../../utils/pricing';
 import { generateBookingReference } from '../../utils/reference';
 
 const WIDE_BREAKPOINT = 860;
 const SIDEBAR_WIDTH = 380;
-const ROWS = 12;
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 
@@ -541,6 +548,12 @@ const BookingForm: React.FC<{
   onStageChange,
 }) => {
   const { getUmbrella, customers, createBooking, upsertCustomer, getActivePriceList, cancelBooking } = useStore();
+  // Fila 1/2 default to their bundled equipment (so the discounted package price applies
+  // out of the box); every other row falls back to the generic 2 beds + 2 chairs default.
+  const defaultEquipmentFor = (id: string): Equipment => {
+    const u = getUmbrella(id);
+    return (u && bundleForUmbrella(u)) || DEFAULT_EQUIPMENT;
+  };
   const editBookings = editContext?.bookings ?? [];
   // Only carry over the rest of the group (extra umbrellas + their equipment) when the
   // customer hasn't changed their primary pick -- if they tap a different umbrella on
@@ -560,6 +573,7 @@ const BookingForm: React.FC<{
     editBookings.reduce((s, b) => s + (b.guests?.childrenUnder5 ?? 0), 0)
   );
   const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [isStudent, setIsStudent] = useState(false);
   const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>(() =>
     isOriginalPrimary ? editBookings.filter((b) => b.umbrellaId !== umbrellaId).map((b) => b.umbrellaId) : []
   );
@@ -572,7 +586,7 @@ const BookingForm: React.FC<{
       return map;
     }
     const matching = editBookings.find((b) => b.umbrellaId === umbrellaId);
-    return { [umbrellaId]: matching ? { beds: matching.beds ?? 0, chairs: matching.chairs ?? 0 } : { ...DEFAULT_EQUIPMENT } };
+    return { [umbrellaId]: matching ? { beds: matching.beds ?? 0, chairs: matching.chairs ?? 0 } : defaultEquipmentFor(umbrellaId) };
   });
 
   const umbrella = getUmbrella(umbrellaId);
@@ -595,7 +609,7 @@ const BookingForm: React.FC<{
     setEquipment((prev) => {
       const next = { ...prev };
       ids.forEach((id) => {
-        if (!next[id]) next[id] = { ...DEFAULT_EQUIPMENT };
+        if (!next[id]) next[id] = defaultEquipmentFor(id);
       });
       return next;
     });
@@ -647,18 +661,51 @@ const BookingForm: React.FC<{
   };
 
   const setBeds = (id: string, value: number) =>
-    setEquipment((eq) => ({ ...eq, [id]: { ...(eq[id] ?? DEFAULT_EQUIPMENT), beds: value } }));
+    setEquipment((eq) => ({ ...eq, [id]: { ...(eq[id] ?? defaultEquipmentFor(id)), beds: value } }));
   const setChairs = (id: string, value: number) =>
-    setEquipment((eq) => ({ ...eq, [id]: { ...(eq[id] ?? DEFAULT_EQUIPMENT), chairs: value } }));
+    setEquipment((eq) => ({ ...eq, [id]: { ...(eq[id] ?? defaultEquipmentFor(id)), chairs: value } }));
 
   const allUmbrellaIds = [umbrellaId, ...extraUmbrellaIds];
   const capacity = allUmbrellaIds.length * MAX_ADULTS_PER_UMBRELLA;
   const capacityOk = capacity >= adults;
 
-  const umbrellaTotal = (id: string) => {
-    const eq = equipment[id] ?? DEFAULT_EQUIPMENT;
-    return (dailyRate + eq.beds * bedRate + eq.chairs * chairRate) * days;
+  // Fila 1/2's flat price already includes their bundle -- taking exactly that equipment
+  // charges the flat rate. Choosing anything else falls back to à la carte: the bundle's
+  // own beds/chairs are backed out of the flat price at standard rates, then whatever
+  // equipment the customer actually picked is added back in at those same rates.
+  const perDayRate = (id: string) => {
+    const u = getUmbrella(id);
+    if (!u) return dailyRate;
+    const eq = equipment[id] ?? defaultEquipmentFor(id);
+    const base = baseUmbrellaPricePerDay(u);
+    const bundle = bundleForUmbrella(u);
+    if (!bundle) return base + eq.beds * bedRate + eq.chairs * chairRate;
+    if (eq.beds === bundle.beds && eq.chairs === bundle.chairs) return base;
+    const bareRate = base - (bundle.beds * bedRate + bundle.chairs * chairRate);
+    return bareRate + eq.beds * bedRate + eq.chairs * chairRate;
   };
+
+  const umbrellaDiscount = (id: string) => {
+    const u = getUmbrella(id);
+    return u ? computeDiscounts(dateFrom, dateTo, u, isStudent) : { lateBooking: 0, student: 0, total: 0 };
+  };
+
+  const umbrellaTotal = (id: string) => {
+    const gross = perDayRate(id) * days;
+    const discount = umbrellaDiscount(id).total;
+    return Math.round(gross * (1 - discount) * 100) / 100;
+  };
+
+  // Whether to surface the same-day discount messaging at all -- both discounts only
+  // ever matter for a same-day, single-day stay, so there's no reason to mention them
+  // for a future or multi-night booking.
+  const isWalkInToday = isSameDayWalkIn(dateFrom, dateTo);
+  const anyLateDiscount = allUmbrellaIds.some((id) => umbrellaDiscount(id).lateBooking > 0);
+  const anyStudentDiscountApplied = allUmbrellaIds.some((id) => umbrellaDiscount(id).student > 0);
+  const anyStudentDiscountEligibleRow = allUmbrellaIds.some((id) => {
+    const u = getUmbrella(id);
+    return !!u && isStudentDiscountEligibleRow(u);
+  });
   const umbrellaDeposit = (id: string) => Math.round(umbrellaTotal(id) * DEPOSIT_RATE);
 
   const total = allUmbrellaIds.reduce((sum, id) => sum + umbrellaTotal(id), 0);
@@ -711,7 +758,7 @@ const BookingForm: React.FC<{
     const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
     const guestSlots = distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length);
     const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => {
-      const eq = equipment[uId] ?? DEFAULT_EQUIPMENT;
+      const eq = equipment[uId] ?? defaultEquipmentFor(uId);
       return {
         id: `bk-${uId}-${Date.now()}-${idx}`,
         umbrellaId: uId,
@@ -728,6 +775,7 @@ const BookingForm: React.FC<{
         chairs: eq.chairs,
         groupId,
         reference,
+        isStudent,
       };
     });
     // Editing replaces the old group in place: the whole original group is removed
@@ -781,8 +829,11 @@ const BookingForm: React.FC<{
           </Text>
           {allUmbrellaIds.map((id) => {
             const u = getUmbrella(id);
-            const eq = equipment[id] ?? DEFAULT_EQUIPMENT;
             if (!u) return null;
+            const eq = equipment[id] ?? defaultEquipmentFor(id);
+            const bundle = bundleForUmbrella(u);
+            const isBundlePrice = !!bundle && eq.beds === bundle.beds && eq.chairs === bundle.chairs;
+            const discount = umbrellaDiscount(id);
             return (
               <View key={id} style={styles.equipmentCard}>
                 <View style={styles.rowBetween}>
@@ -805,10 +856,20 @@ const BookingForm: React.FC<{
                   max={MAX_EQUIPMENT_PER_UMBRELLA}
                   onChange={(v) => setChairs(id, v)}
                 />
-                <Text style={styles.muted}>
-                  {formatCurrency(dailyRate)} ombrellone + {formatCurrency(eq.beds * bedRate)} lettini +{' '}
-                  {formatCurrency(eq.chairs * chairRate)} sdraio, al giorno
-                </Text>
+                {isBundlePrice ? (
+                  <Text style={styles.muted}>{formatCurrency(perDayRate(id))} al giorno · lettini e sdraio inclusi</Text>
+                ) : (
+                  <Text style={styles.muted}>
+                    {formatCurrency(perDayRate(id) - eq.beds * bedRate - eq.chairs * chairRate)} ombrellone +{' '}
+                    {formatCurrency(eq.beds * bedRate)} lettini + {formatCurrency(eq.chairs * chairRate)} sdraio, al
+                    giorno
+                  </Text>
+                )}
+                {discount.total > 0 && (
+                  <Text style={[styles.muted, { color: colors.libero, fontWeight: '700' }]}>
+                    Sconto applicato: -{Math.round(discount.total * 100)}%
+                  </Text>
+                )}
               </View>
             );
           })}
@@ -925,6 +986,40 @@ const BookingForm: React.FC<{
         )}
 
         {conflictBanner}
+
+        {isWalkInToday && (
+          <View style={styles.discountBox}>
+            <View style={styles.policyHeaderRow}>
+              <Ionicons name="pricetag-outline" size={16} color={colors.primaryDark} />
+              <Text style={styles.policyTitle}>Sconti prenotazione last minute</Text>
+            </View>
+            {anyLateDiscount && (
+              <Text style={styles.policyText}>
+                Prenotando dopo le 14:00 per oggi stesso hai diritto al{' '}
+                <Text style={styles.policyBold}>50% di sconto</Text>, già applicato al totale.
+              </Text>
+            )}
+            {anyStudentDiscountEligibleRow ? (
+              <>
+                <Text style={styles.policyText}>
+                  Il lunedì gli studenti hanno il <Text style={styles.policyBold}>20% di sconto</Text> sugli
+                  ombrelloni delle ultime due file.
+                </Text>
+                <View style={{ marginTop: spacing.sm }}>
+                  <Checkbox checked={isStudent} onToggle={() => setIsStudent((v) => !v)} label="Sono uno studente" />
+                </View>
+                {isStudent && !anyStudentDiscountApplied && (
+                  <Text style={styles.muted}>Sconto valido solo il lunedì.</Text>
+                )}
+              </>
+            ) : (
+              <Text style={styles.policyText}>
+                Il lunedì gli studenti hanno il <Text style={styles.policyBold}>20% di sconto</Text> sugli
+                ombrelloni delle ultime due file (non disponibile per questo ombrellone).
+              </Text>
+            )}
+          </View>
+        )}
 
         <View style={styles.policyBox}>
           <View style={styles.policyHeaderRow}>
@@ -1271,6 +1366,12 @@ const styles = StyleSheet.create({
   groupTag: { color: colors.primaryDark, fontWeight: '700', fontSize: 11, marginTop: 2 },
   policyBox: {
     backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  discountBox: {
+    backgroundColor: colors.liberoBg,
     borderRadius: radius.md,
     padding: spacing.md,
     marginTop: spacing.md,

@@ -10,7 +10,7 @@ import {
 import { isoDate } from '../utils/format';
 import { generateBookingReference } from '../utils/reference';
 
-export const ROWS = 12;
+export const ROWS = 17;
 export const COLS_PER_SIDE = 10;
 export const TOTAL_COLS = COLS_PER_SIDE * 2;
 

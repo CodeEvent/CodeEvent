@@ -14,9 +14,15 @@ import {
 } from '../utils/booking';
 import { DEPOSIT_RATE, refundCutoffDate } from '../utils/cancellation';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
+import {
+  baseUmbrellaPricePerDay,
+  computeDiscounts,
+  isSameDayWalkIn,
+  isStudentDiscountEligibleRow,
+} from '../utils/pricing';
 import { generateBookingReference } from '../utils/reference';
 import { Calendar } from './Calendar';
-import { Button, Chip, Stepper } from './UI';
+import { Button, Checkbox, Chip, Stepper } from './UI';
 
 interface Props {
   umbrellaId: string;
@@ -46,16 +52,30 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   const [children5to15, setChildren5to15] = useState(0);
   const [childrenUnder5, setChildrenUnder5] = useState(0);
   const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>([]);
+  const [isStudent, setIsStudent] = useState(false);
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();
-  const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
   const dateFrom = isoDate(startOffset);
   const dateTo = isoDate(startOffset + days - 1);
-  const perUmbrellaTotal = dailyRate * days;
-  const perUmbrellaDeposit = Math.round(perUmbrellaTotal * DEPOSIT_RATE);
   const cutoffDate = refundCutoffDate(dateFrom);
   const isToday = startOffset === 0;
+  // The row/column price table only ever changes today's discounts, never the everyday
+  // rate -- a booking has to be for today AND exactly one day to qualify, so a 3-day stay
+  // starting today (isToday but not a walk-in) never gets either discount.
+  const isWalkInToday = isSameDayWalkIn(dateFrom, dateTo);
+
+  const umbrellaDiscount = (id: string) => {
+    const u = getUmbrella(id);
+    return u ? computeDiscounts(dateFrom, dateTo, u, isStudent) : { lateBooking: 0, student: 0, total: 0 };
+  };
+  const umbrellaTotal = (id: string) => {
+    const u = getUmbrella(id);
+    const base = u ? baseUmbrellaPricePerDay(u) : priceList.prices['art-ombrellone'] ?? 18;
+    const gross = base * days;
+    return Math.round(gross * (1 - umbrellaDiscount(id).total) * 100) / 100;
+  };
+  const umbrellaDeposit = (id: string) => Math.round(umbrellaTotal(id) * DEPOSIT_RATE);
 
   const isFreeForPeriod = (u: { id: string }) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
 
@@ -110,8 +130,14 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   const allUmbrellaIds = [umbrellaId, ...extraUmbrellaIds];
   const capacity = allUmbrellaIds.length * MAX_ADULTS_PER_UMBRELLA;
   const capacityOk = capacity >= adults;
-  const total = perUmbrellaTotal * allUmbrellaIds.length;
-  const deposit = perUmbrellaDeposit * allUmbrellaIds.length;
+  const total = allUmbrellaIds.reduce((s, id) => s + umbrellaTotal(id), 0);
+  const deposit = allUmbrellaIds.reduce((s, id) => s + umbrellaDeposit(id), 0);
+  const anyLateDiscount = allUmbrellaIds.some((id) => umbrellaDiscount(id).lateBooking > 0);
+  const anyStudentDiscountApplied = allUmbrellaIds.some((id) => umbrellaDiscount(id).student > 0);
+  const anyStudentDiscountEligibleRow = allUmbrellaIds.some((id) => {
+    const u = getUmbrella(id);
+    return !!u && isStudentDiscountEligibleRow(u);
+  });
 
   const filteredCustomers = useMemo(
     () => customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6),
@@ -160,21 +186,26 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
     const reference = generateBookingReference();
     const guestSlots = distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length);
-    const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => ({
-      id: `bk-${uId}-${Date.now()}-${idx}`,
-      umbrellaId: uId,
-      customerId: customerId!,
-      dateFrom,
-      dateTo,
-      totalPrice: perUmbrellaTotal,
-      deposit: isToday ? 0 : perUmbrellaDeposit,
-      paid: isToday ? perUmbrellaTotal : perUmbrellaDeposit,
-      status,
-      createdAt: isoDate(0),
-      guests: guestSlots[idx],
-      groupId,
-      reference,
-    }));
+    const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => {
+      const price = umbrellaTotal(uId);
+      const dep = umbrellaDeposit(uId);
+      return {
+        id: `bk-${uId}-${Date.now()}-${idx}`,
+        umbrellaId: uId,
+        customerId: customerId!,
+        dateFrom,
+        dateTo,
+        totalPrice: price,
+        deposit: isToday ? 0 : dep,
+        paid: isToday ? price : dep,
+        status,
+        createdAt: isoDate(0),
+        guests: guestSlots[idx],
+        groupId,
+        reference,
+        isStudent,
+      };
+    });
     createdBookings.forEach(createBooking);
     onDone();
   };
@@ -248,7 +279,8 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       </View>
       <Text style={styles.muted}>
         {isToday ? 'Oggi' : formatDateShort(dateFrom)} → {formatDateShort(dateTo)} · {days}{' '}
-        {days === 1 ? 'giorno' : 'giorni'} · {formatCurrency(dailyRate)}/giorno ({priceList.name})
+        {days === 1 ? 'giorno' : 'giorni'}
+        {umbrella ? ` · ${formatCurrency(baseUmbrellaPricePerDay(umbrella))}/giorno` : ''}
       </Text>
 
       <Text style={[styles.label, { marginTop: spacing.lg }]}>Ospiti</Text>
@@ -285,6 +317,34 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
           <Text style={[styles.muted, { marginTop: spacing.xs }]}>
             Capienza: max {capacity} adulti in {allUmbrellaIds.length} ombrelloni · nel gruppo: {adults} adulti
           </Text>
+        </View>
+      )}
+
+      {isWalkInToday && (
+        <View style={styles.discountBox}>
+          <Text style={styles.extraBoxTitle}>Sconti last minute</Text>
+          {anyLateDiscount && (
+            <Text style={styles.muted}>
+              Prenotato dopo le 14:00 per oggi: <Text style={styles.policyBold}>50% di sconto</Text> già applicato.
+            </Text>
+          )}
+          {anyStudentDiscountEligibleRow ? (
+            <>
+              <Text style={styles.muted}>
+                Il lunedì gli studenti hanno il 20% di sconto sugli ombrelloni delle ultime due file.
+              </Text>
+              <View style={{ marginTop: spacing.xs }}>
+                <Checkbox checked={isStudent} onToggle={() => setIsStudent((v) => !v)} label="Cliente studente" />
+              </View>
+              {isStudent && !anyStudentDiscountApplied && (
+                <Text style={styles.muted}>Sconto valido solo il lunedì.</Text>
+              )}
+            </>
+          ) : (
+            <Text style={styles.muted}>
+              Sconto studenti (20%, il lunedì) non disponibile per questo ombrellone.
+            </Text>
+          )}
         </View>
       )}
 
@@ -377,6 +437,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   extraRowText: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  discountBox: {
+    backgroundColor: colors.liberoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
   policyBox: {
     backgroundColor: colors.prenotatoBg,
     borderRadius: radius.md,

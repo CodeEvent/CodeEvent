@@ -55,6 +55,7 @@ export interface Booking {
   chairs?: number; // sdraio booked for this umbrella
   groupId?: string; // links sibling bookings made together for a party > 4 adults, spread across umbrellas
   reference: string; // short code shown to the customer, shared by every booking in the same group
+  isStudent?: boolean; // self-declared, honor-system -- only ever matters for the same-day student discount
 }
 
 export type ArticleCategory =

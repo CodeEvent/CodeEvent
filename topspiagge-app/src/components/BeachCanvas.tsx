@@ -94,7 +94,7 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
     <View style={styles.beach}>
       {/* Fila 1 is the front row, closest to the water (hasCabin/VIP-assignment logic
           treats row 0 as the premium sea-front tier) -- the wave sits above it, not
-          below Fila 12, so the map reads shoreline-first the way the real beach does. */}
+          below the last row, so the map reads shoreline-first the way the real beach does. */}
       <WaveFooter flip />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.boardScroll}>
         <View style={styles.boardRow}>
