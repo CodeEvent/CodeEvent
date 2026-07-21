@@ -58,6 +58,9 @@ interface BeachCanvasProps {
   cellSize?: number;
   labelWidth?: number;
   rowHeight?: number;
+  // Overrides the default icon+zone-name label -- used by the Disposizione layout editor to put
+  // its rename/reorder controls in the same slot instead of plain static text.
+  renderZoneLabel?: (row: number, zoneName: string) => React.ReactNode;
 }
 
 // Every row is one continuous line of umbrellas split by a walkway: seats on
@@ -72,6 +75,7 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
   cellSize = CELL,
   labelWidth = LABEL_WIDTH,
   rowHeight = cellSize,
+  renderZoneLabel,
 }) => {
   const zones = useMemo(() => {
     const seen = new Map<number, string>();
@@ -111,10 +115,16 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
                   },
                 ]}
               >
-                <Ionicons name="umbrella" size={labelIconSize} color={colors.seaDark} />
-                <Text style={[styles.zoneLabelText, { fontSize: labelFontSize }]} numberOfLines={1}>
-                  {zoneName}
-                </Text>
+                {renderZoneLabel ? (
+                  renderZoneLabel(rowIdx, zoneName)
+                ) : (
+                  <>
+                    <Ionicons name="umbrella" size={labelIconSize} color={colors.seaDark} />
+                    <Text style={[styles.zoneLabelText, { fontSize: labelFontSize }]} numberOfLines={1}>
+                      {zoneName}
+                    </Text>
+                  </>
+                )}
               </View>
             ))}
           </View>

@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
-import { COLS_PER_SIDE } from '../components/BeachCanvas';
+import { BeachCanvas, useUmbrellaPositions } from '../components/BeachCanvas';
 import { BookingFilterBar } from '../components/BookingFilterBar';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
 import { inviteOperator } from '../lib/inviteOperator';
@@ -601,119 +601,206 @@ const FiltriTab: React.FC = () => {
   );
 };
 
+const DISPOSIZIONE_CELL = 56;
+const DISPOSIZIONE_GAP = 8;
+const DISPOSIZIONE_DRAG_THRESHOLD = 10;
+
+// Drag-and-drop layout editing: reuses the same PanResponder + Animated.ValueXY pattern as
+// Piantina's UmbrellaCell (hit-test the drop point's center against every other umbrella's
+// known position), but on drop it swaps physical layout slots (swapUmbrellaPositions) instead
+// of swapping bookings -- a tap (no real movement) still opens the edit form as before.
+const DispositionUmbrellaCell: React.FC<{
+  umbrella: Umbrella;
+  position: { x: number; y: number };
+  positions: Map<string, { x: number; y: number }>;
+  allUmbrellas: Umbrella[];
+  cellSize: number;
+  hasAssignee: boolean;
+  onSwap: (aId: string, bId: string) => void;
+  onTap: (id: string) => void;
+}> = ({ umbrella, position, positions, allUmbrellas, cellSize, hasAssignee, onSwap, onTap }) => {
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [dragging, setDragging] = useState(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+      onPanResponderGrant: () => setDragging(true),
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
+      onPanResponderRelease: (_, gesture) => {
+        setDragging(false);
+        const moved =
+          Math.abs(gesture.dx) > DISPOSIZIONE_DRAG_THRESHOLD || Math.abs(gesture.dy) > DISPOSIZIONE_DRAG_THRESHOLD;
+        if (!moved) {
+          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
+          onTap(umbrella.id);
+          return;
+        }
+        const dropCenter = {
+          x: position.x + cellSize / 2 + gesture.dx,
+          y: position.y + cellSize / 2 + gesture.dy,
+        };
+        let target: Umbrella | undefined;
+        for (const u of allUmbrellas) {
+          if (u.id === umbrella.id) continue;
+          const p = positions.get(u.id);
+          if (!p) continue;
+          if (
+            dropCenter.x >= p.x &&
+            dropCenter.x <= p.x + cellSize &&
+            dropCenter.y >= p.y &&
+            dropCenter.y <= p.y + cellSize
+          ) {
+            target = u;
+            break;
+          }
+        }
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
+        if (target) onSwap(umbrella.id, target.id);
+      },
+    })
+  ).current;
+
+  return (
+    <View style={{ position: 'absolute', left: position.x, top: position.y, width: cellSize, height: cellSize }}>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.umbrellaChip,
+          {
+            width: cellSize,
+            height: cellSize,
+            marginRight: 0,
+            transform: pan.getTranslateTransform(),
+            zIndex: dragging ? 10 : 1,
+            elevation: dragging ? 8 : 2,
+          },
+        ]}
+      >
+        <Text style={styles.umbrellaChipNumber}>N.{umbrella.number}</Text>
+        <View style={{ flexDirection: 'row', gap: 2, marginTop: 2 }}>
+          {umbrella.hasCabin && <Ionicons name="home-outline" size={11} color={colors.textMuted} />}
+          {hasAssignee && <Ionicons name="star" size={11} color={colors.accent} />}
+        </View>
+      </Animated.View>
+    </View>
+  );
+};
+
 const DisposizioneTab: React.FC = () => {
-  const { umbrellas, getCustomer, renameZone, reorderZone, addRow } = useStore();
+  const { umbrellas, getCustomer, renameZone, reorderZone, addRow, swapUmbrellaPositions } = useStore();
   const [editingUmbrellaId, setEditingUmbrellaId] = useState<string | null>(null);
   const [renamingRow, setRenamingRow] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
-  const zones = useMemo(() => {
-    const map = new Map<number, { name: string; umbrellas: Umbrella[] }>();
-    umbrellas.forEach((u) => {
-      const entry = map.get(u.row) ?? { name: u.zone, umbrellas: [] };
-      entry.umbrellas.push(u);
-      map.set(u.row, entry);
-    });
-    Array.from(map.values()).forEach((entry) => entry.umbrellas.sort((a, b) => a.col - b.col));
-    return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
-  }, [umbrellas]);
+  const sortedRows = useMemo(
+    () => Array.from(new Set(umbrellas.map((u) => u.row))).sort((a, b) => a - b),
+    [umbrellas]
+  );
+  const positions = useUmbrellaPositions(umbrellas, DISPOSIZIONE_CELL, DISPOSIZIONE_GAP, DISPOSIZIONE_CELL);
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollBody}>
-      <Text style={styles.helperText}>
-        Ogni fila ha 20 ombrelloni, 10 lato Nord e 10 lato Sud separati da un camminamento. Puoi
-        rinominare le file, riordinarle, gestire le cabine e assegnare un cliente stagionale
-        direttamente da qui.
-      </Text>
+    <View style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
+        <Text style={styles.helperText}>
+          Trascina un ombrellone su un altro per scambiarne la posizione. Ogni fila ha 20
+          ombrelloni, 10 lato Nord e 10 lato Sud separati da un camminamento.
+        </Text>
+      </View>
 
-      {zones.length === 0 && (
-        <Card style={{ marginTop: spacing.md, alignItems: 'center', padding: spacing.xl }}>
-          <Ionicons name="sunny-outline" size={32} color={colors.textMuted} />
-          <Text style={[styles.itemTitle, { marginTop: spacing.sm, textAlign: 'center' }]}>
-            Nessun ombrellone ancora
-          </Text>
-          <Text style={[styles.helperText, { textAlign: 'center', marginTop: spacing.xs }]}>
-            Il tuo lido è vuoto. Aggiungi la prima fila per iniziare a disegnare la disposizione.
-          </Text>
-          <Button title="Aggiungi la prima fila" onPress={addRow} style={{ marginTop: spacing.md }} />
-        </Card>
+      {umbrellas.length === 0 ? (
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <Card style={{ alignItems: 'center', padding: spacing.xl }}>
+            <Ionicons name="sunny-outline" size={32} color={colors.textMuted} />
+            <Text style={[styles.itemTitle, { marginTop: spacing.sm, textAlign: 'center' }]}>
+              Nessun ombrellone ancora
+            </Text>
+            <Text style={[styles.helperText, { textAlign: 'center', marginTop: spacing.xs }]}>
+              Il tuo lido è vuoto. Aggiungi la prima fila per iniziare a disegnare la disposizione.
+            </Text>
+            <Button title="Aggiungi la prima fila" onPress={addRow} style={{ marginTop: spacing.md }} />
+          </Card>
+        </View>
+      ) : (
+        <BeachCanvas
+          umbrellas={umbrellas}
+          positions={positions}
+          cellSize={DISPOSIZIONE_CELL}
+          rowHeight={DISPOSIZIONE_CELL}
+          labelWidth={112}
+          footerText={`${umbrellas.length} ombrelloni su ${sortedRows.length} file`}
+          renderZoneLabel={(row, zoneName) => {
+            const idx = sortedRows.indexOf(row);
+            return (
+              <View style={{ width: '100%', alignItems: 'center' }}>
+                {renamingRow === row ? (
+                  <TextInput
+                    style={[styles.input, { marginBottom: 4, fontSize: 12, paddingVertical: 4, width: '100%' }]}
+                    value={renameValue}
+                    onChangeText={setRenameValue}
+                    autoFocus
+                    onSubmitEditing={() => {
+                      renameZone(row, renameValue.trim() || zoneName);
+                      setRenamingRow(null);
+                    }}
+                  />
+                ) : (
+                  <Pressable
+                    style={[styles.zoneNameRow, { justifyContent: 'center' }]}
+                    onPress={() => {
+                      setRenamingRow(row);
+                      setRenameValue(zoneName);
+                    }}
+                  >
+                    <Text style={styles.zoneLabelTextSmall} numberOfLines={1}>
+                      {zoneName}
+                    </Text>
+                    <Ionicons name="pencil-outline" size={11} color={colors.textMuted} />
+                  </Pressable>
+                )}
+                <View style={{ flexDirection: 'row', gap: 4, marginTop: 4 }}>
+                  <Pressable style={styles.iconBtn} onPress={() => reorderZone(row, 'up')} disabled={idx === 0}>
+                    <Ionicons name="chevron-up" size={14} color={idx === 0 ? colors.border : colors.text} />
+                  </Pressable>
+                  <Pressable
+                    style={styles.iconBtn}
+                    onPress={() => reorderZone(row, 'down')}
+                    disabled={idx === sortedRows.length - 1}
+                  >
+                    <Ionicons
+                      name="chevron-down"
+                      size={14}
+                      color={idx === sortedRows.length - 1 ? colors.border : colors.text}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+            );
+          }}
+          renderCell={(u, position) => {
+            const assignee = getCustomer(u.assignedCustomerId);
+            return (
+              <DispositionUmbrellaCell
+                key={u.id}
+                umbrella={u}
+                position={position}
+                positions={positions}
+                allUmbrellas={umbrellas}
+                cellSize={DISPOSIZIONE_CELL}
+                hasAssignee={!!assignee}
+                onSwap={swapUmbrellaPositions}
+                onTap={setEditingUmbrellaId}
+              />
+            );
+          }}
+        />
       )}
 
-      {zones.map(([row, { name, umbrellas: rowUmbrellas }], idx) => (
-        <Card key={row} style={{ marginTop: spacing.md }}>
-          <View style={styles.rowBetween}>
-            {renamingRow === row ? (
-              <TextInput
-                style={[styles.input, { flex: 1, marginBottom: 0, marginRight: spacing.sm }]}
-                value={renameValue}
-                onChangeText={setRenameValue}
-                autoFocus
-                onSubmitEditing={() => {
-                  renameZone(row, renameValue.trim() || name);
-                  setRenamingRow(null);
-                }}
-              />
-            ) : (
-              <Pressable
-                style={styles.zoneNameRow}
-                onPress={() => {
-                  setRenamingRow(row);
-                  setRenameValue(name);
-                }}
-              >
-                <Text style={styles.itemTitle}>{name}</Text>
-                <Ionicons name="pencil-outline" size={13} color={colors.textMuted} />
-              </Pressable>
-            )}
-            <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-              <Pressable
-                style={styles.iconBtn}
-                onPress={() => reorderZone(row, 'up')}
-                disabled={idx === 0}
-              >
-                <Ionicons name="chevron-up" size={18} color={idx === 0 ? colors.border : colors.text} />
-              </Pressable>
-              <Pressable
-                style={styles.iconBtn}
-                onPress={() => reorderZone(row, 'down')}
-                disabled={idx === zones.length - 1}
-              >
-                <Ionicons
-                  name="chevron-down"
-                  size={18}
-                  color={idx === zones.length - 1 ? colors.border : colors.text}
-                />
-              </Pressable>
-            </View>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.sm }}>
-            {rowUmbrellas.map((u) => {
-              const assignee = getCustomer(u.assignedCustomerId);
-              return (
-                <React.Fragment key={u.id}>
-                  {u.col === COLS_PER_SIDE && <View style={styles.walkwayDivider} />}
-                  <Pressable style={styles.umbrellaChip} onPress={() => setEditingUmbrellaId(u.id)}>
-                    <Text style={styles.umbrellaChipNumber}>N.{u.number}</Text>
-                    <View style={{ flexDirection: 'row', gap: 2, marginTop: 2 }}>
-                      {u.hasCabin && <Ionicons name="home-outline" size={11} color={colors.textMuted} />}
-                      {assignee && <Ionicons name="star" size={11} color={colors.accent} />}
-                    </View>
-                  </Pressable>
-                </React.Fragment>
-              );
-            })}
-          </ScrollView>
-        </Card>
-      ))}
-
-      {zones.length > 0 && (
-        <Button
-          title="Aggiungi un'altra fila"
-          variant="secondary"
-          onPress={addRow}
-          style={{ marginTop: spacing.md }}
-        />
+      {umbrellas.length > 0 && (
+        <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md }}>
+          <Button title="Aggiungi un'altra fila" variant="secondary" onPress={addRow} />
+        </View>
       )}
 
       <Modal
@@ -730,7 +817,7 @@ const DisposizioneTab: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
-    </ScrollView>
+    </View>
   );
 };
 
@@ -1416,6 +1503,7 @@ const styles = StyleSheet.create({
   groupTitle: { fontWeight: '800', color: colors.textMuted, fontSize: 12, textTransform: 'uppercase', marginBottom: 2 },
   colorSwatch: { height: 4, borderRadius: 2, marginBottom: spacing.sm, width: '100%' },
   zoneNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  zoneLabelTextSmall: { fontWeight: '700', color: colors.text, fontSize: 11, maxWidth: 80 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,

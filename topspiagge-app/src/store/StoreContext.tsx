@@ -91,6 +91,7 @@ function buildInitialState(): AppState {
 type Action =
   | { type: 'HYDRATE'; payload: AppState }
   | { type: 'ADD_ROW'; umbrellas: Umbrella[] }
+  | { type: 'SWAP_POSITIONS'; aId: string; bId: string }
   | { type: 'SWAP_UMBRELLAS'; fromId: string; toId: string }
   | { type: 'CREATE_BOOKING'; booking: Booking }
   | { type: 'FREE_UMBRELLA'; umbrellaId: string }
@@ -127,6 +128,21 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'ADD_ROW':
       return { ...state, umbrellas: [...state.umbrellas, ...action.umbrellas] };
+
+    // Swaps two umbrellas' physical layout slot (row/col/zone) only -- unlike SWAP_UMBRELLAS,
+    // this never touches status/currentBookingId/assignedCustomerId, since it's a layout-editor
+    // move (drag a physical umbrella to a different spot), not a booking action.
+    case 'SWAP_POSITIONS': {
+      const a = state.umbrellas.find((u) => u.id === action.aId);
+      const b = state.umbrellas.find((u) => u.id === action.bId);
+      if (!a || !b || a.id === b.id) return state;
+      const umbrellas = state.umbrellas.map((u) => {
+        if (u.id === a.id) return { ...u, row: b.row, col: b.col, zone: b.zone };
+        if (u.id === b.id) return { ...u, row: a.row, col: a.col, zone: a.zone };
+        return u;
+      });
+      return { ...state, umbrellas };
+    }
 
     case 'SWAP_UMBRELLAS': {
       const { fromId, toId } = action;
@@ -402,6 +418,7 @@ interface StoreContextValue extends AppState {
   // configured) or while a Supabase-backed instance is still resolving it on mount.
   beachId: string | null;
   addRow: () => void;
+  swapUmbrellaPositions: (aId: string, bId: string) => void;
   swapUmbrellas: (fromId: string, toId: string) => void;
   createBooking: (booking: Booking) => void;
   freeUmbrella: (umbrellaId: string) => void;
@@ -640,6 +657,23 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     const beachId = beachIdRef.current;
     if (client && beachId) {
       runSync(client.from('umbrellas').insert(newUmbrellas.map((u) => umbrellaToRow(u, beachId))));
+    }
+  }, []);
+
+  // Drag-and-drop layout editing (Disposizione): swaps two umbrellas' row/col/zone only, never
+  // their booking state -- see the SWAP_POSITIONS reducer case.
+  const swapUmbrellaPositions = useCallback((aId: string, bId: string) => {
+    const action: Action = { type: 'SWAP_POSITIONS', aId, bId };
+    const prev = stateRef.current;
+    const next = reducer(prev, action);
+    dispatch(action);
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId && next !== prev) {
+      const a = next.umbrellas.find((u) => u.id === aId);
+      const b = next.umbrellas.find((u) => u.id === bId);
+      if (a) runSync(client.from('umbrellas').update(umbrellaToRow(a, beachId)).eq('beach_id', beachId).eq('id', a.id));
+      if (b) runSync(client.from('umbrellas').update(umbrellaToRow(b, beachId)).eq('beach_id', beachId).eq('id', b.id));
     }
   }, []);
 
@@ -918,6 +952,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       ...state,
       beachId,
       addRow,
+      swapUmbrellaPositions,
       swapUmbrellas,
       createBooking,
       freeUmbrella,
@@ -945,6 +980,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       state,
       beachId,
       addRow,
+      swapUmbrellaPositions,
       swapUmbrellas,
       createBooking,
       freeUmbrella,
