@@ -106,7 +106,10 @@ export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, zones, zo
 
       <Section label="Stato">
         <Chip label="Tutti" selected={filters.status === 'tutti'} onPress={() => patch({ status: 'tutti' })} />
-        {DISPLAY_STATUSES.map((s) => (
+        {/* 'sgombera' isn't offered here -- it's just "checked out today", which "Check-out
+            oggi" below already covers, and covers more correctly (it doesn't get masked by an
+            outstanding balance the way the legacy status precedence does). */}
+        {DISPLAY_STATUSES.filter((s) => s !== 'sgombera').map((s) => (
           <Chip
             key={s}
             label={displayStatusLabel[s]}
