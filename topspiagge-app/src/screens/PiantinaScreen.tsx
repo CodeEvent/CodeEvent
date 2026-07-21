@@ -54,9 +54,10 @@ const UmbrellaCell: React.FC<{
   unpaid?: boolean;
   caption?: string;
   dimmed?: boolean;
+  pending?: boolean;
   onDrop: (fromId: string, toId: string) => void;
   onTap: (id: string) => void;
-}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, unpaid, caption, dimmed, onDrop, onTap }) => {
+}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, unpaid, caption, dimmed, pending, onDrop, onTap }) => {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [dragging, setDragging] = useState(false);
 
@@ -101,9 +102,9 @@ const UmbrellaCell: React.FC<{
     })
   ).current;
 
-  const isSgombera = status === 'sgombera';
-  const isStagionale = status === 'stagionale';
-  const isSplit = isSgombera || isStagionale;
+  const isSgombera = !pending && status === 'sgombera';
+  const isStagionale = !pending && status === 'stagionale';
+  const isSplit = isSgombera || isStagionale || pending;
 
   return (
     <View style={{ position: 'absolute', left: position.x, top: position.y, width: cellSize, opacity: dimmed ? 0.25 : 1 }}>
@@ -130,13 +131,13 @@ const UmbrellaCell: React.FC<{
             <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.sgombera }} />
           </View>
         )}
-        {isStagionale && (
+        {(isStagionale || pending) && (
           <View style={StyleSheet.absoluteFill}>
             <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.occupato }} />
             <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.prenotato }} />
           </View>
         )}
-        {status === 'libero' ? (
+        {status === 'libero' && !pending ? (
           <>
             <MaterialCommunityIcons name="umbrella-closed" size={Math.min(18, Math.max(12, cellSize / 4))} color={colors.white} />
             <Text style={[styles.cellNumber, { fontSize: Math.min(13, Math.max(10, cellSize / 5.5)) }]}>{umbrella.number}</Text>
@@ -161,6 +162,7 @@ const UmbrellaCell: React.FC<{
 export const PiantinaScreen: React.FC = () => {
   const { umbrellas, swapUmbrellas, getBooking, getCustomer } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingExtraIds, setPendingExtraIds] = useState<string[]>([]);
   const [filters, setFilters] = useState(DEFAULT_BOOKING_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const route = useRoute<any>();
@@ -188,6 +190,19 @@ export const PiantinaScreen: React.FC = () => {
     }),
     [umbrellas]
   );
+
+  // Tapping an umbrella to start a new booking never touches the store until "Conferma" --
+  // this local pending set just drives a temporary red/blue highlight so the operator can
+  // see what they're about to book, and it clears itself (see below) on every cancel path.
+  const pendingIds = useMemo(
+    () => (selectedId ? [selectedId, ...pendingExtraIds] : []),
+    [selectedId, pendingExtraIds]
+  );
+
+  const selectUmbrella = (id: string) => {
+    setPendingExtraIds([]);
+    setSelectedId(id);
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -244,14 +259,19 @@ export const PiantinaScreen: React.FC = () => {
               unpaid={hasOutstandingBalance(u, getBooking)}
               caption={captionFor(status, u, getBooking, getCustomer)}
               dimmed={!umbrellaMatchesFilters(u, filters, getBooking, getCustomer, today)}
+              pending={pendingIds.includes(u.id)}
               onDrop={swapUmbrellas}
-              onTap={setSelectedId}
+              onTap={selectUmbrella}
             />
           );
         }}
       />
 
-      <UmbrellaDetailModal umbrellaId={selectedId} onClose={() => setSelectedId(null)} />
+      <UmbrellaDetailModal
+        umbrellaId={selectedId}
+        onClose={() => setSelectedId(null)}
+        onExtrasChange={setPendingExtraIds}
+      />
     </SafeAreaView>
   );
 };

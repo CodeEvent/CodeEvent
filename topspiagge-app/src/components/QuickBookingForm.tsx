@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
@@ -28,6 +28,10 @@ interface Props {
   umbrellaId: string;
   onDone: () => void;
   initialFromOffset?: number;
+  /** Reports the currently-selected extra umbrellas so the map behind this form can
+   * highlight them as "pending" (not yet confirmed) instead of showing their real,
+   * still-free status. */
+  onExtrasChange?: (ids: string[]) => void;
 }
 
 const PERIOD_PRESETS = [
@@ -37,7 +41,7 @@ const PERIOD_PRESETS = [
   { label: '1 settimana', days: 7 },
 ];
 
-export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialFromOffset = 0 }) => {
+export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialFromOffset = 0, onExtrasChange }) => {
   const { umbrellas, customers, bookings, createBooking, upsertCustomer, getActivePriceList, getUmbrella } =
     useStore();
   const [startOffset, setStartOffset] = useState(initialFromOffset);
@@ -53,6 +57,12 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   const [childrenUnder5, setChildrenUnder5] = useState(0);
   const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>([]);
   const [isStudent, setIsStudent] = useState(false);
+
+  useEffect(() => {
+    onExtrasChange?.(extraUmbrellaIds);
+    return () => onExtrasChange?.([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraUmbrellaIds]);
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();

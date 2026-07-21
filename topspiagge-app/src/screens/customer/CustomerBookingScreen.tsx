@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -103,6 +103,14 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(
     () => primaryEditBooking?.umbrellaId ?? null
   );
+  // A new booking never touches the store until "Conferma e prenota" -- this local set
+  // just highlights the umbrella(s) currently being composed in red/blue, and clears
+  // itself the moment selectedUmbrellaId does (cancel, backdrop, Annulla, navigate away).
+  const [pendingExtraIds, setPendingExtraIds] = useState<string[]>([]);
+  const pendingIds = useMemo(
+    () => (selectedUmbrellaId ? [selectedUmbrellaId, ...pendingExtraIds] : []),
+    [selectedUmbrellaId, pendingExtraIds]
+  );
   const [formStage, setFormStage] = useState<'details' | 'review'>('details');
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
   const [confirmedIsEdit, setConfirmedIsEdit] = useState(false);
@@ -151,6 +159,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
 
   const handleTap = (u: Umbrella) => {
     if (isFreeForPeriod(u)) {
+      setPendingExtraIds([]);
       setSelectedUmbrellaId(u.id);
       setFormStage('details');
     } else {
@@ -175,6 +184,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       freeCount={freeCount}
       freeCounts={freeCounts}
       isFreeForPeriod={isFreeForPeriod}
+      pendingIds={pendingIds}
       onTap={handleTap}
       onChangeDates={() => setDateEditVisible(true)}
     />
@@ -234,6 +244,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 onEditDates={() => setDateEditVisible(true)}
                 stage={formStage}
                 onStageChange={setFormStage}
+                onExtrasChange={setPendingExtraIds}
               />
             ) : (
               <View style={styles.sidebarEmpty}>
@@ -266,6 +277,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 onEditDates={() => setDateEditVisible(true)}
                 stage={formStage}
                 onStageChange={setFormStage}
+                onExtrasChange={setPendingExtraIds}
               />
             </Pressable>
           </Pressable>
@@ -389,6 +401,7 @@ const MapStep: React.FC<{
   freeCount: number;
   freeCounts: { nord: number; sud: number };
   isFreeForPeriod: (u: Umbrella) => boolean;
+  pendingIds: string[];
   onTap: (u: Umbrella) => void;
   onChangeDates: () => void;
 }> = ({
@@ -401,6 +414,7 @@ const MapStep: React.FC<{
   freeCount,
   freeCounts,
   isFreeForPeriod,
+  pendingIds,
   onTap,
   onChangeDates,
 }) => (
@@ -440,6 +454,7 @@ const MapStep: React.FC<{
       footerText={`${freeCount} ombrelloni liberi per il periodo scelto`}
       renderCell={(u, position) => {
         const free = isFreeForPeriod(u);
+        const pending = pendingIds.includes(u.id);
         return (
           <Pressable
             key={u.id}
@@ -452,10 +467,17 @@ const MapStep: React.FC<{
                 width: cellSize,
                 height: cellSize,
                 borderRadius: cellSize / 2,
-                backgroundColor: free ? colors.libero : colors.textMuted,
+                overflow: 'hidden',
+                backgroundColor: pending ? undefined : free ? colors.libero : colors.textMuted,
               },
             ]}
           >
+            {pending && (
+              <View style={StyleSheet.absoluteFill}>
+                <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.occupato }} />
+                <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.prenotato }} />
+              </View>
+            )}
             <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
               {u.number}
             </Text>
@@ -533,6 +555,10 @@ const BookingForm: React.FC<{
   onEditDates: () => void;
   stage: 'details' | 'review';
   onStageChange: (stage: 'details' | 'review') => void;
+  /** Reports the currently-selected extra umbrellas so the map behind this form can
+   * highlight them as "pending" (not yet confirmed) instead of showing their real,
+   * still-free status. */
+  onExtrasChange?: (ids: string[]) => void;
 }> = ({
   umbrellaId,
   dateFrom,
@@ -546,6 +572,7 @@ const BookingForm: React.FC<{
   onEditDates,
   stage,
   onStageChange,
+  onExtrasChange,
 }) => {
   const { getUmbrella, customers, createBooking, upsertCustomer, getActivePriceList, cancelBooking } = useStore();
   // Fila 1/2 default to their bundled equipment (so the discounted package price applies
@@ -588,6 +615,12 @@ const BookingForm: React.FC<{
     const matching = editBookings.find((b) => b.umbrellaId === umbrellaId);
     return { [umbrellaId]: matching ? { beds: matching.beds ?? 0, chairs: matching.chairs ?? 0 } : defaultEquipmentFor(umbrellaId) };
   });
+
+  useEffect(() => {
+    onExtrasChange?.(extraUmbrellaIds);
+    return () => onExtrasChange?.([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraUmbrellaIds]);
 
   const umbrella = getUmbrella(umbrellaId);
   const priceList = getActivePriceList();

@@ -12,9 +12,13 @@ import { Button, Chip, StatusPill } from './UI';
 interface Props {
   umbrellaId: string | null;
   onClose: () => void;
+  /** Reports the extra umbrellas picked inside an in-progress new booking, so the map
+   * behind this modal can show them as "pending" until the booking is confirmed or the
+   * modal is dismissed. */
+  onExtrasChange?: (ids: string[]) => void;
 }
 
-export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) => {
+export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onExtrasChange }) => {
   const { getUmbrella, getBooking, getCustomer, freeUmbrella, customers, assignCustomer } = useStore();
   const navigation = useNavigation<any>();
   const alert = useAppAlert();
@@ -30,6 +34,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
   const close = () => {
     setMode('detail');
     setAssigningCustomer(false);
+    onExtrasChange?.([]);
     onClose();
   };
 
@@ -240,7 +245,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose }) =>
 
           {mode === 'new_booking' && (
             <View style={{ marginTop: spacing.md }}>
-              <QuickBookingForm umbrellaId={umbrella.id} onDone={close} />
+              <QuickBookingForm umbrellaId={umbrella.id} onDone={close} onExtrasChange={onExtrasChange} />
             </View>
           )}
           </ScrollView>

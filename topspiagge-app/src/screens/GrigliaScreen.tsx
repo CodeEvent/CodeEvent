@@ -36,9 +36,22 @@ function captionFor(
 export const GrigliaScreen: React.FC = () => {
   const { umbrellas, getBooking, getCustomer } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingExtraIds, setPendingExtraIds] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_BOOKING_FILTERS);
   const today = isoDate(0);
+
+  // See PiantinaScreen for the rationale: a purely local, never-persisted highlight of
+  // the umbrella(s) currently being composed into a new booking.
+  const pendingIds = useMemo(
+    () => (selectedId ? [selectedId, ...pendingExtraIds] : []),
+    [selectedId, pendingExtraIds]
+  );
+
+  const selectUmbrella = (id: string) => {
+    setPendingExtraIds([]);
+    setSelectedId(id);
+  };
 
   const filtered = useMemo(
     () => umbrellas.filter((u) => umbrellaMatchesFilters(u, filters, getBooking, getCustomer, today)),
@@ -101,9 +114,10 @@ export const GrigliaScreen: React.FC = () => {
                   {rowUmbrellas.map((u) => {
                     const displayStatus = displayStatusFor(u, getBooking);
                     const baseStatus = baseDisplayStatusFor(u, getBooking);
-                    const isSgombera = baseStatus === 'sgombera';
-                    const isStagionale = baseStatus === 'stagionale';
-                    const isSplit = isSgombera || isStagionale;
+                    const pending = pendingIds.includes(u.id);
+                    const isSgombera = !pending && baseStatus === 'sgombera';
+                    const isStagionale = !pending && baseStatus === 'stagionale';
+                    const isSplit = isSgombera || isStagionale || pending;
                     const unpaid = hasOutstandingBalance(u, getBooking);
                     const caption = captionFor(displayStatus, u, getBooking, getCustomer);
                     return (
@@ -111,7 +125,7 @@ export const GrigliaScreen: React.FC = () => {
                         {u.col === COLS_PER_SIDE && <View style={styles.walkwayDivider} />}
                         <View style={styles.cellWrap}>
                           <Pressable
-                            onPress={() => setSelectedId(u.id)}
+                            onPress={() => selectUmbrella(u.id)}
                             style={[
                               styles.cell,
                               { backgroundColor: isSplit ? undefined : displayStatusColor[baseStatus], overflow: 'hidden' },
@@ -123,13 +137,13 @@ export const GrigliaScreen: React.FC = () => {
                                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.sgombera }} />
                               </View>
                             )}
-                            {isStagionale && (
+                            {(isStagionale || pending) && (
                               <View style={StyleSheet.absoluteFill}>
                                 <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.occupato }} />
                                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 28, backgroundColor: colors.prenotato }} />
                               </View>
                             )}
-                            {baseStatus === 'libero' ? (
+                            {baseStatus === 'libero' && !pending ? (
                               <>
                                 <MaterialCommunityIcons name="umbrella-closed" size={14} color={colors.white} />
                                 <Text style={[styles.cellNumber, { fontSize: 12 }]}>{u.number}</Text>
@@ -160,7 +174,11 @@ export const GrigliaScreen: React.FC = () => {
         </View>
       </View>
 
-      <UmbrellaDetailModal umbrellaId={selectedId} onClose={() => setSelectedId(null)} />
+      <UmbrellaDetailModal
+        umbrellaId={selectedId}
+        onClose={() => setSelectedId(null)}
+        onExtrasChange={setPendingExtraIds}
+      />
     </SafeAreaView>
   );
 };
