@@ -1203,7 +1203,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     paddingTop: spacing.md,
-    height: '88%',
+    height: '94%',
   },
   handle: {
     width: 40,
@@ -1280,8 +1280,8 @@ const styles = StyleSheet.create({
   policyText: { color: colors.text, fontSize: 12, lineHeight: 17, marginTop: 4 },
   policyBold: { fontWeight: '800' },
   input: {
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: colors.textMuted,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 8,
