@@ -9,19 +9,24 @@ import { useStore } from '../store/StoreContext';
 import { colors, spacing } from '../theme';
 import { Umbrella } from '../types';
 import {
-  DISPLAY_STATUSES,
-  DisplayStatus,
+  BaseDisplayStatus,
+  baseDisplayStatusFor,
   displayStatusColor,
-  displayStatusFor,
-  displayStatusLabel,
+  hasOutstandingBalance,
 } from '../utils/displayStatus';
 
 const TAP_THRESHOLD = 10;
 const ROWS = 12;
 const CAPTION_HEIGHT = 16;
 
+const PIANTINA_LEGEND: { key: BaseDisplayStatus; label: string }[] = [
+  { key: 'libero', label: 'Libero' },
+  { key: 'occupato', label: 'Occupato' },
+  { key: 'sgombera', label: 'Sgombera' },
+];
+
 function captionFor(
-  status: DisplayStatus,
+  status: BaseDisplayStatus,
   umbrella: Umbrella,
   getBooking: (id?: string) => import('../types').Booking | undefined,
   getCustomer: (id?: string) => import('../types').Customer | undefined
@@ -41,11 +46,12 @@ const UmbrellaCell: React.FC<{
   positions: Map<string, { x: number; y: number }>;
   allUmbrellas: Umbrella[];
   cellSize: number;
-  status: DisplayStatus;
+  status: BaseDisplayStatus;
+  unpaid?: boolean;
   caption?: string;
   onDrop: (fromId: string, toId: string) => void;
   onTap: (id: string) => void;
-}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, caption, onDrop, onTap }) => {
+}> = ({ umbrella, position, positions, allUmbrellas, cellSize, status, unpaid, caption, onDrop, onTap }) => {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [dragging, setDragging] = useState(false);
 
@@ -125,6 +131,7 @@ const UmbrellaCell: React.FC<{
           </Text>
         )}
         {umbrella.hasCabin && <View style={styles.cabinDot} />}
+        {unpaid && <View style={styles.unpaidDot} />}
       </Animated.View>
       {!!caption && (
         <Text numberOfLines={1} style={styles.caption}>
@@ -169,12 +176,16 @@ export const PiantinaScreen: React.FC = () => {
         <Text style={styles.headerTitle}>Piantina Spiaggia</Text>
         <Text style={styles.headerSubtitle}>Trascina un ombrellone per spostare la prenotazione</Text>
         <View style={styles.legendRow}>
-          {DISPLAY_STATUSES.map((s) => (
-            <View key={s} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: displayStatusColor[s] }]} />
-              <Text style={styles.legendText}>{displayStatusLabel[s]}</Text>
+          {PIANTINA_LEGEND.map(({ key, label }) => (
+            <View key={key} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: displayStatusColor[key] }]} />
+              <Text style={styles.legendText}>{label}</Text>
             </View>
           ))}
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, styles.unpaidDotStatic]} />
+            <Text style={styles.legendText}>Da saldare</Text>
+          </View>
         </View>
       </View>
 
@@ -186,7 +197,7 @@ export const PiantinaScreen: React.FC = () => {
         labelWidth={labelWidth}
         footerText={`Liberi oggi: ${freeCounts.nord + freeCounts.sud} (Nord ${freeCounts.nord} · Sud ${freeCounts.sud})`}
         renderCell={(u, position) => {
-          const status = displayStatusFor(u, getBooking);
+          const status = baseDisplayStatusFor(u, getBooking);
           return (
             <UmbrellaCell
               key={u.id}
@@ -196,6 +207,7 @@ export const PiantinaScreen: React.FC = () => {
               allUmbrellas={umbrellas}
               cellSize={cellSize}
               status={status}
+              unpaid={hasOutstandingBalance(u, getBooking)}
               caption={captionFor(status, u, getBooking, getCustomer)}
               onDrop={swapUmbrellas}
               onTap={setSelectedId}
@@ -247,6 +259,18 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.white,
   },
+  unpaidDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.black,
+    borderWidth: 1.5,
+    borderColor: colors.white,
+  },
+  unpaidDotStatic: { backgroundColor: colors.black },
   caption: {
     marginTop: 2,
     fontSize: 9,

@@ -55,3 +55,27 @@ export const displayStatusLabel: Record<DisplayStatus, string> = {
 };
 
 export const DISPLAY_STATUSES: DisplayStatus[] = ['libero', 'occupato', 'da_saldare', 'sgombera'];
+
+// Piantina reserves black for a small "unpaid" dot overlay rather than recoloring the whole
+// umbrella -- red/green/orange should always show the real occupancy state at a glance, with
+// the payment flag layered on top instead of replacing it. These two helpers give that base
+// status (never 'da_saldare') plus a separate boolean for the dot.
+export type BaseDisplayStatus = 'libero' | 'occupato' | 'sgombera';
+
+export function baseDisplayStatusFor(
+  umbrella: Umbrella,
+  getBooking: (id?: string) => Booking | undefined
+): BaseDisplayStatus {
+  if (umbrella.status === 'libero') return 'libero';
+  const booking = getBooking(umbrella.currentBookingId);
+  if (booking && booking.dateTo === isoDate(0)) return 'sgombera';
+  return 'occupato';
+}
+
+export function hasOutstandingBalance(
+  umbrella: Umbrella,
+  getBooking: (id?: string) => Booking | undefined
+): boolean {
+  const booking = getBooking(umbrella.currentBookingId);
+  return !!booking && booking.paid < booking.totalPrice;
+}
