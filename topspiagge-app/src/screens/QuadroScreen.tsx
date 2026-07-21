@@ -3,7 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BookingFilterBar } from '../components/BookingFilterBar';
+import { FilterSheetModal } from '../components/BookingFilterBar';
 import { QuickBookingForm } from '../components/QuickBookingForm';
 import { Button } from '../components/UI';
 import { useStore } from '../store/StoreContext';
@@ -110,11 +110,12 @@ export const QuadroScreen: React.FC = () => {
         </Text>
       </View>
 
-      {filtersOpen && (
-        <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-          <BookingFilterBar filters={filters} onChange={setFilters} />
-        </View>
-      )}
+      <FilterSheetModal
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={filters}
+        onChange={setFilters}
+      />
 
       <ScrollView>
         <View style={{ flexDirection: 'row' }}>

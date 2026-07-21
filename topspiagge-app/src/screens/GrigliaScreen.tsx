@@ -3,11 +3,11 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLS_PER_SIDE } from '../components/BeachCanvas';
-import { BookingFilterBar } from '../components/BookingFilterBar';
+import { FilterSheetModal } from '../components/BookingFilterBar';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { Umbrella, Zone } from '../types';
+import { Umbrella } from '../types';
 import { DEFAULT_BOOKING_FILTERS, umbrellaMatchesFilters } from '../utils/bookingFilters';
 import {
   baseDisplayStatusFor,
@@ -17,8 +17,6 @@ import {
   hasOutstandingBalance,
 } from '../utils/displayStatus';
 import { isoDate } from '../utils/format';
-
-const ALL_ZONES = 'Tutte';
 
 function captionFor(
   status: DisplayStatus,
@@ -40,24 +38,11 @@ export const GrigliaScreen: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_BOOKING_FILTERS);
-  const [zoneFilter, setZoneFilter] = useState<string>(ALL_ZONES);
   const today = isoDate(0);
 
-  const zones = useMemo(() => {
-    const scoped = filters.side === 'tutti' ? umbrellas : umbrellas.filter((u) => u.side === filters.side);
-    const set = new Set<Zone>();
-    scoped.forEach((u) => set.add(u.zone));
-    return [ALL_ZONES, ...Array.from(set).sort((a, b) => a.localeCompare(b, 'it', { numeric: true }))];
-  }, [umbrellas, filters.side]);
-
   const filtered = useMemo(
-    () =>
-      umbrellas.filter(
-        (u) =>
-          (zoneFilter === ALL_ZONES || u.zone === zoneFilter) &&
-          umbrellaMatchesFilters(u, filters, getBooking, getCustomer, today)
-      ),
-    [umbrellas, zoneFilter, filters, getBooking, getCustomer, today]
+    () => umbrellas.filter((u) => umbrellaMatchesFilters(u, filters, getBooking, getCustomer, today)),
+    [umbrellas, filters, getBooking, getCustomer, today]
   );
 
   // Every row is a fixed line of umbrellas (10 per side, 20 when both sides are shown) --
@@ -99,20 +84,12 @@ export const GrigliaScreen: React.FC = () => {
         </View>
       </View>
 
-      {filtersOpen && (
-        <View style={{ paddingHorizontal: spacing.lg }}>
-          <BookingFilterBar
-            filters={filters}
-            onChange={(next) => {
-              if (next.side !== filters.side) setZoneFilter(ALL_ZONES);
-              setFilters(next);
-            }}
-            zones={zones}
-            zone={zoneFilter}
-            onZoneChange={setZoneFilter}
-          />
-        </View>
-      )}
+      <FilterSheetModal
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={filters}
+        onChange={setFilters}
+      />
 
       <View style={styles.beach}>
         <ScrollView contentContainerStyle={styles.scrollBody}>

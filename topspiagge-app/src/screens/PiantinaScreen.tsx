@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BeachCanvas, GAP, MIN_CELL, useUmbrellaPositions } from '../components/BeachCanvas';
-import { BookingFilterBar } from '../components/BookingFilterBar';
+import { FilterSheetModal } from '../components/BookingFilterBar';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing } from '../theme';
@@ -205,12 +205,14 @@ export const PiantinaScreen: React.FC = () => {
             <Text style={styles.legendText}>Da saldare</Text>
           </View>
         </View>
-        {filtersOpen && (
-          <View style={{ marginTop: spacing.sm }}>
-            <BookingFilterBar filters={filters} onChange={setFilters} />
-          </View>
-        )}
       </View>
+
+      <FilterSheetModal
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={filters}
+        onChange={setFilters}
+      />
 
       <BeachCanvas
         umbrellas={umbrellas}

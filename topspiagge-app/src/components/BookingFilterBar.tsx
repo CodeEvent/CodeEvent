@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, radius, spacing } from '../theme';
 import { BeachSide } from '../types';
 import { DISPLAY_STATUSES, displayStatusColor, displayStatusLabel } from '../utils/displayStatus';
@@ -17,10 +17,6 @@ function endOfMonthIso(): string {
 interface Props {
   filters: BookingFilters;
   onChange: (filters: BookingFilters) => void;
-  /** Zone chips are screen-specific (Piantina has none, Griglia/Quadro can pass their own row list). */
-  zones?: string[];
-  zone?: string;
-  onZoneChange?: (zone: string) => void;
 }
 
 const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -34,9 +30,9 @@ const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label
 // so adding a new filter dimension only has to happen in this one file. Grouped into labeled
 // sections (rather than one long wrapped chip list) so it reads as a set of questions --
 // where, what state, whose booking, what's booked -- instead of an undifferentiated wall.
-export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, zones, zone, onZoneChange }) => {
+export const BookingFilterBar: React.FC<Props> = ({ filters, onChange }) => {
   const patch = (p: Partial<BookingFilters>) => onChange({ ...filters, ...p });
-  const activeCount = countActiveFilters(filters, zone);
+  const activeCount = countActiveFilters(filters);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const today = isoDate(0);
@@ -75,9 +71,6 @@ export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, zones, zo
             selected={filters.side === s}
             onPress={() => patch({ side: s as BeachSide | 'tutti' })}
           />
-        ))}
-        {zones && onZoneChange && zones.map((z) => (
-          <Chip key={z} label={z} selected={zone === z} onPress={() => onZoneChange(z)} />
         ))}
       </Section>
 
@@ -180,10 +173,7 @@ export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, zones, zo
             title="Reset filtri"
             variant="ghost"
             icon="close-circle-outline"
-            onPress={() => {
-              onChange(DEFAULT_BOOKING_FILTERS);
-              onZoneChange?.('Tutte');
-            }}
+            onPress={() => onChange(DEFAULT_BOOKING_FILTERS)}
             style={styles.resetBtn}
           />
         )}
@@ -215,10 +205,33 @@ export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, zones, zo
   );
 };
 
-function countActiveFilters(filters: BookingFilters, zone?: string): number {
+interface FilterSheetModalProps extends Props {
+  visible: boolean;
+  onClose: () => void;
+}
+
+// Piantina/Griglia/Quadro toggle the filter bar open inline, as a sibling of the beach
+// grid/canvas -- with six sections of chips that's tall enough to run past the bottom of
+// the screen on anything shorter than a full desktop window, with no scroll affordance to
+// reach what's cut off. Presenting it as its own scrollable sheet, capped well under full
+// height, keeps every option reachable regardless of viewport size.
+export const FilterSheetModal: React.FC<FilterSheetModalProps> = ({ visible, onClose, ...filterBarProps }) => (
+  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable style={styles.filterSheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.handle} />
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <BookingFilterBar {...filterBarProps} />
+        </ScrollView>
+        <Button title="Chiudi" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
+      </Pressable>
+    </Pressable>
+  </Modal>
+);
+
+function countActiveFilters(filters: BookingFilters): number {
   let n = 0;
   if (filters.side !== 'tutti') n++;
-  if (zone && zone !== 'Tutte') n++;
   if (filters.status !== 'tutti') n++;
   if (filters.onlyVip) n++;
   if (filters.checkinToday) n++;
@@ -284,6 +297,21 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.xl,
     padding: spacing.lg,
     maxHeight: '85%',
+  },
+  filterSheet: {
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    maxHeight: '85%',
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
   },
   sheetTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   sheetHint: { fontSize: 12, color: colors.textMuted, marginTop: 2, marginBottom: spacing.md },
