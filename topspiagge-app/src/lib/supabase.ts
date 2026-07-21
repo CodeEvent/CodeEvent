@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
 // Public, client-embeddable values: real access control lives in Postgres Row Level Security
@@ -13,6 +14,13 @@ export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
 export const supabase = isSupabaseConfigured
   ? createClient(SUPABASE_URL as string, SUPABASE_ANON_KEY as string, {
-      auth: { persistSession: false },
+      auth: {
+        // Operators log in with real Supabase Auth accounts now, so their session needs to
+        // survive a reload just like the old persisted admin/admin flag did.
+        persistSession: true,
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+      },
     })
   : null;

@@ -9,6 +9,7 @@ import { PiantinaScreen } from '../PiantinaScreen';
 import { QuadroScreen } from '../QuadroScreen';
 import { StatisticheScreen } from '../StatisticheScreen';
 import { useOperatorAuth } from '../../store/OperatorAuthContext';
+import { StoreProvider } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { OperatorLoginScreen } from './OperatorLoginScreen';
 
@@ -58,14 +59,21 @@ interface Props {
   onExitToCustomer: () => void;
 }
 
-// Everything staff-facing lives at the /operator route, gated by its own admin/admin login
-// (persisted until logout) -- a completely separate area from the customer-facing app, not
-// just an in-app mode toggle.
+// Everything staff-facing lives at the /operator route, gated by a real login (persisted until
+// logout) -- a completely separate area from the customer-facing app, not just an in-app mode
+// toggle. StoreProvider is mounted here, not at the app root, so it only exists once an operator
+// is actually logged in -- that way it always resolves its beach_id from a session that's
+// already established (see StoreContext.tsx's initial-load effect), and remounts fresh with a
+// clean resolution on every new login rather than needing its own separate auth-change listener.
 export const OperatorApp: React.FC<Props> = ({ onExitToCustomer }) => {
   const { isLoggedIn, isHydrating } = useOperatorAuth();
   if (isHydrating) return null;
   if (!isLoggedIn) return <OperatorLoginScreen onExitToCustomer={onExitToCustomer} />;
-  return <StaffTabs />;
+  return (
+    <StoreProvider>
+      <StaffTabs />
+    </StoreProvider>
+  );
 };
 
 const styles = StyleSheet.create({

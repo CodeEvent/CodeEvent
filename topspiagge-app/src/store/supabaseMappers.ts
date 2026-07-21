@@ -1,5 +1,9 @@
 // Row (snake_case, matching supabase/schema.sql) <-> app type (camelCase) conversions.
 // Kept in one place so StoreContext never touches raw Supabase rows directly.
+//
+// Every `xToRow` builder takes the owning beach's id explicitly and stamps it onto the row --
+// the schema's primary keys are (beach_id, id) pairs, so every insert/upsert needs it, and every
+// `rowToX` reader ignores beach_id since the app types are already scoped to one beach's store.
 import { Article, Booking, Conto, Customer, DailyStat, PriceList, Umbrella } from '../types';
 
 export function rowToUmbrella(r: any): Umbrella {
@@ -17,9 +21,10 @@ export function rowToUmbrella(r: any): Umbrella {
   };
 }
 
-export function umbrellaToRow(u: Umbrella) {
+export function umbrellaToRow(u: Umbrella, beachId: string) {
   return {
     id: u.id,
+    beach_id: beachId,
     number: u.number,
     side: u.side,
     row: u.row,
@@ -46,9 +51,10 @@ export function rowToCustomer(r: any): Customer {
   };
 }
 
-export function customerToRow(c: Customer) {
+export function customerToRow(c: Customer, beachId: string) {
   return {
     id: c.id,
+    beach_id: beachId,
     name: c.name,
     phone: c.phone,
     email: c.email ?? null,
@@ -81,9 +87,10 @@ export function rowToBooking(r: any): Booking {
   };
 }
 
-export function bookingToRow(b: Booking) {
+export function bookingToRow(b: Booking, beachId: string) {
   return {
     id: b.id,
+    beach_id: beachId,
     umbrella_id: b.umbrellaId,
     customer_id: b.customerId,
     date_from: b.dateFrom,
@@ -112,8 +119,15 @@ export function rowToArticle(r: any): Article {
   };
 }
 
-export function articleToRow(a: Article) {
-  return { id: a.id, name: a.name, category: a.category, base_price: a.basePrice, unit: a.unit };
+export function articleToRow(a: Article, beachId: string) {
+  return {
+    id: a.id,
+    beach_id: beachId,
+    name: a.name,
+    category: a.category,
+    base_price: a.basePrice,
+    unit: a.unit,
+  };
 }
 
 export function rowToPriceList(r: any): PriceList {
@@ -127,9 +141,10 @@ export function rowToPriceList(r: any): PriceList {
   };
 }
 
-export function priceListToRow(p: PriceList) {
+export function priceListToRow(p: PriceList, beachId: string) {
   return {
     id: p.id,
+    beach_id: beachId,
     name: p.name,
     season: p.season,
     prices: p.prices,
@@ -154,9 +169,10 @@ export function rowToConto(r: any): Conto {
   };
 }
 
-export function contoToRow(c: Conto) {
+export function contoToRow(c: Conto, beachId: string) {
   return {
     id: c.id,
+    beach_id: beachId,
     umbrella_id: c.umbrellaId ?? null,
     customer_id: c.customerId ?? null,
     items: c.items,
@@ -180,6 +196,13 @@ export function rowToDailyStat(r: any): DailyStat {
   };
 }
 
-export function dailyStatToRow(d: DailyStat) {
-  return { date: d.date, incasso: d.incasso, presenze: d.presenze, bar: d.bar, ombrelloni: d.ombrelloni };
+export function dailyStatToRow(d: DailyStat, beachId: string) {
+  return {
+    beach_id: beachId,
+    date: d.date,
+    incasso: d.incasso,
+    presenze: d.presenze,
+    bar: d.bar,
+    ombrelloni: d.ombrelloni,
+  };
 }

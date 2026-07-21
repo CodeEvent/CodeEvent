@@ -15,11 +15,13 @@ export const OperatorLoginScreen: React.FC<Props> = ({ onExitToCustomer }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = () => {
-    if (!login(username, password)) {
-      setError(true);
-    }
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    const ok = await login(username, password);
+    setSubmitting(false);
+    if (!ok) setError(true);
   };
 
   return (
@@ -32,11 +34,12 @@ export const OperatorLoginScreen: React.FC<Props> = ({ onExitToCustomer }) => {
         <Text style={styles.subtitle}>Accesso riservato al personale del lido</Text>
 
         <Card style={styles.card}>
-          <Text style={styles.label}>Nome utente</Text>
+          <Text style={styles.label}>Email</Text>
           <TextInput
             style={styles.input}
             autoCapitalize="none"
-            placeholder="admin"
+            keyboardType="email-address"
+            placeholder="nome@illido.it"
             placeholderTextColor={colors.textMuted}
             value={username}
             onChangeText={(v) => {
@@ -58,8 +61,13 @@ export const OperatorLoginScreen: React.FC<Props> = ({ onExitToCustomer }) => {
             }}
             onSubmitEditing={handleSubmit}
           />
-          {error && <Text style={styles.errorText}>Nome utente o password non corretti.</Text>}
-          <Button title="Accedi" onPress={handleSubmit} style={{ marginTop: spacing.lg }} />
+          {error && <Text style={styles.errorText}>Email o password non corretti.</Text>}
+          <Button
+            title={submitting ? 'Accesso in corso...' : 'Accedi'}
+            onPress={handleSubmit}
+            disabled={submitting}
+            style={{ marginTop: spacing.lg }}
+          />
         </Card>
 
         <Pressable onPress={onExitToCustomer} style={styles.backLink} hitSlop={8}>

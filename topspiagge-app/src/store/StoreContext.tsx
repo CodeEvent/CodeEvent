@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useReducer,
   useRef,
+  useState,
 } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import {
@@ -417,12 +418,29 @@ interface StoreContextValue extends AppState {
 
 const StoreContext = createContext<StoreContextValue | null>(null);
 
-export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+interface StoreProviderProps {
+  children: React.ReactNode;
+  // Set only by the customer-facing route (resolved from the /:beachSlug URL segment) so its
+  // store instance knows which beach to read/write without any login. The operator route omits
+  // this and instead resolves its beach from the logged-in user's beach_operators membership --
+  // see the initial-load effect below. Ignored entirely in local-only (no Supabase) mode.
+  beachSlug?: string;
+}
+
+export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlug }) => {
   const [state, dispatch] = useReducer(reducer, undefined, buildInitialState);
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Resolved once per mount (see beachIdRef note below on why write actions need a ref, not
+  // just this state) and reused for every read/write filter and the realtime subscription.
+  const [beachId, setBeachId] = useState<string | null>(null);
+  const beachIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    beachIdRef.current = beachId;
+  }, [beachId]);
 
   // Initial load: pull live data from Supabase when configured (real shared backend), otherwise
   // fall back to the original AsyncStorage-then-seed path so local dev and the Claude Artifact
@@ -433,18 +451,45 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     (async () => {
       if (isSupabaseConfigured && supabase) {
         try {
+          let resolvedBeachId: string | null = null;
+          if (beachSlug) {
+            const { data, error } = await supabase.from('beaches').select('id').eq('slug', beachSlug).maybeSingle();
+            if (error) throw error;
+            resolvedBeachId = data?.id ?? null;
+          } else {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const uid = sessionData.session?.user.id;
+            if (uid) {
+              const { data, error } = await supabase
+                .from('beach_operators')
+                .select('beach_id')
+                .eq('user_id', uid)
+                .limit(1)
+                .maybeSingle();
+              if (error) throw error;
+              resolvedBeachId = data?.beach_id ?? null;
+            }
+          }
+          if (!resolvedBeachId) {
+            throw new Error(
+              beachSlug
+                ? `No beach found for slug "${beachSlug}"`
+                : 'Logged-in user has no beach_operators membership'
+            );
+          }
           const [u, c, b, a, pl, co, ds] = await Promise.all([
-            supabase.from('umbrellas').select('*'),
-            supabase.from('customers').select('*'),
-            supabase.from('bookings').select('*'),
-            supabase.from('articles').select('*'),
-            supabase.from('price_lists').select('*'),
-            supabase.from('conti').select('*'),
-            supabase.from('daily_stats').select('*'),
+            supabase.from('umbrellas').select('*').eq('beach_id', resolvedBeachId),
+            supabase.from('customers').select('*').eq('beach_id', resolvedBeachId),
+            supabase.from('bookings').select('*').eq('beach_id', resolvedBeachId),
+            supabase.from('articles').select('*').eq('beach_id', resolvedBeachId),
+            supabase.from('price_lists').select('*').eq('beach_id', resolvedBeachId),
+            supabase.from('conti').select('*').eq('beach_id', resolvedBeachId),
+            supabase.from('daily_stats').select('*').eq('beach_id', resolvedBeachId),
           ]);
           const failed = [u, c, b, a, pl, co, ds].find((r) => r.error);
           if (failed?.error) throw failed.error;
           if (cancelled) return;
+          setBeachId(resolvedBeachId);
           dispatch({
             type: 'HYDRATE',
             payload: {
@@ -478,7 +523,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [beachSlug]);
 
   // Local-only persistence: skipped once Supabase is the source of truth, since re-caching the
   // whole store into AsyncStorage on every change would just be a second, redundant copy.
@@ -488,60 +533,95 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [state]);
 
   // Realtime: mirror every change made by any other connected client into local state so all
-  // operators (and all screens within this client) stay in sync without a manual refresh.
+  // operators (and all screens within this client) stay in sync without a manual refresh. Each
+  // subscription is filtered to this store's own beach_id -- without that filter every beach's
+  // changes would be delivered to every other beach's clients once more than one tenant exists.
   useEffect(() => {
     const client = supabase;
-    if (!isSupabaseConfigured || !client) return;
+    if (!isSupabaseConfigured || !client || !beachId) return;
+    const beachFilter = `beach_id=eq.${beachId}`;
     const channel = client
-      .channel('topspiagge-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'umbrellas' }, (payload: any) => {
-        if (payload.eventType === 'DELETE') dispatch({ type: 'SYNC_REMOVE_UMBRELLA', umbrellaId: payload.old.id });
-        else dispatch({ type: 'SYNC_UMBRELLA', umbrella: rowToUmbrella(payload.new) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, (payload: any) => {
-        if (payload.eventType === 'DELETE') dispatch({ type: 'DELETE_CUSTOMER', customerId: payload.old.id });
-        else dispatch({ type: 'UPSERT_CUSTOMER', customer: rowToCustomer(payload.new) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload: any) => {
-        if (payload.eventType === 'DELETE') dispatch({ type: 'SYNC_REMOVE_BOOKING', bookingId: payload.old.id });
-        else dispatch({ type: 'SYNC_BOOKING', booking: rowToBooking(payload.new) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'articles' }, (payload: any) => {
-        if (payload.eventType === 'DELETE') dispatch({ type: 'DELETE_ARTICLE', articleId: payload.old.id });
-        else dispatch({ type: 'UPSERT_ARTICLE', article: rowToArticle(payload.new) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'price_lists' }, (payload: any) => {
-        if (payload.eventType === 'DELETE') dispatch({ type: 'DELETE_PRICELIST', priceListId: payload.old.id });
-        else dispatch({ type: 'UPSERT_PRICELIST', priceList: rowToPriceList(payload.new) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conti' }, (payload: any) => {
-        if (payload.eventType !== 'DELETE') dispatch({ type: 'SYNC_CONTO', conto: rowToConto(payload.new) });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_stats' }, (payload: any) => {
-        if (payload.eventType !== 'DELETE') dispatch({ type: 'SYNC_DAILYSTAT', dailyStat: rowToDailyStat(payload.new) });
-      })
+      .channel(`topspiagge-sync-${beachId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'umbrellas', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType === 'DELETE') dispatch({ type: 'SYNC_REMOVE_UMBRELLA', umbrellaId: payload.old.id });
+          else dispatch({ type: 'SYNC_UMBRELLA', umbrella: rowToUmbrella(payload.new) });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'customers', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType === 'DELETE') dispatch({ type: 'DELETE_CUSTOMER', customerId: payload.old.id });
+          else dispatch({ type: 'UPSERT_CUSTOMER', customer: rowToCustomer(payload.new) });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'bookings', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType === 'DELETE') dispatch({ type: 'SYNC_REMOVE_BOOKING', bookingId: payload.old.id });
+          else dispatch({ type: 'SYNC_BOOKING', booking: rowToBooking(payload.new) });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'articles', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType === 'DELETE') dispatch({ type: 'DELETE_ARTICLE', articleId: payload.old.id });
+          else dispatch({ type: 'UPSERT_ARTICLE', article: rowToArticle(payload.new) });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'price_lists', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType === 'DELETE') dispatch({ type: 'DELETE_PRICELIST', priceListId: payload.old.id });
+          else dispatch({ type: 'UPSERT_PRICELIST', priceList: rowToPriceList(payload.new) });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conti', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType !== 'DELETE') dispatch({ type: 'SYNC_CONTO', conto: rowToConto(payload.new) });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'daily_stats', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType !== 'DELETE') dispatch({ type: 'SYNC_DAILYSTAT', dailyStat: rowToDailyStat(payload.new) });
+        }
+      )
       .subscribe();
     return () => {
       client.removeChannel(channel);
     };
-  }, []);
+  }, [beachId]);
 
   const swapUmbrellas = useCallback((fromId: string, toId: string) => {
     const action: Action = { type: 'SWAP_UMBRELLAS', fromId, toId };
     const prev = stateRef.current;
     const next = reducer(prev, action);
     dispatch(action);
-    if (supabase && next !== prev) {
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId && next !== prev) {
       const from = next.umbrellas.find((u) => u.id === fromId);
       const to = next.umbrellas.find((u) => u.id === toId);
       const prevFrom = prev.umbrellas.find((u) => u.id === fromId);
       const prevTo = prev.umbrellas.find((u) => u.id === toId);
-      if (from) runSync(supabase.from('umbrellas').update(umbrellaToRow(from)).eq('id', from.id));
-      if (to) runSync(supabase.from('umbrellas').update(umbrellaToRow(to)).eq('id', to.id));
+      if (from) runSync(client.from('umbrellas').update(umbrellaToRow(from, beachId)).eq('beach_id', beachId).eq('id', from.id));
+      if (to) runSync(client.from('umbrellas').update(umbrellaToRow(to, beachId)).eq('beach_id', beachId).eq('id', to.id));
       const fromBooking = prevFrom?.currentBookingId && next.bookings.find((b) => b.id === prevFrom.currentBookingId);
       const toBooking = prevTo?.currentBookingId && next.bookings.find((b) => b.id === prevTo.currentBookingId);
-      if (fromBooking) runSync(supabase.from('bookings').update(bookingToRow(fromBooking)).eq('id', fromBooking.id));
-      if (toBooking) runSync(supabase.from('bookings').update(bookingToRow(toBooking)).eq('id', toBooking.id));
+      if (fromBooking)
+        runSync(client.from('bookings').update(bookingToRow(fromBooking, beachId)).eq('beach_id', beachId).eq('id', fromBooking.id));
+      if (toBooking)
+        runSync(client.from('bookings').update(bookingToRow(toBooking, beachId)).eq('beach_id', beachId).eq('id', toBooking.id));
     }
   }, []);
 
@@ -549,20 +629,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const action: Action = { type: 'CREATE_BOOKING', booking };
     const next = reducer(stateRef.current, action);
     dispatch(action);
-    if (supabase) {
-      runSync(supabase.from('bookings').insert(bookingToRow(booking)));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
+      runSync(client.from('bookings').insert(bookingToRow(booking, beachId)));
       const umbrella = next.umbrellas.find((u) => u.id === booking.umbrellaId);
-      if (umbrella) runSync(supabase.from('umbrellas').update(umbrellaToRow(umbrella)).eq('id', umbrella.id));
+      if (umbrella)
+        runSync(client.from('umbrellas').update(umbrellaToRow(umbrella, beachId)).eq('beach_id', beachId).eq('id', umbrella.id));
       const customer = next.customers.find((c) => c.id === booking.customerId);
-      if (customer) runSync(supabase.from('customers').update(customerToRow(customer)).eq('id', customer.id));
+      if (customer)
+        runSync(client.from('customers').update(customerToRow(customer, beachId)).eq('beach_id', beachId).eq('id', customer.id));
     }
   }, []);
 
   const freeUmbrella = useCallback((umbrellaId: string) => {
     dispatch({ type: 'FREE_UMBRELLA', umbrellaId });
-    if (supabase) {
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
       runSync(
-        supabase.from('umbrellas').update({ status: 'libero', current_booking_id: null }).eq('id', umbrellaId)
+        client
+          .from('umbrellas')
+          .update({ status: 'libero', current_booking_id: null })
+          .eq('beach_id', beachId)
+          .eq('id', umbrellaId)
       );
     }
   }, []);
@@ -574,77 +664,98 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const next = reducer(prev, action);
     dispatch(action);
     const client = supabase;
-    if (client && booking) {
+    const beachId = beachIdRef.current;
+    if (client && beachId && booking) {
       const idsToRemove = booking.groupId
         ? prev.bookings.filter((b) => b.groupId === booking.groupId).map((b) => b.id)
         : [booking.id];
-      runSync(client.from('bookings').delete().in('id', idsToRemove));
+      runSync(client.from('bookings').delete().eq('beach_id', beachId).in('id', idsToRemove));
       const affectedUmbrellaIds = prev.umbrellas
         .filter((u) => u.currentBookingId && idsToRemove.includes(u.currentBookingId))
         .map((u) => u.id);
       affectedUmbrellaIds.forEach((id) => {
         const u = next.umbrellas.find((x) => x.id === id);
-        if (u) runSync(client.from('umbrellas').update(umbrellaToRow(u)).eq('id', id));
+        if (u) runSync(client.from('umbrellas').update(umbrellaToRow(u, beachId)).eq('beach_id', beachId).eq('id', id));
       });
       const customer = next.customers.find((c) => c.id === booking.customerId);
-      if (customer) runSync(client.from('customers').update(customerToRow(customer)).eq('id', customer.id));
+      if (customer)
+        runSync(client.from('customers').update(customerToRow(customer, beachId)).eq('beach_id', beachId).eq('id', customer.id));
     }
   }, []);
 
   const upsertCustomer = useCallback((customer: Customer) => {
     dispatch({ type: 'UPSERT_CUSTOMER', customer });
-    if (supabase) runSync(supabase.from('customers').upsert(customerToRow(customer)));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('customers').upsert(customerToRow(customer, beachId)));
   }, []);
 
   const deleteCustomer = useCallback((customerId: string) => {
     dispatch({ type: 'DELETE_CUSTOMER', customerId });
-    if (supabase) runSync(supabase.from('customers').delete().eq('id', customerId));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('customers').delete().eq('beach_id', beachId).eq('id', customerId));
   }, []);
 
   const upsertArticle = useCallback((article: Article) => {
     dispatch({ type: 'UPSERT_ARTICLE', article });
-    if (supabase) runSync(supabase.from('articles').upsert(articleToRow(article)));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('articles').upsert(articleToRow(article, beachId)));
   }, []);
 
   const deleteArticle = useCallback((articleId: string) => {
     dispatch({ type: 'DELETE_ARTICLE', articleId });
-    if (supabase) runSync(supabase.from('articles').delete().eq('id', articleId));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('articles').delete().eq('beach_id', beachId).eq('id', articleId));
   }, []);
 
   const upsertPriceList = useCallback((priceList: PriceList) => {
     dispatch({ type: 'UPSERT_PRICELIST', priceList });
-    if (supabase) runSync(supabase.from('price_lists').upsert(priceListToRow(priceList)));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('price_lists').upsert(priceListToRow(priceList, beachId)));
   }, []);
 
   const deletePriceList = useCallback((priceListId: string) => {
     dispatch({ type: 'DELETE_PRICELIST', priceListId });
-    if (supabase) runSync(supabase.from('price_lists').delete().eq('id', priceListId));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('price_lists').delete().eq('beach_id', beachId).eq('id', priceListId));
   }, []);
 
   const closeConto = useCallback((conto: Conto) => {
     const action: Action = { type: 'CLOSE_CONTO', conto };
     const next = reducer(stateRef.current, action);
     dispatch(action);
-    if (supabase) {
-      runSync(supabase.from('conti').insert(contoToRow(conto)));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
+      runSync(client.from('conti').insert(contoToRow(conto, beachId)));
       const today = isoDate(0);
       const stat = next.dailyStats.find((d) => d.date === today);
-      if (stat) runSync(supabase.from('daily_stats').upsert(dailyStatToRow(stat)));
+      if (stat) runSync(client.from('daily_stats').upsert(dailyStatToRow(stat, beachId)));
     }
   }, []);
 
   const payBooking = useCallback((bookingId: string, amount: number) => {
     const next = reducer(stateRef.current, { type: 'PAY_BOOKING', bookingId, amount });
     dispatch({ type: 'PAY_BOOKING', bookingId, amount });
-    if (supabase) {
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
       const booking = next.bookings.find((b) => b.id === bookingId);
-      if (booking) runSync(supabase.from('bookings').update({ paid: booking.paid }).eq('id', bookingId));
+      if (booking)
+        runSync(client.from('bookings').update({ paid: booking.paid }).eq('beach_id', beachId).eq('id', bookingId));
     }
   }, []);
 
   const renameZone = useCallback((row: number, name: string) => {
     dispatch({ type: 'RENAME_ZONE', row, name });
-    if (supabase) runSync(supabase.from('umbrellas').update({ zone: name }).eq('row', row));
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('umbrellas').update({ zone: name }).eq('beach_id', beachId).eq('row', row));
   }, []);
 
   const reorderZone = useCallback((row: number, direction: 'up' | 'down') => {
@@ -653,12 +764,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const next = reducer(prev, action);
     dispatch(action);
     const client = supabase;
-    if (client && next !== prev) {
+    const beachId = beachIdRef.current;
+    if (client && beachId && next !== prev) {
       const targetRow = direction === 'up' ? row - 1 : row + 1;
       const affected = prev.umbrellas.filter((u) => u.row === row || u.row === targetRow);
       affected.forEach((u) => {
         const updated = next.umbrellas.find((x) => x.id === u.id);
-        if (updated) runSync(client.from('umbrellas').update({ row: updated.row }).eq('id', u.id));
+        if (updated) runSync(client.from('umbrellas').update({ row: updated.row }).eq('beach_id', beachId).eq('id', u.id));
       });
     }
   }, []);
@@ -670,12 +782,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const next = reducer(prev, action);
     dispatch(action);
     const client = supabase;
-    if (client && umbrella) {
-      runSync(client.from('umbrellas').delete().eq('id', umbrellaId));
+    const beachId = beachIdRef.current;
+    if (client && beachId && umbrella) {
+      runSync(client.from('umbrellas').delete().eq('beach_id', beachId).eq('id', umbrellaId));
       const affectedCustomers = prev.customers.filter((c) => c.assignedUmbrellaId === umbrellaId);
       affectedCustomers.forEach((c) => {
         const updated = next.customers.find((x) => x.id === c.id);
-        if (updated) runSync(client.from('customers').update(customerToRow(updated)).eq('id', c.id));
+        if (updated)
+          runSync(client.from('customers').update(customerToRow(updated, beachId)).eq('beach_id', beachId).eq('id', c.id));
       });
     }
   }, []);
@@ -686,7 +800,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const next = reducer(prev, action);
     dispatch(action);
     const client = supabase;
-    if (client && next !== prev) {
+    const beachId = beachIdRef.current;
+    if (client && beachId && next !== prev) {
       const umbrella = prev.umbrellas.find((u) => u.id === umbrellaId);
       const targetCol = umbrella ? (direction === 'left' ? umbrella.col - 1 : umbrella.col + 1) : undefined;
       const neighbor =
@@ -695,7 +810,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           : undefined;
       [umbrellaId, neighbor?.id].filter(Boolean).forEach((id) => {
         const updated = next.umbrellas.find((x) => x.id === id);
-        if (updated) runSync(client.from('umbrellas').update({ col: updated.col }).eq('id', id as string));
+        if (updated)
+          runSync(client.from('umbrellas').update({ col: updated.col }).eq('beach_id', beachId).eq('id', id as string));
       });
     }
   }, []);
@@ -703,11 +819,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateUmbrella = useCallback(
     (umbrellaId: string, patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>>) => {
       dispatch({ type: 'UPDATE_UMBRELLA', umbrellaId, patch });
-      if (supabase) {
+      const client = supabase;
+      const beachId = beachIdRef.current;
+      if (client && beachId) {
         const row: Record<string, unknown> = {};
         if (patch.number !== undefined) row.number = patch.number;
         if (patch.hasCabin !== undefined) row.has_cabin = patch.hasCabin;
-        runSync(supabase.from('umbrellas').update(row).eq('id', umbrellaId));
+        runSync(client.from('umbrellas').update(row).eq('beach_id', beachId).eq('id', umbrellaId));
       }
     },
     []
@@ -719,18 +837,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const next = reducer(prev, action);
     dispatch(action);
     const client = supabase;
-    if (client && next !== prev) {
+    const beachId = beachIdRef.current;
+    if (client && beachId && next !== prev) {
       const previousCustomerId = prev.umbrellas.find((u) => u.id === umbrellaId)?.assignedCustomerId;
       const previousUmbrellaId = customerId
         ? prev.customers.find((c) => c.id === customerId)?.assignedUmbrellaId
         : undefined;
       [umbrellaId, previousUmbrellaId].filter(Boolean).forEach((id) => {
         const u = next.umbrellas.find((x) => x.id === id);
-        if (u) runSync(client.from('umbrellas').update(umbrellaToRow(u)).eq('id', id as string));
+        if (u) runSync(client.from('umbrellas').update(umbrellaToRow(u, beachId)).eq('beach_id', beachId).eq('id', id as string));
       });
       [customerId, previousCustomerId].filter(Boolean).forEach((id) => {
         const c = next.customers.find((x) => x.id === id);
-        if (c) runSync(client.from('customers').update(customerToRow(c)).eq('id', id as string));
+        if (c) runSync(client.from('customers').update(customerToRow(c, beachId)).eq('beach_id', beachId).eq('id', id as string));
       });
     }
   }, []);
