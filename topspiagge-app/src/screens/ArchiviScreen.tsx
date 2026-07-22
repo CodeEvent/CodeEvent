@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
 import { BeachCanvas, useUmbrellaPositions } from '../components/BeachCanvas';
 import { BookingFilterBar } from '../components/BookingFilterBar';
+import { LayoutDesignerScreen } from '../components/LayoutDesigner';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
 import { inviteOperator } from '../lib/inviteOperator';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -755,6 +756,7 @@ const DisposizioneTab: React.FC = () => {
   const [editingUmbrellaId, setEditingUmbrellaId] = useState<string | null>(null);
   const [renamingRow, setRenamingRow] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [mode, setMode] = useState<'ombrelloni' | 'layout'>('ombrelloni');
 
   const sortedRows = useMemo(
     () => Array.from(new Set(umbrellas.map((u) => u.row))).sort((a, b) => a - b),
@@ -764,6 +766,15 @@ const DisposizioneTab: React.FC = () => {
 
   return (
     <View style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm, flexDirection: 'row' }}>
+        <Chip label="Ombrelloni" selected={mode === 'ombrelloni'} onPress={() => setMode('ombrelloni')} />
+        <Chip label="Layout" selected={mode === 'layout'} onPress={() => setMode('layout')} />
+      </View>
+
+      {mode === 'layout' ? (
+        <LayoutDesignerScreen />
+      ) : (
+        <>
       <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
         <Text style={styles.helperText}>
           Trascina un ombrellone su un altro per scambiarne la posizione. Ogni fila ha 20
@@ -879,6 +890,8 @@ const DisposizioneTab: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
+        </>
+      )}
     </View>
   );
 };

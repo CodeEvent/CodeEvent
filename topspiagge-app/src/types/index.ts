@@ -116,3 +116,28 @@ export interface DailyStat {
   bar: number;
   ombrelloni: number;
 }
+
+// Free-form decorations placed by the operator on the beach layout designer (Disposizione ->
+// Layout). Positioned in free x/y pixels, independent of the umbrella grid's row/col model --
+// umbrellas themselves are never represented here, only the surrounding facilities/signage.
+export type LayoutElementType =
+  | 'walkway'
+  | 'bar'
+  | 'entry'
+  | 'steps'
+  | 'toilet'
+  | 'sea'
+  | 'shape-rect'
+  | 'shape-circle'
+  | 'label';
+
+export interface LayoutElement {
+  id: string;
+  type: LayoutElementType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color?: string; // used by shape-rect/shape-circle; other types have a fixed look
+  label?: string; // optional custom caption shown under the icon (required content for 'label')
+}

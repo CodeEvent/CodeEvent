@@ -27,6 +27,7 @@ import {
   Conto,
   Customer,
   DailyStat,
+  LayoutElement,
   PriceList,
   Umbrella,
 } from '../types';
@@ -68,6 +69,7 @@ interface AppState {
   priceLists: PriceList[];
   conti: Conto[];
   dailyStats: DailyStat[];
+  layoutElements: LayoutElement[];
   hydrated: boolean;
 }
 
@@ -84,6 +86,7 @@ function buildInitialState(): AppState {
     priceLists: buildPriceLists(),
     conti: buildContiStorico(),
     dailyStats: buildDailyStats(),
+    layoutElements: [],
     hydrated: false,
   };
 }
@@ -110,6 +113,10 @@ type Action =
   | { type: 'REORDER_UMBRELLA'; umbrellaId: string; direction: 'left' | 'right' }
   | { type: 'UPDATE_UMBRELLA'; umbrellaId: string; patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>> }
   | { type: 'ASSIGN_CUSTOMER'; umbrellaId: string; customerId?: string }
+  | { type: 'SET_LAYOUT_ELEMENTS'; layoutElements: LayoutElement[] }
+  | { type: 'ADD_LAYOUT_ELEMENT'; element: LayoutElement }
+  | { type: 'UPDATE_LAYOUT_ELEMENT'; id: string; patch: Partial<Omit<LayoutElement, 'id' | 'type'>> }
+  | { type: 'DELETE_LAYOUT_ELEMENT'; id: string }
   // Applied when a change from another client arrives over Supabase Realtime. Kept separate
   // from the actions above (which also drive this client's own Supabase writes) so a remote
   // echo of our own change is just an idempotent row replace, not a re-run of side effects
@@ -408,6 +415,25 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, dailyStats };
     }
 
+    // Layout decorations are device-local for now (see the dedicated persistence effect below)
+    // rather than synced through Supabase like everything else -- see NOTES in that effect.
+    case 'SET_LAYOUT_ELEMENTS':
+      return { ...state, layoutElements: action.layoutElements };
+
+    case 'ADD_LAYOUT_ELEMENT':
+      return { ...state, layoutElements: [...state.layoutElements, action.element] };
+
+    case 'UPDATE_LAYOUT_ELEMENT':
+      return {
+        ...state,
+        layoutElements: state.layoutElements.map((el) =>
+          el.id === action.id ? { ...el, ...action.patch } : el
+        ),
+      };
+
+    case 'DELETE_LAYOUT_ELEMENT':
+      return { ...state, layoutElements: state.layoutElements.filter((el) => el.id !== action.id) };
+
     default:
       return state;
   }
@@ -433,6 +459,9 @@ interface StoreContextValue extends AppState {
   closeConto: (conto: Conto) => void;
   renameZone: (row: number, name: string) => void;
   reorderZone: (row: number, direction: 'up' | 'down') => void;
+  addLayoutElement: (element: LayoutElement) => void;
+  updateLayoutElement: (id: string, patch: Partial<Omit<LayoutElement, 'id' | 'type'>>) => void;
+  deleteLayoutElement: (id: string) => void;
   removeUmbrella: (umbrellaId: string) => void;
   reorderUmbrella: (umbrellaId: string, direction: 'left' | 'right') => void;
   updateUmbrella: (umbrellaId: string, patch: Partial<Pick<Umbrella, 'number' | 'hasCabin'>>) => void;
@@ -527,6 +556,9 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
               priceLists: (pl.data ?? []).map(rowToPriceList),
               conti: (co.data ?? []).map(rowToConto),
               dailyStats: (ds.data ?? []).map(rowToDailyStat),
+              // No Supabase table yet -- restored right after by the dedicated local-storage
+              // effect below (layout decorations are device-local for now even in Supabase mode).
+              layoutElements: [],
               hydrated: true,
             },
           });
@@ -558,6 +590,28 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     if (!state.hydrated || isSupabaseConfigured) return;
     safeSetItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+
+  // Layout decorations (walkways, bar, entry, shapes, ...) have no Supabase table yet, so they're
+  // kept in their own small device-local cache -- independent of the big STORAGE_KEY blob above,
+  // which is skipped entirely once Supabase is configured. Keyed by beach so switching beaches in
+  // the same browser session (via beachSlug) doesn't leak one beach's layout into another's.
+  const layoutStorageKey = `topspiagge:layout:${beachId ?? 'local'}`;
+  useEffect(() => {
+    (async () => {
+      const raw = await safeGetItem(layoutStorageKey);
+      if (!raw) return;
+      try {
+        dispatch({ type: 'SET_LAYOUT_ELEMENTS', layoutElements: JSON.parse(raw) });
+      } catch {
+        // corrupted cache -- ignore, starts from an empty layout
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutStorageKey]);
+  useEffect(() => {
+    if (!state.hydrated) return;
+    safeSetItem(layoutStorageKey, JSON.stringify(state.layoutElements));
+  }, [state.layoutElements, state.hydrated, layoutStorageKey]);
 
   // Realtime: mirror every change made by any other connected client into local state so all
   // operators (and all screens within this client) stay in sync without a manual refresh. Each
@@ -833,6 +887,21 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     if (client && beachId) runSync(client.from('umbrellas').update({ zone: name }).eq('beach_id', beachId).eq('row', row));
   }, []);
 
+  const addLayoutElement = useCallback((element: LayoutElement) => {
+    dispatch({ type: 'ADD_LAYOUT_ELEMENT', element });
+  }, []);
+
+  const updateLayoutElement = useCallback(
+    (id: string, patch: Partial<Omit<LayoutElement, 'id' | 'type'>>) => {
+      dispatch({ type: 'UPDATE_LAYOUT_ELEMENT', id, patch });
+    },
+    []
+  );
+
+  const deleteLayoutElement = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_LAYOUT_ELEMENT', id });
+  }, []);
+
   const reorderZone = useCallback((row: number, direction: 'up' | 'down') => {
     const action: Action = { type: 'REORDER_ZONE', row, direction };
     const prev = stateRef.current;
@@ -967,6 +1036,9 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       closeConto,
       renameZone,
       reorderZone,
+      addLayoutElement,
+      updateLayoutElement,
+      deleteLayoutElement,
       removeUmbrella,
       reorderUmbrella,
       updateUmbrella,
@@ -995,6 +1067,9 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       closeConto,
       renameZone,
       reorderZone,
+      addLayoutElement,
+      updateLayoutElement,
+      deleteLayoutElement,
       removeUmbrella,
       reorderUmbrella,
       updateUmbrella,
