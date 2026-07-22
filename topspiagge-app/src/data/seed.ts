@@ -174,7 +174,9 @@ export function buildBookings(umbrellas: Umbrella[], customers: Customer[]): Boo
     customer.bookingHistory.push(booking.id);
   });
 
-  // A handful of future season bookings for the Quadro (planning) view
+  // A handful of future season bookings for the Quadro (planning) view. The first 3 are
+  // marked as booked *today* (rather than a few days ago) so the operator dashboard's
+  // "Nuove prenotazioni di oggi" list has something to show out of the box.
   umbrellas.slice(0, 15).forEach((u, idx) => {
     const startOffset = 5 + idx * 3;
     const length = 2 + (idx % 4);
@@ -190,7 +192,7 @@ export function buildBookings(umbrellas: Umbrella[], customers: Customer[]): Boo
       deposit: Math.round(total * 0.3),
       paid: Math.round(total * 0.3),
       status: 'prenotato',
-      createdAt: isoDate(-3),
+      createdAt: idx < 3 ? isoDate(0) : isoDate(-3),
       reference: generateBookingReference(),
     };
     bookings.push(booking);

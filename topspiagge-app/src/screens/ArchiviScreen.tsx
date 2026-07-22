@@ -48,7 +48,7 @@ export const ArchiviScreen: React.FC = () => {
           </Pressable>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm }}>
-          <Chip label="Oggi" selected={tab === 'oggi'} onPress={() => setTab('oggi')} />
+          <Chip label="Today's Dashboard" selected={tab === 'oggi'} onPress={() => setTab('oggi')} />
           <Chip label="Prenotazioni" selected={tab === 'prenotazioni'} onPress={() => setTab('prenotazioni')} />
           <Chip label="Filtri" selected={tab === 'filtri'} onPress={() => setTab('filtri')} />
           <Chip label="Disposizione" selected={tab === 'disposizione'} onPress={() => setTab('disposizione')} />
@@ -81,6 +81,12 @@ const OggiTab: React.FC = () => {
   const daSaldareUmbrellas = useMemo(
     () => umbrellas.filter((u) => displayStatusFor(u, getBooking) === 'da_saldare'),
     [umbrellas, getBooking]
+  );
+  // "New bookings" is by creation date, not stay date -- a booking placed today for a future
+  // arrival still belongs here, distinct from "Arrivi di oggi" (which is by dateFrom).
+  const newBookings = useMemo(
+    () => bookings.filter((b) => b.createdAt === today).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom)),
+    [bookings, today]
   );
 
   const confirmFree = (umbrellaId: string, label: string) => {
@@ -179,6 +185,38 @@ const OggiTab: React.FC = () => {
             <Button
               title="Vai al Conto"
               onPress={() => navigation.navigate('Conto', { umbrellaId: u.id })}
+              style={{ marginTop: spacing.sm, paddingVertical: 6 }}
+            />
+          </Card>
+        );
+      })}
+
+      <Text style={[styles.dateSectionHeader, { marginTop: spacing.lg }]}>
+        Nuove prenotazioni di oggi ({newBookings.length})
+      </Text>
+      {newBookings.length === 0 && <Text style={styles.muted}>Nessuna nuova prenotazione registrata oggi.</Text>}
+      {newBookings.map((b) => {
+        const u = getUmbrella(b.umbrellaId);
+        const customer = getCustomer(b.customerId);
+        const isTodayStay = b.dateFrom === today;
+        return (
+          <Card key={b.id} style={{ marginBottom: spacing.md }}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.itemTitle}>
+                Ombrellone N.{u?.number} · {u?.zone}
+              </Text>
+              <StatusPill status={baseDisplayStatusForBooking(b)} unpaid={bookingHasOutstandingBalance(b)} />
+            </View>
+            <Text style={styles.muted}>
+              {customer?.name ?? 'Cliente'} · {customer?.phone}
+            </Text>
+            <Text style={styles.muted}>
+              {isTodayStay ? 'Da oggi' : `Dal ${formatDateShort(b.dateFrom)}`} al {formatDateShort(b.dateTo)}
+            </Text>
+            <Button
+              title="Vai alla Piantina"
+              variant="secondary"
+              onPress={() => navigation.navigate('Piantina', { umbrellaId: b.umbrellaId })}
               style={{ marginTop: spacing.sm, paddingVertical: 6 }}
             />
           </Card>
