@@ -594,7 +594,7 @@ const FiltriTab: React.FC = () => {
   return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
       <Text style={styles.dateSectionHeader}>Filtri e condizioni</Text>
-      <BookingFilterBar filters={filters} onChange={setFilters} />
+      <BookingFilterBar filters={filters} onChange={setFilters} excludeStatuses={['libero']} />
 
       <View style={{ marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         <TextInput

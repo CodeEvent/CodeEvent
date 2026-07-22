@@ -115,6 +115,7 @@ export const QuadroScreen: React.FC = () => {
         onClose={() => setFiltersOpen(false)}
         filters={filters}
         onChange={setFilters}
+        excludeStatuses={['libero']}
       />
 
       <ScrollView>

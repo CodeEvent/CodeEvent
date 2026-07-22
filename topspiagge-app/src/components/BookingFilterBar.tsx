@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, radius, spacing } from '../theme';
 import { BeachSide } from '../types';
-import { DISPLAY_STATUSES, displayStatusColor, displayStatusLabel } from '../utils/displayStatus';
+import { DISPLAY_STATUSES, DisplayStatus, displayStatusColor, displayStatusLabel } from '../utils/displayStatus';
 import { BookingFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
 import { formatDateShort, isoDate, toDateKey } from '../utils/format';
 import { Button, Chip } from './UI';
@@ -17,6 +17,11 @@ function endOfMonthIso(): string {
 interface Props {
   filters: BookingFilters;
   onChange: (filters: BookingFilters) => void;
+  // Quadro and Archivi's Filtri tab list actual Booking records only -- a free umbrella has
+  // no booking to show, so their "Stato" chip can never match 'libero' no matter how many
+  // umbrellas are actually free. Piantina/Griglia iterate umbrellas directly, where 'libero'
+  // is a real, matchable state, so they leave this unset.
+  excludeStatuses?: DisplayStatus[];
 }
 
 const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -30,7 +35,7 @@ const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label
 // so adding a new filter dimension only has to happen in this one file. Grouped into labeled
 // sections (rather than one long wrapped chip list) so it reads as a set of questions --
 // where, what state, whose booking, what's booked -- instead of an undifferentiated wall.
-export const BookingFilterBar: React.FC<Props> = ({ filters, onChange }) => {
+export const BookingFilterBar: React.FC<Props> = ({ filters, onChange, excludeStatuses = [] }) => {
   const patch = (p: Partial<BookingFilters>) => onChange({ ...filters, ...p });
   const activeCount = countActiveFilters(filters);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -101,8 +106,10 @@ export const BookingFilterBar: React.FC<Props> = ({ filters, onChange }) => {
         <Chip label="Tutti" selected={filters.status === 'tutti'} onPress={() => patch({ status: 'tutti' })} />
         {/* 'sgombera' isn't offered here -- it's just "checked out today", which "Check-out
             oggi" below already covers, and covers more correctly (it doesn't get masked by an
-            outstanding balance the way the legacy status precedence does). */}
-        {DISPLAY_STATUSES.filter((s) => s !== 'sgombera').map((s) => (
+            outstanding balance the way the legacy status precedence does). Callers on a
+            booking-only list (Quadro, Archivi's Filtri tab) also exclude 'libero' via
+            excludeStatuses, since a free umbrella has no booking to ever match there. */}
+        {DISPLAY_STATUSES.filter((s) => s !== 'sgombera' && !excludeStatuses.includes(s)).map((s) => (
           <Chip
             key={s}
             label={displayStatusLabel[s]}
