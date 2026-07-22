@@ -576,6 +576,7 @@ const BookingForm: React.FC<{
   onExtrasChange,
 }) => {
   const { getUmbrella, customers, createBooking, upsertCustomer, getActivePriceList, cancelBooking } = useStore();
+  const alert = useAppAlert();
   // Fila 1/2 default to their bundled equipment (so the discounted package price applies
   // out of the box); every other row falls back to the generic 2 beds + 2 chairs default.
   const defaultEquipmentFor = (id: string): Equipment => {
@@ -820,7 +821,20 @@ const BookingForm: React.FC<{
     if (editContext) {
       cancelBooking(editContext.bookings[0].id);
     }
-    createdBookings.forEach(createBooking);
+    // Rare but real once Supabase is the backend: two guests could both pass the client-side
+    // availability check for the same umbrella/date at the same instant. The database's own
+    // exclusion constraint (bookings_no_overlap) only lets one insert win; onConflict fires for
+    // whichever booking(s) lost that race, so the guest is told to sort it out via support
+    // rather than silently believing they hold an umbrella that was never actually reserved.
+    createdBookings.forEach((b) =>
+      createBooking(b, () => {
+        const u = getUmbrella(b.umbrellaId);
+        alert(
+          'Ombrellone non più disponibile',
+          `L'ombrellone N.${u?.number ?? ''} (${u?.zone ?? ''}) è stato prenotato da qualcun altro proprio in questo istante. Controlla "Gestisci la mia prenotazione" o contattaci per sistemare la tua prenotazione.`
+        );
+      })
+    );
     onConfirmed(createdBookings, !!editContext);
   };
 

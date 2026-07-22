@@ -3,5 +3,5 @@
   "compilerOptions": {
     "strict": true
   },
-  "exclude": ["scripts", "supabase/functions"]
+  "exclude": ["scripts", "supabase/functions", "**/__tests__/**"]
 }

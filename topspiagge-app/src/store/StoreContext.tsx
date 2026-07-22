@@ -29,6 +29,7 @@ import {
   DailyStat,
   EquipmentChange,
   LayoutElement,
+  PaymentMethod,
   PriceList,
   Umbrella,
 } from '../types';
@@ -41,12 +42,14 @@ import {
   contoToRow,
   customerToRow,
   dailyStatToRow,
+  equipmentChangeToRow,
   priceListToRow,
   rowToArticle,
   rowToBooking,
   rowToConto,
   rowToCustomer,
   rowToDailyStat,
+  rowToEquipmentChange,
   rowToPriceList,
   rowToUmbrella,
   umbrellaToRow,
@@ -57,9 +60,12 @@ const STORAGE_KEY = 'topspiagge:v1';
 // Fire-and-forget Supabase write: local state is already updated optimistically by the time
 // this runs, so a failure here just means this device's change hasn't reached the shared
 // database yet (it'll retry on the next action) rather than blocking the UI.
-function runSync(promise: PromiseLike<{ error: unknown }> | Promise<any>) {
+function runSync(promise: PromiseLike<{ error: unknown }> | Promise<any>, onError?: (error: any) => void) {
   Promise.resolve(promise).then((res: any) => {
-    if (res?.error) console.warn('Supabase sync failed:', res.error);
+    if (res?.error) {
+      console.warn('Supabase sync failed:', res.error);
+      onError?.(res.error);
+    }
   });
 }
 
@@ -120,6 +126,7 @@ type Action =
       beds: number;
       chairs: number;
       priceDelta: number;
+      conto: Conto;
     }
   | {
       type: 'REMOVE_EQUIPMENT_REFUND';
@@ -129,6 +136,7 @@ type Action =
       priceDelta: number;
       refundAmount: number;
       change: EquipmentChange;
+      conto: Conto;
     }
   | { type: 'RESOLVE_EQUIPMENT_CHANGE'; changeId: string }
   | { type: 'CONFIRM_CHECK_IN'; bookingId: string; checkedInAt: string }
@@ -152,7 +160,44 @@ type Action =
   | { type: 'SYNC_BOOKING'; booking: Booking }
   | { type: 'SYNC_REMOVE_BOOKING'; bookingId: string }
   | { type: 'SYNC_CONTO'; conto: Conto }
-  | { type: 'SYNC_DAILYSTAT'; dailyStat: DailyStat };
+  | { type: 'SYNC_DAILYSTAT'; dailyStat: DailyStat }
+  | { type: 'SYNC_EQUIPMENT_CHANGE'; change: EquipmentChange }
+  | { type: 'SYNC_REMOVE_EQUIPMENT_CHANGE'; changeId: string };
+
+// Adds a revenue/presence delta to a given day's daily-stat entry (creating it if this is the
+// first money-moving event of that day) -- shared by every action that changes real money
+// (conto close, in-person equipment top-ups/refunds), so Statistiche reflects what actually
+// happened today rather than only what went through a full Conto receipt.
+function bumpDailyStat(
+  dailyStats: DailyStat[],
+  date: string,
+  delta: { incasso?: number; presenze?: number; bar?: number; ombrelloni?: number }
+): DailyStat[] {
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  if (dailyStats.some((d) => d.date === date)) {
+    return dailyStats.map((d) =>
+      d.date === date
+        ? {
+            ...d,
+            incasso: round2(d.incasso + (delta.incasso ?? 0)),
+            presenze: d.presenze + (delta.presenze ?? 0),
+            bar: round2(d.bar + (delta.bar ?? 0)),
+            ombrelloni: round2(d.ombrelloni + (delta.ombrelloni ?? 0)),
+          }
+        : d
+    );
+  }
+  return [
+    ...dailyStats,
+    {
+      date,
+      incasso: round2(delta.incasso ?? 0),
+      presenze: delta.presenze ?? 0,
+      bar: round2(delta.bar ?? 0),
+      ombrelloni: round2(delta.ombrelloni ?? 0),
+    },
+  ];
+}
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -325,6 +370,9 @@ function reducer(state: AppState, action: Action): AppState {
       };
 
     case 'CONFIRM_EQUIPMENT_ADD': {
+      // The operator is confirming payment was just collected in person, so `paid` moves in
+      // lockstep with `totalPrice` here -- unlike the operator's own direct Conto edits, where
+      // the amount only becomes "paid" once they separately register it.
       const bookings = state.bookings.map((b) =>
         b.id === action.bookingId
           ? {
@@ -332,13 +380,19 @@ function reducer(state: AppState, action: Action): AppState {
               beds: action.beds,
               chairs: action.chairs,
               totalPrice: Math.round((b.totalPrice + action.priceDelta) * 100) / 100,
+              paid: Math.round((b.paid + action.priceDelta) * 100) / 100,
             }
           : b
       );
       const equipmentChanges = state.equipmentChanges.map((c) =>
         c.id === action.changeId ? { ...c, resolved: true } : c
       );
-      return { ...state, bookings, equipmentChanges };
+      const conti = [...state.conti, action.conto];
+      const dailyStats = bumpDailyStat(state.dailyStats, isoDate(0), {
+        incasso: action.conto.total,
+        ombrelloni: action.conto.total,
+      });
+      return { ...state, bookings, equipmentChanges, conti, dailyStats };
     }
 
     case 'REMOVE_EQUIPMENT_REFUND': {
@@ -353,7 +407,18 @@ function reducer(state: AppState, action: Action): AppState {
             }
           : b
       );
-      return { ...state, bookings, equipmentChanges: [...state.equipmentChanges, action.change] };
+      const conti = [...state.conti, action.conto];
+      const dailyStats = bumpDailyStat(state.dailyStats, isoDate(0), {
+        incasso: -action.refundAmount,
+        ombrelloni: -action.refundAmount,
+      });
+      return {
+        ...state,
+        bookings,
+        equipmentChanges: [...state.equipmentChanges, action.change],
+        conti,
+        dailyStats,
+      };
     }
 
     case 'RESOLVE_EQUIPMENT_CHANGE':
@@ -375,27 +440,37 @@ function reducer(state: AppState, action: Action): AppState {
       const conto = action.conto;
       const conti = [...state.conti, conto];
       const today = isoDate(0);
-      const dailyStats = state.dailyStats.some((d) => d.date === today)
-        ? state.dailyStats.map((d) =>
-            d.date === today
-              ? {
-                  ...d,
-                  incasso: d.incasso + conto.total,
-                  presenze: d.presenze + 1,
-                  bar: d.bar,
-                  ombrelloni: d.ombrelloni,
-                }
-              : d
-          )
-        : [
-            ...state.dailyStats,
-            { date: today, incasso: conto.total, presenze: 1, bar: 0, ombrelloni: 0 },
-          ];
-      let umbrellas = state.umbrellas;
-      if (conto.umbrellaId && conto.docType !== 'ricevuta') {
-        // keep umbrella occupied for bar/restaurant-only conti; only free on explicit checkout
+      // Split revenue into "Spiaggia" (ombrellone-category items, plus any outstanding booking
+      // balance settled here) vs "Bar" (everything else) so Statistiche's sector chart reflects
+      // this specific conto instead of never moving past its seeded historical split.
+      const itemsTotal = conto.items.reduce((sum, i) => sum + i.qty * i.unitPrice, 0);
+      const balancePortion = conto.total - itemsTotal;
+      const ombrelloneItemsTotal = conto.items.reduce((sum, i) => {
+        const article = state.articles.find((a) => a.id === i.articleId);
+        return article?.category === 'ombrellone' ? sum + i.qty * i.unitPrice : sum;
+      }, 0);
+      const ombrelloniDelta = balancePortion + ombrelloneItemsTotal;
+      const barDelta = itemsTotal - ombrelloneItemsTotal;
+      const dailyStats = bumpDailyStat(state.dailyStats, today, {
+        incasso: conto.total,
+        presenze: 1,
+        ombrelloni: ombrelloniDelta,
+        bar: barDelta,
+      });
+      // Only articles with a tracked stock count (a number, not null/undefined) get decremented --
+      // untracked articles are treated as unlimited, matching Article.stock's documented meaning.
+      const soldQtyByArticle = new Map<string, number>();
+      for (const i of conto.items) {
+        soldQtyByArticle.set(i.articleId, (soldQtyByArticle.get(i.articleId) ?? 0) + i.qty);
       }
-      return { ...state, conti, dailyStats, umbrellas };
+      const articles = soldQtyByArticle.size
+        ? state.articles.map((a) => {
+            const sold = soldQtyByArticle.get(a.id);
+            if (!sold || a.stock == null) return a;
+            return { ...a, stock: Math.max(0, a.stock - sold) };
+          })
+        : state.articles;
+      return { ...state, conti, dailyStats, articles };
     }
 
     case 'RENAME_ZONE': {
@@ -511,6 +586,20 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, dailyStats };
     }
 
+    case 'SYNC_EQUIPMENT_CHANGE': {
+      const exists = state.equipmentChanges.some((c) => c.id === action.change.id);
+      const equipmentChanges = exists
+        ? state.equipmentChanges.map((c) => (c.id === action.change.id ? action.change : c))
+        : [...state.equipmentChanges, action.change];
+      return { ...state, equipmentChanges };
+    }
+
+    case 'SYNC_REMOVE_EQUIPMENT_CHANGE':
+      return {
+        ...state,
+        equipmentChanges: state.equipmentChanges.filter((c) => c.id !== action.changeId),
+      };
+
     // Layout decorations are device-local for now (see the dedicated persistence effect below)
     // rather than synced through Supabase like everything else -- see NOTES in that effect.
     case 'SET_LAYOUT_ELEMENTS':
@@ -542,7 +631,7 @@ interface StoreContextValue extends AppState {
   addRow: () => void;
   swapUmbrellaPositions: (aId: string, bId: string) => void;
   swapUmbrellas: (fromId: string, toId: string) => void;
-  createBooking: (booking: Booking) => void;
+  createBooking: (booking: Booking, onConflict?: () => void) => void;
   freeUmbrella: (umbrellaId: string) => void;
   cancelBooking: (bookingId: string) => void;
   upsertCustomer: (customer: Customer) => void;
@@ -555,7 +644,7 @@ interface StoreContextValue extends AppState {
   updateBookingEquipment: (bookingId: string, beds: number, chairs: number) => void;
   requestEquipmentAdd: (bookingId: string, umbrellaId: string, deltaBeds: number, deltaChairs: number) => void;
   cancelEquipmentAdd: (changeId: string) => void;
-  confirmEquipmentAdd: (changeId: string) => void;
+  confirmEquipmentAdd: (changeId: string, paymentMethod: PaymentMethod) => void;
   removeEquipmentAndRefund: (bookingId: string, deltaBeds: number, deltaChairs: number) => void;
   resolveEquipmentChange: (changeId: string) => void;
   confirmCheckIn: (bookingId: string) => void;
@@ -636,7 +725,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
                 : 'Logged-in user has no beach_operators membership'
             );
           }
-          const [u, c, b, a, pl, co, ds] = await Promise.all([
+          const [u, c, b, a, pl, co, ds, ec] = await Promise.all([
             supabase.from('umbrellas').select('*').eq('beach_id', resolvedBeachId),
             supabase.from('customers').select('*').eq('beach_id', resolvedBeachId),
             supabase.from('bookings').select('*').eq('beach_id', resolvedBeachId),
@@ -644,8 +733,9 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
             supabase.from('price_lists').select('*').eq('beach_id', resolvedBeachId),
             supabase.from('conti').select('*').eq('beach_id', resolvedBeachId),
             supabase.from('daily_stats').select('*').eq('beach_id', resolvedBeachId),
+            supabase.from('equipment_changes').select('*').eq('beach_id', resolvedBeachId),
           ]);
-          const failed = [u, c, b, a, pl, co, ds].find((r) => r.error);
+          const failed = [u, c, b, a, pl, co, ds, ec].find((r) => r.error);
           if (failed?.error) throw failed.error;
           if (cancelled) return;
           setBeachId(resolvedBeachId);
@@ -662,10 +752,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
               // No Supabase table yet -- restored right after by the dedicated local-storage
               // effect below (layout decorations are device-local for now even in Supabase mode).
               layoutElements: [],
-              // No Supabase table yet either -- guest equipment requests/refunds are lost on
-              // refresh once Supabase is configured, until a real table backs this (see the
-              // backend-fortification follow-up); local-fallback mode keeps them via STORAGE_KEY.
-              equipmentChanges: [],
+              equipmentChanges: (ec.data ?? []).map(rowToEquipmentChange),
               hydrated: true,
             },
           });
@@ -784,6 +871,15 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
           if (payload.eventType !== 'DELETE') dispatch({ type: 'SYNC_DAILYSTAT', dailyStat: rowToDailyStat(payload.new) });
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'equipment_changes', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType === 'DELETE')
+            dispatch({ type: 'SYNC_REMOVE_EQUIPMENT_CHANGE', changeId: payload.old.id });
+          else dispatch({ type: 'SYNC_EQUIPMENT_CHANGE', change: rowToEquipmentChange(payload.new) });
+        }
+      )
       .subscribe();
     return () => {
       client.removeChannel(channel);
@@ -861,14 +957,24 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     }
   }, []);
 
-  const createBooking = useCallback((booking: Booking) => {
+  // onConflict fires if the database's own exclusion constraint (bookings_no_overlap in
+  // schema.sql) rejects this insert -- meaning another client booked the same umbrella for an
+  // overlapping date range in the instant between this client's own optimistic availability
+  // check and this insert landing. The optimistic local booking is rolled back so the map goes
+  // back to showing the umbrella as taken, and the caller should tell the guest to pick again.
+  const createBooking = useCallback((booking: Booking, onConflict?: () => void) => {
     const action: Action = { type: 'CREATE_BOOKING', booking };
     const next = reducer(stateRef.current, action);
     dispatch(action);
     const client = supabase;
     const beachId = beachIdRef.current;
     if (client && beachId) {
-      runSync(client.from('bookings').insert(bookingToRow(booking, beachId)));
+      runSync(client.from('bookings').insert(bookingToRow(booking, beachId)), (error) => {
+        if (error?.code === '23P01') {
+          dispatch({ type: 'CANCEL_BOOKING', bookingId: booking.id });
+          onConflict?.();
+        }
+      });
       const umbrella = next.umbrellas.find((u) => u.id === booking.umbrellaId);
       if (umbrella)
         runSync(client.from('umbrellas').update(umbrellaToRow(umbrella, beachId)).eq('beach_id', beachId).eq('id', umbrella.id));
@@ -972,6 +1078,10 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       const today = isoDate(0);
       const stat = next.dailyStats.find((d) => d.date === today);
       if (stat) runSync(client.from('daily_stats').upsert(dailyStatToRow(stat, beachId)));
+      const changedArticles = next.articles.filter((a, idx) => a.stock !== stateRef.current.articles[idx]?.stock);
+      for (const article of changedArticles) {
+        runSync(client.from('articles').upsert(articleToRow(article, beachId)));
+      }
     }
   }, []);
 
@@ -1042,6 +1152,9 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
         resolved: false,
       };
       dispatch({ type: 'REQUEST_EQUIPMENT_ADD', change });
+      const client = supabase;
+      const beachId = beachIdRef.current;
+      if (client && beachId) runSync(client.from('equipment_changes').insert(equipmentChangeToRow(change, beachId)));
     },
     []
   );
@@ -1050,11 +1163,15 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
   // so undoing this is just dropping the request.
   const cancelEquipmentAdd = useCallback((changeId: string) => {
     dispatch({ type: 'CANCEL_EQUIPMENT_ADD', changeId });
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId)
+      runSync(client.from('equipment_changes').delete().eq('beach_id', beachId).eq('id', changeId));
   }, []);
 
   // Operator collected the payment in person and applies it -- same booking mutation as
   // updateBookingEquipment, plus marking the request resolved so it drops off the pending list.
-  const confirmEquipmentAdd = useCallback((changeId: string) => {
+  const confirmEquipmentAdd = useCallback((changeId: string, paymentMethod: PaymentMethod) => {
     const prev = stateRef.current;
     const change = prev.equipmentChanges.find((c) => c.id === changeId);
     if (!change) return;
@@ -1062,6 +1179,22 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     if (!booking) return;
     const beds = (booking.beds ?? 0) + change.beds;
     const chairs = (booking.chairs ?? 0) + change.chairs;
+    // A real Conto record, not just a silent balance bump -- gives this in-person cash/card
+    // collection the same receipt/audit trail as anything rung up through Conto directly, and
+    // is what lets it show up correctly in Statistiche (see CONFIRM_EQUIPMENT_ADD's reducer case).
+    const conto: Conto = {
+      id: `conto-${Date.now()}`,
+      umbrellaId: booking.umbrellaId,
+      customerId: booking.customerId,
+      items: [],
+      total: change.amount,
+      paidAmount: change.amount,
+      paymentMethod,
+      docType: 'ricevuta',
+      splitCount: 1,
+      createdAt: new Date().toISOString(),
+      closed: true,
+    };
     const action: Action = {
       type: 'CONFIRM_EQUIPMENT_ADD',
       changeId,
@@ -1069,6 +1202,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       beds,
       chairs,
       priceDelta: change.amount,
+      conto,
     };
     const next = reducer(prev, action);
     dispatch(action);
@@ -1080,10 +1214,19 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
         runSync(
           client
             .from('bookings')
-            .update({ beds: updated.beds ?? null, chairs: updated.chairs ?? null, total_price: updated.totalPrice })
+            .update({
+              beds: updated.beds ?? null,
+              chairs: updated.chairs ?? null,
+              total_price: updated.totalPrice,
+              paid: updated.paid,
+            })
             .eq('beach_id', beachId)
             .eq('id', change.bookingId)
         );
+      runSync(client.from('equipment_changes').update({ resolved: true }).eq('beach_id', beachId).eq('id', changeId));
+      runSync(client.from('conti').insert(contoToRow(conto, beachId)));
+      const stat = next.dailyStats.find((d) => d.date === isoDate(0));
+      if (stat) runSync(client.from('daily_stats').upsert(dailyStatToRow(stat, beachId)));
     }
   }, []);
 
@@ -1113,6 +1256,21 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       createdAt: new Date().toISOString(),
       resolved: false,
     };
+    // A negative-total Conto record, so this self-service refund leaves the same kind of audit
+    // trail a manual refund at the register would -- and Statistiche picks it up automatically.
+    const conto: Conto = {
+      id: `conto-${Date.now()}`,
+      umbrellaId: booking.umbrellaId,
+      customerId: booking.customerId,
+      items: [],
+      total: -refundAmount,
+      paidAmount: -refundAmount,
+      paymentMethod: 'misto',
+      docType: 'ricevuta',
+      splitCount: 1,
+      createdAt: new Date().toISOString(),
+      closed: true,
+    };
     const action: Action = {
       type: 'REMOVE_EQUIPMENT_REFUND',
       bookingId,
@@ -1121,6 +1279,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       priceDelta,
       refundAmount,
       change,
+      conto,
     };
     const next = reducer(prev, action);
     dispatch(action);
@@ -1141,6 +1300,10 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
             .eq('beach_id', beachId)
             .eq('id', bookingId)
         );
+      runSync(client.from('equipment_changes').insert(equipmentChangeToRow(change, beachId)));
+      runSync(client.from('conti').insert(contoToRow(conto, beachId)));
+      const stat = next.dailyStats.find((d) => d.date === isoDate(0));
+      if (stat) runSync(client.from('daily_stats').upsert(dailyStatToRow(stat, beachId)));
     }
   }, []);
 
@@ -1148,6 +1311,12 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
   // time) -- dismissing here just clears it off the pending-notifications list.
   const resolveEquipmentChange = useCallback((changeId: string) => {
     dispatch({ type: 'RESOLVE_EQUIPMENT_CHANGE', changeId });
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId)
+      runSync(
+        client.from('equipment_changes').update({ resolved: true }).eq('beach_id', beachId).eq('id', changeId)
+      );
   }, []);
 
   const confirmCheckIn = useCallback((bookingId: string) => {

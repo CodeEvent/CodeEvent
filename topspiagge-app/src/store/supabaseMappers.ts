@@ -4,7 +4,7 @@
 // Every `xToRow` builder takes the owning beach's id explicitly and stamps it onto the row --
 // the schema's primary keys are (beach_id, id) pairs, so every insert/upsert needs it, and every
 // `rowToX` reader ignores beach_id since the app types are already scoped to one beach's store.
-import { Article, Booking, Conto, Customer, DailyStat, PriceList, Umbrella } from '../types';
+import { Article, Booking, Conto, Customer, DailyStat, EquipmentChange, PriceList, Umbrella } from '../types';
 
 export function rowToUmbrella(r: any): Umbrella {
   return {
@@ -120,6 +120,7 @@ export function rowToArticle(r: any): Article {
     category: r.category,
     basePrice: Number(r.base_price),
     unit: r.unit,
+    stock: r.stock ?? undefined,
   };
 }
 
@@ -131,6 +132,7 @@ export function articleToRow(a: Article, beachId: string) {
     category: a.category,
     base_price: a.basePrice,
     unit: a.unit,
+    stock: a.stock ?? null,
   };
 }
 
@@ -208,5 +210,34 @@ export function dailyStatToRow(d: DailyStat, beachId: string) {
     presenze: d.presenze,
     bar: d.bar,
     ombrelloni: d.ombrelloni,
+  };
+}
+
+export function rowToEquipmentChange(r: any): EquipmentChange {
+  return {
+    id: r.id,
+    type: r.type,
+    bookingId: r.booking_id,
+    umbrellaId: r.umbrella_id,
+    beds: r.beds,
+    chairs: r.chairs,
+    amount: Number(r.amount),
+    createdAt: r.created_at,
+    resolved: r.resolved,
+  };
+}
+
+export function equipmentChangeToRow(c: EquipmentChange, beachId: string) {
+  return {
+    id: c.id,
+    beach_id: beachId,
+    type: c.type,
+    booking_id: c.bookingId,
+    umbrella_id: c.umbrellaId,
+    beds: c.beds,
+    chairs: c.chairs,
+    amount: c.amount,
+    created_at: c.createdAt,
+    resolved: c.resolved,
   };
 }

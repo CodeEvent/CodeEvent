@@ -9,6 +9,7 @@ import { formatCurrency, formatDateShort } from '../utils/format';
 import { useAppAlert } from './AppAlert';
 import { PaymentSummary } from './PaymentSummary';
 import { QuickBookingForm } from './QuickBookingForm';
+import { SimulatedCheckoutModal } from './SimulatedCheckoutModal';
 import { Button, Chip, StatusPill } from './UI';
 
 interface Props {
@@ -37,6 +38,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
   const [mode, setMode] = useState<'detail' | 'new_booking'>('detail');
   const [assigningCustomer, setAssigningCustomer] = useState(false);
   const [assigneeQuery, setAssigneeQuery] = useState('');
+  const [showEquipmentCheckout, setShowEquipmentCheckout] = useState(false);
 
   const umbrella = umbrellaId ? getUmbrella(umbrellaId) : undefined;
   const booking = getBooking(umbrella?.currentBookingId);
@@ -105,6 +107,7 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
   };
 
   return (
+    <>
     <Modal visible transparent animationType="slide" onRequestClose={close}>
       <Pressable style={styles.backdrop} onPress={close}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
@@ -226,12 +229,20 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
                         {pendingAddChange.chairs ? `+${pendingAddChange.chairs} sdraio` : ''} ·{' '}
                         {formatCurrency(pendingAddChange.amount)} da incassare in reception
                       </Text>
-                      <Button
-                        title="Conferma pagamento e aggiungi"
-                        variant="success"
-                        onPress={() => confirmEquipmentAdd(pendingAddChange.id)}
-                        style={{ marginTop: spacing.xs, paddingVertical: 6 }}
-                      />
+                      <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+                        <Button
+                          title="Contanti"
+                          variant="success"
+                          onPress={() => confirmEquipmentAdd(pendingAddChange.id, 'contanti')}
+                          style={{ flex: 1, paddingVertical: 6 }}
+                        />
+                        <Button
+                          title="Carta"
+                          variant="success"
+                          onPress={() => setShowEquipmentCheckout(true)}
+                          style={{ flex: 1, paddingVertical: 6 }}
+                        />
+                      </View>
                     </View>
                   )}
 
@@ -286,6 +297,20 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
         </Pressable>
       </Pressable>
     </Modal>
+    {pendingAddChange && (
+      <SimulatedCheckoutModal
+        visible={showEquipmentCheckout}
+        amount={pendingAddChange.amount}
+        method="carta"
+        label="Incasso lettini/sdraio aggiuntivi"
+        onConfirm={() => {
+          setShowEquipmentCheckout(false);
+          confirmEquipmentAdd(pendingAddChange.id, 'carta');
+        }}
+        onCancel={() => setShowEquipmentCheckout(false)}
+      />
+    )}
+    </>
   );
 };
 

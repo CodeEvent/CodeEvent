@@ -98,6 +98,7 @@ export interface Article {
   category: ArticleCategory;
   basePrice: number;
   unit: string; // 'giorno' | 'pz' | 'ora'
+  stock?: number | null; // null/undefined = not tracked (unlimited); a number = units left today
 }
 
 export type Season = 'bassa' | 'media' | 'alta';

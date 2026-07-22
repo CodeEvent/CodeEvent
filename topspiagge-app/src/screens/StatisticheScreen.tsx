@@ -6,15 +6,43 @@ import { BarChart } from '../components/BarChart';
 import { Button, Card, SectionHeader } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing } from '../theme';
-import { formatCurrency, formatDateShort } from '../utils/format';
+import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 import { exportCsv, statsToCsv } from '../utils/exportCsv';
 
 export const StatisticheScreen: React.FC = () => {
-  const { dailyStats } = useStore();
+  const { dailyStats, umbrellas, bookings, customers } = useStore();
   const alert = useAppAlert();
   const [exporting, setExporting] = useState(false);
 
-  const today = dailyStats[dailyStats.length - 1];
+  const today = isoDate(0);
+
+  // Occupancy: fraction of umbrellas with a booking covering today, out of the whole beach --
+  // a snapshot of "how full are we right now", independent of dailyStats' revenue figures.
+  const occupiedTodayCount = useMemo(() => {
+    const ids = new Set(
+      bookings.filter((b) => b.dateFrom <= today && b.dateTo >= today).map((b) => b.umbrellaId)
+    );
+    return ids.size;
+  }, [bookings, today]);
+  const occupancyRate = umbrellas.length > 0 ? (occupiedTodayCount / umbrellas.length) * 100 : 0;
+
+  // Repeat-customer rate: of customers who have booked at least once, how many booked more than
+  // once -- a loyalty signal distinct from raw booking counts.
+  const bookedCustomers = useMemo(() => customers.filter((c) => c.bookingHistory.length > 0), [customers]);
+  const repeatCustomers = useMemo(
+    () => bookedCustomers.filter((c) => c.bookingHistory.length > 1),
+    [bookedCustomers]
+  );
+  const repeatRate = bookedCustomers.length > 0 ? (repeatCustomers.length / bookedCustomers.length) * 100 : null;
+
+  // No-show rate: of bookings whose entire stay has already ended, how many never had their
+  // check-in confirmed at reception -- only fully-elapsed stays count, so a guest still partway
+  // through a multi-day booking isn't prematurely flagged.
+  const completedBookings = useMemo(() => bookings.filter((b) => b.dateTo < today), [bookings, today]);
+  const noShowBookings = useMemo(() => completedBookings.filter((b) => !b.checkedInAt), [completedBookings]);
+  const noShowRate = completedBookings.length > 0 ? (noShowBookings.length / completedBookings.length) * 100 : null;
+
+  const todayStat = dailyStats[dailyStats.length - 1];
   const last7 = dailyStats.slice(-7);
   const prev7 = dailyStats.slice(-14, -7);
   const seasonTotal = dailyStats.reduce((s, d) => s + d.incasso, 0);
@@ -38,7 +66,7 @@ export const StatisticheScreen: React.FC = () => {
   const handleExport = async () => {
     setExporting(true);
     try {
-      await exportCsv(statsToCsv(dailyStats), `top-spiagge-incassi-${today?.date ?? 'export'}.csv`);
+      await exportCsv(statsToCsv(dailyStats), `top-spiagge-incassi-${todayStat?.date ?? 'export'}.csv`);
     } catch (e) {
       alert('Errore export', 'Impossibile generare il file CSV.');
     } finally {
@@ -54,8 +82,8 @@ export const StatisticheScreen: React.FC = () => {
         <View style={styles.cardsRow}>
           <Card style={styles.statCard}>
             <Text style={styles.statLabel}>Incasso oggi</Text>
-            <Text style={styles.statValue}>{formatCurrency(today?.incasso ?? 0)}</Text>
-            <Text style={styles.statMuted}>{today?.presenze ?? 0} presenze</Text>
+            <Text style={styles.statValue}>{formatCurrency(todayStat?.incasso ?? 0)}</Text>
+            <Text style={styles.statMuted}>{todayStat?.presenze ?? 0} presenze</Text>
           </Card>
           <Card style={styles.statCard}>
             <Text style={styles.statLabel}>Ultimi 7 giorni</Text>
@@ -77,6 +105,36 @@ export const StatisticheScreen: React.FC = () => {
             <Text style={styles.statMuted}>media {Math.round(seasonPresenze / Math.max(1, dailyStats.length))}/giorno</Text>
           </Card>
         </View>
+
+        <View style={styles.cardsRow}>
+          <Card style={styles.statCard}>
+            <Text style={styles.statLabel}>Occupazione oggi</Text>
+            <Text style={styles.statValue}>{occupancyRate.toFixed(0)}%</Text>
+            <Text style={styles.statMuted}>
+              {occupiedTodayCount}/{umbrellas.length} ombrelloni occupati
+            </Text>
+          </Card>
+          <Card style={styles.statCard}>
+            <Text style={styles.statLabel}>Clienti fidelizzati</Text>
+            <Text style={styles.statValue}>{repeatRate === null ? '--' : `${repeatRate.toFixed(0)}%`}</Text>
+            <Text style={styles.statMuted}>
+              {repeatRate === null
+                ? 'Nessun cliente ancora'
+                : `${repeatCustomers.length}/${bookedCustomers.length} tornano più volte`}
+            </Text>
+          </Card>
+        </View>
+        <Card style={{ marginBottom: spacing.md }}>
+          <Text style={styles.statLabel}>Tasso di no-show</Text>
+          <Text style={[styles.statValue, noShowRate !== null && noShowRate > 0 && { color: colors.occupato }]}>
+            {noShowRate === null ? '--' : `${noShowRate.toFixed(0)}%`}
+          </Text>
+          <Text style={styles.statMuted}>
+            {noShowRate === null
+              ? 'Nessuna prenotazione conclusa finora'
+              : `${noShowBookings.length}/${completedBookings.length} prenotazioni concluse senza check-in confermato`}
+          </Text>
+        </Card>
 
         <Card style={{ marginTop: spacing.md }}>
           <Text style={styles.cardTitle}>Incasso · ultimi 14 giorni</Text>

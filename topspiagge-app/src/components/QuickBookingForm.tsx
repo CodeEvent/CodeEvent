@@ -217,7 +217,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         isStudent,
       };
     });
-    createdBookings.forEach(createBooking);
+    createdBookings.forEach((b) => createBooking(b));
     onDone();
   };
 

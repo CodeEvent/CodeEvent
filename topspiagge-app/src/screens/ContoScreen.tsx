@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
 import { PaymentSummary } from '../components/PaymentSummary';
+import { SimulatedCheckoutModal } from '../components/SimulatedCheckoutModal';
 import { Button, Card, Chip, SectionHeader, StatusPill, Stepper } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
@@ -68,6 +69,8 @@ export const ContoScreen: React.FC = () => {
   const [splitCount, setSplitCount] = useState(1);
   const [receivedAmount, setReceivedAmount] = useState('');
   const [freeAfter, setFreeAfter] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [showEquipmentCheckout, setShowEquipmentCheckout] = useState(false);
 
   useEffect(() => {
     if (route.params?.umbrellaId) setUmbrellaId(route.params.umbrellaId);
@@ -160,6 +163,16 @@ export const ContoScreen: React.FC = () => {
       alert('Conto vuoto', 'Aggiungi almeno un articolo o seleziona il saldo prenotazione.');
       return;
     }
+    // Cash changes hands right at the register -- nothing to "process". Card/mixed payments go
+    // through the simulated checkout step first so the flow mirrors a real card-present POS.
+    if (paymentMethod === 'contanti') {
+      doRegister();
+    } else {
+      setShowCheckout(true);
+    }
+  };
+
+  const doRegister = () => {
     const conto: Conto = {
       id: `conto-${Date.now()}`,
       umbrellaId,
@@ -185,6 +198,11 @@ export const ContoScreen: React.FC = () => {
       receiptText(),
       [{ text: 'OK', onPress: reset }]
     );
+  };
+
+  const handleCheckoutConfirmed = () => {
+    setShowCheckout(false);
+    doRegister();
   };
 
   return (
@@ -265,9 +283,13 @@ export const ContoScreen: React.FC = () => {
                         {formatCurrency(pendingAddChange.amount)} in reception
                       </Text>
                       <Button
-                        title="Conferma pagamento e aggiungi"
+                        title={`Confermato (${paymentMethod}) e aggiungi`}
                         variant="success"
-                        onPress={() => confirmEquipmentAdd(pendingAddChange.id)}
+                        onPress={() =>
+                          paymentMethod === 'contanti'
+                            ? confirmEquipmentAdd(pendingAddChange.id, paymentMethod)
+                            : setShowEquipmentCheckout(true)
+                        }
                         style={{ marginTop: spacing.xs, paddingVertical: 6 }}
                       />
                     </View>
@@ -319,6 +341,10 @@ export const ContoScreen: React.FC = () => {
           </ScrollView>
           {filteredArticles.map((a) => {
             const linkedToBooking = !!booking && EQUIPMENT_ARTICLE_IDS.has(a.id);
+            const inCartQty = items.find((i) => i.articleId === a.id)?.qty ?? 0;
+            const stockTracked = a.stock != null;
+            const stockLeft = stockTracked ? (a.stock as number) - inCartQty : undefined;
+            const outOfStock = stockTracked && (stockLeft as number) <= 0;
             return (
               <View key={a.id} style={styles.articleRow}>
                 <View style={styles.articleIconBox}>
@@ -330,8 +356,19 @@ export const ContoScreen: React.FC = () => {
                     {formatCurrency(priceFor(a))} / {a.unit}
                     {linkedToBooking ? ' · sull\'account della prenotazione' : ''}
                   </Text>
+                  {stockTracked && (
+                    <Text style={[styles.muted, (stockLeft as number) <= 5 && styles.stockLow]}>
+                      Scorte: {stockLeft} {outOfStock ? '· esaurito' : ''}
+                    </Text>
+                  )}
                 </View>
-                <Button title="+ Aggiungi" variant="secondary" onPress={() => addItem(a)} style={{ paddingVertical: 6 }} />
+                <Button
+                  title="+ Aggiungi"
+                  variant="secondary"
+                  onPress={() => addItem(a)}
+                  disabled={outOfStock}
+                  style={{ paddingVertical: 6 }}
+                />
               </View>
             );
           })}
@@ -439,6 +476,26 @@ export const ContoScreen: React.FC = () => {
         </View>
         <Button title="Annulla" icon="refresh-outline" variant="muted" onPress={reset} style={{ marginTop: spacing.sm }} />
       </ScrollView>
+      <SimulatedCheckoutModal
+        visible={showCheckout}
+        amount={total}
+        method={paymentMethod}
+        onConfirm={handleCheckoutConfirmed}
+        onCancel={() => setShowCheckout(false)}
+      />
+      {pendingAddChange && (
+        <SimulatedCheckoutModal
+          visible={showEquipmentCheckout}
+          amount={pendingAddChange.amount}
+          method={paymentMethod}
+          label="Incasso lettini/sdraio aggiuntivi"
+          onConfirm={() => {
+            setShowEquipmentCheckout(false);
+            confirmEquipmentAdd(pendingAddChange.id, paymentMethod);
+          }}
+          onCancel={() => setShowEquipmentCheckout(false)}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -480,6 +537,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   articleName: { fontWeight: '600', color: colors.text },
+  stockLow: { color: colors.danger, fontWeight: '700' },
   articleIconBox: {
     width: 34,
     height: 34,

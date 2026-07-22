@@ -83,11 +83,48 @@ create table if not exists bookings (
   group_id text,
   reference text not null,
   is_student boolean,
+  checked_in_at text,
   primary key (beach_id, id),
   foreign key (beach_id, umbrella_id) references umbrellas(beach_id, id) on delete cascade,
   foreign key (beach_id, customer_id) references customers(beach_id, id) on delete cascade
 );
 create index if not exists bookings_beach_id_idx on bookings (beach_id);
+
+-- Enforces "one guest per umbrella per day" at the database level, not just in the client's
+-- in-memory conflict check (utils/booking.ts's findUmbrellaConflict) -- two devices creating
+-- overlapping bookings for the same umbrella within the same instant both pass the client-side
+-- check (each only sees its own optimistic state), but only one of the two inserts can win here;
+-- the app must treat that failed insert as "someone else just booked this" and prompt the guest
+-- to pick again (see StoreContext.tsx's createBooking onConflict callback). Requires btree_gist
+-- for a plain text/int column (umbrella_id) to be usable in an exclusion constraint alongside
+-- the date range. Bounds are inclusive on both ends ('[]') to match findUmbrellaConflict's own
+-- `dateFrom <= b.dateTo && dateTo >= b.dateFrom` semantics -- a checkout day and the next guest's
+-- check-in day on the same umbrella already count as a conflict throughout this app.
+create extension if not exists btree_gist;
+alter table bookings drop constraint if exists bookings_no_overlap;
+alter table bookings
+  add constraint bookings_no_overlap
+  exclude using gist (
+    beach_id with =,
+    umbrella_id with =,
+    daterange(date_from::date, date_to::date, '[]') with &&
+  );
+
+create table if not exists equipment_changes (
+  id text not null,
+  beach_id text not null references beaches(id) on delete cascade,
+  type text not null check (type in ('add', 'remove')),
+  booking_id text not null,
+  umbrella_id text not null,
+  beds int not null default 0,
+  chairs int not null default 0,
+  amount numeric not null,
+  created_at text not null,
+  resolved boolean not null default false,
+  primary key (beach_id, id),
+  foreign key (beach_id, booking_id) references bookings(beach_id, id) on delete cascade
+);
+create index if not exists equipment_changes_beach_id_idx on equipment_changes (beach_id);
 
 create table if not exists articles (
   id text not null,
@@ -96,6 +133,7 @@ create table if not exists articles (
   category text not null,
   base_price numeric not null,
   unit text not null,
+  stock int,
   primary key (beach_id, id)
 );
 create index if not exists articles_beach_id_idx on articles (beach_id);
@@ -168,6 +206,7 @@ alter table articles enable row level security;
 alter table price_lists enable row level security;
 alter table conti enable row level security;
 alter table daily_stats enable row level security;
+alter table equipment_changes enable row level security;
 
 -- Returns every beach_id the calling authenticated user operates. `security definer` so it can
 -- read `beach_operators` regardless of that table's own RLS, keeping every other policy a
@@ -234,6 +273,12 @@ create policy "operators manage bookings" on bookings for all to authenticated
 create policy "public reads bookings" on bookings for select to anon using (true);
 create policy "public creates bookings" on bookings for insert to anon with check (true);
 create policy "public cancels bookings" on bookings for delete to anon using (true);
+-- Needed for the guest's own equipment top-up/refund (beds/chairs/total_price/paid) --
+-- previously missing entirely, which meant that whole feature could only ever work in
+-- local-fallback mode, never against a real Supabase project. Check-in itself is
+-- operator-only and already covered by "operators manage bookings" above.
+create policy "public updates bookings for equipment changes" on bookings for update to anon
+  using (true) with check (true);
 
 create policy "operators manage articles" on articles for all to authenticated
   using (beach_id in (select beach_id from current_user_beach_ids()))
@@ -252,3 +297,17 @@ create policy "operators manage conti" on conti for all to authenticated
 create policy "operators manage daily_stats" on daily_stats for all to authenticated
   using (beach_id in (select beach_id from current_user_beach_ids()))
   with check (beach_id in (select beach_id from current_user_beach_ids()));
+
+-- Guests create their own 'add'/'remove' requests from "Gestisci la mia prenotazione" and need
+-- to read them back (to show "richiesta in attesa" / the pending-request card) -- but only the
+-- operator can mark one resolved (confirming payment was collected, or that an item was
+-- physically removed), matching the client's confirmEquipmentAdd/resolveEquipmentChange split.
+create policy "operators manage equipment_changes" on equipment_changes for all to authenticated
+  using (beach_id in (select beach_id from current_user_beach_ids()))
+  with check (beach_id in (select beach_id from current_user_beach_ids()));
+create policy "public reads equipment_changes" on equipment_changes for select to anon using (true);
+create policy "public creates equipment_changes" on equipment_changes for insert to anon with check (true);
+-- The guest can only take back their own not-yet-paid request, never touch a 'remove' record
+-- (that one is the operator's audit trail that an item still needs to be physically collected).
+create policy "public cancels pending add requests" on equipment_changes for delete to anon
+  using (type = 'add' and resolved = false);

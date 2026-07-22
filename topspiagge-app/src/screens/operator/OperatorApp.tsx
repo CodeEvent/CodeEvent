@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArchiviScreen } from '../ArchiviScreen';
 import { ContoScreen } from '../ContoScreen';
 import { GrigliaScreen } from '../GrigliaScreen';
 import { PiantinaScreen } from '../PiantinaScreen';
 import { QuadroScreen } from '../QuadroScreen';
 import { StatisticheScreen } from '../StatisticheScreen';
+import { NotificationCenter } from '../../components/NotificationCenter';
+import { QRScannerModal } from '../../components/QRScannerModal';
 import { useOperatorAuth } from '../../store/OperatorAuthContext';
 import { StoreProvider } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
@@ -37,23 +39,33 @@ const TabIcon: React.FC<{ routeName: string; focused: boolean }> = ({ routeName,
   </View>
 );
 
-const StaffTabs: React.FC = () => (
-  <Tab.Navigator
-    screenOptions={({ route }) => ({
-      headerShown: false,
-      tabBarShowLabel: false,
-      tabBarStyle: styles.tabBar,
-      tabBarIcon: ({ focused }) => <TabIcon routeName={route.name} focused={focused} />,
-    })}
-  >
-    <Tab.Screen name="Piantina" component={PiantinaScreen} />
-    <Tab.Screen name="Griglia" component={GrigliaScreen} />
-    <Tab.Screen name="Quadro" component={QuadroScreen} />
-    <Tab.Screen name="Conto" component={ContoScreen} />
-    <Tab.Screen name="Statistiche" component={StatisticheScreen} />
-    <Tab.Screen name="Archivi" component={ArchiviScreen} />
-  </Tab.Navigator>
-);
+const StaffTabs: React.FC = () => {
+  const [scannerOpen, setScannerOpen] = useState(false);
+  return (
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarShowLabel: false,
+          tabBarStyle: styles.tabBar,
+          tabBarIcon: ({ focused }) => <TabIcon routeName={route.name} focused={focused} />,
+        })}
+      >
+        <Tab.Screen name="Piantina" component={PiantinaScreen} />
+        <Tab.Screen name="Griglia" component={GrigliaScreen} />
+        <Tab.Screen name="Quadro" component={QuadroScreen} />
+        <Tab.Screen name="Conto" component={ContoScreen} />
+        <Tab.Screen name="Statistiche" component={StatisticheScreen} />
+        <Tab.Screen name="Archivi" component={ArchiviScreen} />
+      </Tab.Navigator>
+      <Pressable style={styles.scanBtn} onPress={() => setScannerOpen(true)}>
+        <Ionicons name="qr-code-outline" size={22} color={colors.primaryDark} />
+      </Pressable>
+      <NotificationCenter />
+      <QRScannerModal visible={scannerOpen} onClose={() => setScannerOpen(false)} />
+    </View>
+  );
+};
 
 interface Props {
   onExitToCustomer: () => void;
@@ -98,5 +110,22 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 10,
     fontWeight: '700',
+  },
+  scanBtn: {
+    position: 'absolute',
+    top: spacing.xl,
+    right: spacing.lg + 52,
+    zIndex: 50,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
   },
 });

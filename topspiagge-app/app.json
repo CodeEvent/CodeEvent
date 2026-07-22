@@ -22,7 +22,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Usata per scansionare il QR code di check-in del cliente in reception."
+        }
+      ]
     ]
   }
 }

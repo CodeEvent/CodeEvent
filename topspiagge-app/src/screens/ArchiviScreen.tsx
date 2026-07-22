@@ -7,6 +7,7 @@ import { useAppAlert } from '../components/AppAlert';
 import { BeachCanvas, useUmbrellaPositions } from '../components/BeachCanvas';
 import { FilterSheetModal } from '../components/BookingFilterBar';
 import { LayoutDesignerScreen } from '../components/LayoutDesigner';
+import { SimulatedCheckoutModal } from '../components/SimulatedCheckoutModal';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
 import { inviteOperator } from '../lib/inviteOperator';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -87,8 +88,12 @@ const OggiTab: React.FC = () => {
   } = useStore();
   const alert = useAppAlert();
   const today = isoDate(0);
+  const [cardCheckoutChangeId, setCardCheckoutChangeId] = useState<string | null>(null);
 
   const pendingChanges = useMemo(() => equipmentChanges.filter((c) => !c.resolved), [equipmentChanges]);
+  const cardCheckoutChange = cardCheckoutChangeId
+    ? pendingChanges.find((c) => c.id === cardCheckoutChangeId)
+    : undefined;
   const arrivals = useMemo(() => bookings.filter((b) => b.dateFrom === today), [bookings, today]);
   const departures = useMemo(() => bookings.filter((b) => b.dateTo === today), [bookings, today]);
   const daSaldareUmbrellas = useMemo(
@@ -138,12 +143,29 @@ const OggiTab: React.FC = () => {
                 ? `Richiesto dall'app: +${equipLabel} · ${formatCurrency(c.amount)} da pagare in reception`
                 : `Rimosso dal cliente: ${equipLabel} · ${formatCurrency(c.amount)} già rimborsati`}
             </Text>
-            <Button
-              title={c.type === 'add' ? 'Conferma pagamento e aggiungi' : 'Segna come rimosso'}
-              variant={c.type === 'add' ? 'success' : 'secondary'}
-              onPress={() => (c.type === 'add' ? confirmEquipmentAdd(c.id) : resolveEquipmentChange(c.id))}
-              style={{ marginTop: spacing.sm, paddingVertical: 6 }}
-            />
+            {c.type === 'add' ? (
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                <Button
+                  title="Incassato in contanti"
+                  variant="success"
+                  onPress={() => confirmEquipmentAdd(c.id, 'contanti')}
+                  style={{ flex: 1, paddingVertical: 6 }}
+                />
+                <Button
+                  title="Incassato con carta"
+                  variant="success"
+                  onPress={() => setCardCheckoutChangeId(c.id)}
+                  style={{ flex: 1, paddingVertical: 6 }}
+                />
+              </View>
+            ) : (
+              <Button
+                title="Segna come rimosso"
+                variant="secondary"
+                onPress={() => resolveEquipmentChange(c.id)}
+                style={{ marginTop: spacing.sm, paddingVertical: 6 }}
+              />
+            )}
           </Card>
         );
       })}
@@ -287,6 +309,19 @@ const OggiTab: React.FC = () => {
           </Card>
         );
       })}
+      {cardCheckoutChange && (
+        <SimulatedCheckoutModal
+          visible
+          amount={cardCheckoutChange.amount}
+          method="carta"
+          label="Incasso lettini/sdraio aggiuntivi"
+          onConfirm={() => {
+            confirmEquipmentAdd(cardCheckoutChange.id, 'carta');
+            setCardCheckoutChangeId(null);
+          }}
+          onCancel={() => setCardCheckoutChangeId(null)}
+        />
+      )}
     </ScrollView>
   );
 };
@@ -1631,6 +1666,11 @@ const ArticoliTab: React.FC = () => {
                   <Text style={styles.muted}>
                     {formatCurrency(a.basePrice)} / {a.unit}
                   </Text>
+                  {a.stock != null && (
+                    <Text style={[styles.muted, a.stock <= 5 && { color: colors.danger, fontWeight: '700' }]}>
+                      Scorte: {a.stock} {a.stock <= 5 ? '· in esaurimento' : ''}
+                    </Text>
+                  )}
                 </View>
                 <EditDeleteRow onEdit={() => setEditing(a)} onDelete={() => confirmDelete(a)} />
               </View>
@@ -1669,6 +1709,8 @@ const ArticleForm: React.FC<{ article: Article; onSave: (a: Article) => void; on
   const [category, setCategory] = useState<ArticleCategory>(article.category);
   const [price, setPrice] = useState(String(article.basePrice));
   const [unit, setUnit] = useState(article.unit);
+  const [trackStock, setTrackStock] = useState(article.stock != null);
+  const [stock, setStock] = useState(String(article.stock ?? 0));
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
@@ -1684,11 +1726,25 @@ const ArticleForm: React.FC<{ article: Article; onSave: (a: Article) => void; on
       <TextInput style={styles.input} keyboardType="decimal-pad" value={price} onChangeText={setPrice} />
       <Text style={styles.formLabel}>Unità (giorno / pz / ora)</Text>
       <TextInput style={styles.input} value={unit} onChangeText={setUnit} />
+      <Chip label="Traccia scorte" selected={trackStock} onPress={() => setTrackStock((v) => !v)} />
+      {trackStock && (
+        <>
+          <Text style={styles.formLabel}>Quantità in magazzino</Text>
+          <TextInput style={styles.input} keyboardType="number-pad" value={stock} onChangeText={setStock} />
+        </>
+      )}
       <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
         <Button
           title="Salva"
           onPress={() =>
-            onSave({ ...article, name, category, basePrice: parseFloat(price.replace(',', '.')) || 0, unit })
+            onSave({
+              ...article,
+              name,
+              category,
+              basePrice: parseFloat(price.replace(',', '.')) || 0,
+              unit,
+              stock: trackStock ? parseInt(stock, 10) || 0 : undefined,
+            })
           }
           style={{ flex: 1 }}
         />
