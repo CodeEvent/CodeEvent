@@ -5,7 +5,7 @@ import { Animated, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Switc
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
 import { BeachCanvas, useUmbrellaPositions } from '../components/BeachCanvas';
-import { BookingFilterBar } from '../components/BookingFilterBar';
+import { FilterSheetModal } from '../components/BookingFilterBar';
 import { LayoutDesignerScreen } from '../components/LayoutDesigner';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
 import { inviteOperator } from '../lib/inviteOperator';
@@ -506,6 +506,7 @@ const FiltriTab: React.FC = () => {
   const { bookings, getUmbrella, getCustomer } = useStore();
   const alert = useAppAlert();
   const [filters, setFilters] = useState<BookingFilters>(DEFAULT_BOOKING_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [presets, setPresets] = useState<SavedPreset[]>([]);
   const [presetName, setPresetName] = useState('');
   const today = isoDate(0);
@@ -593,8 +594,24 @@ const FiltriTab: React.FC = () => {
 
   return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
-      <Text style={styles.dateSectionHeader}>Filtri e condizioni</Text>
-      <BookingFilterBar filters={filters} onChange={setFilters} excludeStatuses={['libero']} />
+      <View style={styles.rowBetween}>
+        <Text style={[styles.dateSectionHeader, { marginBottom: 0 }]}>Filtri e condizioni</Text>
+        <Button
+          title="Filtri"
+          icon="options-outline"
+          variant="secondary"
+          onPress={() => setFiltersOpen(true)}
+          style={{ paddingVertical: 6 }}
+        />
+      </View>
+
+      <FilterSheetModal
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={filters}
+        onChange={setFilters}
+        excludeStatuses={['libero']}
+      />
 
       <View style={{ marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         <TextInput

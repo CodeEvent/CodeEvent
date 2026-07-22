@@ -8,8 +8,14 @@ import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Umbrella } from '../types';
-import { DEFAULT_BOOKING_FILTERS, umbrellaMatchesFilters } from '../utils/bookingFilters';
 import {
+  DEFAULT_BOOKING_FILTERS,
+  effectiveDateRange,
+  isUmbrellaFreeForRange,
+  umbrellaMatchesFilters,
+} from '../utils/bookingFilters';
+import {
+  BaseDisplayStatus,
   baseDisplayStatusFor,
   DisplayStatus,
   displayStatusColor,
@@ -34,12 +40,16 @@ function captionFor(
 }
 
 export const GrigliaScreen: React.FC = () => {
-  const { umbrellas, getBooking, getCustomer } = useStore();
+  const { umbrellas, bookings, getBooking, getCustomer } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingExtraIds, setPendingExtraIds] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_BOOKING_FILTERS);
   const today = isoDate(0);
+
+  // See PiantinaScreen for the rationale: a chosen "Quando" range switches cell color from
+  // today's rich status to a simple free/not-free view computed for that specific range.
+  const range = effectiveDateRange(filters);
 
   // See PiantinaScreen for the rationale: a purely local, never-persisted highlight of
   // the umbrella(s) currently being composed into a new booking.
@@ -54,8 +64,8 @@ export const GrigliaScreen: React.FC = () => {
   };
 
   const filtered = useMemo(
-    () => umbrellas.filter((u) => umbrellaMatchesFilters(u, filters, getBooking, getCustomer, today)),
-    [umbrellas, filters, getBooking, getCustomer, today]
+    () => umbrellas.filter((u) => umbrellaMatchesFilters(u, filters, bookings, getBooking, getCustomer, today)),
+    [umbrellas, filters, bookings, getBooking, getCustomer, today]
   );
 
   // Every row is a fixed line of umbrellas (10 per side, 20 when both sides are shown) --
@@ -79,6 +89,11 @@ export const GrigliaScreen: React.FC = () => {
     return c;
   }, [umbrellas, getBooking]);
 
+  const periodFreeCount = useMemo(() => {
+    if (!range) return null;
+    return umbrellas.filter((u) => isUmbrellaFreeForRange(u, bookings, range.from, range.to)).length;
+  }, [range, umbrellas, bookings]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
@@ -86,8 +101,9 @@ export const GrigliaScreen: React.FC = () => {
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Griglia Ombrelloni</Text>
             <Text style={styles.headerSubtitle}>
-              {counts.libero} liberi · {counts.occupato} occupati · {counts.da_saldare} da saldare ·{' '}
-              {counts.sgombera} da sgomberare · {counts.stagionale} stagionali
+              {range
+                ? `${periodFreeCount} liberi per il periodo scelto`
+                : `${counts.libero} liberi · ${counts.occupato} occupati · ${counts.da_saldare} da saldare · ${counts.sgombera} da sgomberare · ${counts.stagionale} stagionali`}
             </Text>
           </View>
           <Pressable onPress={() => setFiltersOpen((v) => !v)} style={styles.filterToggle}>
@@ -112,14 +128,18 @@ export const GrigliaScreen: React.FC = () => {
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.rowCells}>
                   {rowUmbrellas.map((u) => {
-                    const displayStatus = displayStatusFor(u, getBooking);
-                    const baseStatus = baseDisplayStatusFor(u, getBooking);
+                    const baseStatus: BaseDisplayStatus = range
+                      ? isUmbrellaFreeForRange(u, bookings, range.from, range.to)
+                        ? 'libero'
+                        : 'occupato'
+                      : baseDisplayStatusFor(u, getBooking);
+                    const displayStatus: DisplayStatus = range ? baseStatus : displayStatusFor(u, getBooking);
                     const pending = pendingIds.includes(u.id);
                     const isSgombera = !pending && baseStatus === 'sgombera';
                     const isStagionale = !pending && baseStatus === 'stagionale';
                     const isSplit = isSgombera || isStagionale || pending;
-                    const unpaid = hasOutstandingBalance(u, getBooking);
-                    const caption = captionFor(displayStatus, u, getBooking, getCustomer);
+                    const unpaid = range ? false : hasOutstandingBalance(u, getBooking);
+                    const caption = range ? undefined : captionFor(displayStatus, u, getBooking, getCustomer);
                     return (
                       <React.Fragment key={u.id}>
                         {u.col === COLS_PER_SIDE && <View style={styles.walkwayDivider} />}

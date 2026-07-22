@@ -230,7 +230,7 @@ export const FilterSheetModal: React.FC<FilterSheetModalProps> = ({ visible, onC
         <ScrollView showsVerticalScrollIndicator={false}>
           <BookingFilterBar {...filterBarProps} />
         </ScrollView>
-        <Button title="Chiudi" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
+        <Button title="Applica filtri" onPress={onClose} style={{ marginTop: spacing.sm }} />
       </Pressable>
     </Pressable>
   </Modal>

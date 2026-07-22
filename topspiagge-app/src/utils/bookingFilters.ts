@@ -1,4 +1,5 @@
 import { Booking, BeachSide, Customer, Umbrella } from '../types';
+import { findUmbrellaConflict } from './booking';
 import { DisplayStatus, displayStatusFor, isStagionaleBooking } from './displayStatus';
 
 // Single shared filter model reused by Piantina, Griglia, Quadro and Archivi's Filtri tab --
@@ -94,17 +95,53 @@ function needsBooking(filters: BookingFilters): boolean {
   );
 }
 
+// Same as needsBooking, minus the range bounds -- used only inside the range-aware Libero
+// branch below, where rangeFrom/rangeTo are the very thing being checked (via a real conflict
+// scan), not a signal that a pre-existing booking must exist.
+function needsBookingBeyondRange(filters: BookingFilters): boolean {
+  return (
+    filters.onlyVip ||
+    filters.checkinToday ||
+    filters.checkoutToday ||
+    filters.minAdults > 0 ||
+    filters.hasEquipment !== null ||
+    filters.groupOnly ||
+    filters.query.trim().length > 0
+  );
+}
+
+// A single bound alone means "just that day" -- mirrors how the rest of the filter model
+// already treats one-sided ranges as open-ended-but-anchored.
+export function effectiveDateRange(filters: BookingFilters): { from: string; to: string } | null {
+  if (!filters.rangeFrom && !filters.rangeTo) return null;
+  return { from: filters.rangeFrom ?? filters.rangeTo!, to: filters.rangeTo ?? filters.rangeFrom! };
+}
+
 // For Piantina/Griglia: umbrellas with no booking (libero) still need to pass side/status/
-// cabin checks, but automatically fail any filter that requires a booking to evaluate.
+// cabin checks, but automatically fail any filter that requires a booking to evaluate --
+// EXCEPT when a date range is chosen while filtering for 'libero': there, "free" means "no
+// booking overlaps the chosen range at all" (checked against every booking for this umbrella,
+// not just today's), so a stagionale or otherwise-booked umbrella still matches once the
+// picked dates fall outside its existing booking(s).
 export function umbrellaMatchesFilters(
   umbrella: Umbrella,
   filters: BookingFilters,
+  bookings: Booking[],
   getBooking: (id?: string) => Booking | undefined,
   getCustomer: (id?: string) => Customer | undefined,
   today: string
 ): boolean {
   if (filters.side !== 'tutti' && umbrella.side !== filters.side) return false;
   if (filters.hasCabin !== null && umbrella.hasCabin !== filters.hasCabin) return false;
+
+  const range = effectiveDateRange(filters);
+  if (filters.status === 'libero' && range) {
+    const free = !findUmbrellaConflict(bookings, umbrella.id, range.from, range.to);
+    if (!free) return false;
+    // Every other filter dimension (VIP, check-in/out, equipment, group, query) requires an
+    // existing booking, which a libero-for-this-range umbrella by definition has none of.
+    return !needsBookingBeyondRange(filters);
+  }
 
   const status = displayStatusFor(umbrella, getBooking);
   if (filters.status !== 'tutti' && status !== filters.status) return false;
@@ -114,6 +151,12 @@ export function umbrellaMatchesFilters(
   if (!booking) return false;
   const customer = getCustomer(booking.customerId);
   return bookingPasses(booking, customer, umbrella, filters, today);
+}
+
+// Piantina/Griglia's cell color, for the range-aware view: is this umbrella free for every
+// day in the chosen range, regardless of what its status happens to be today?
+export function isUmbrellaFreeForRange(umbrella: Umbrella, bookings: Booking[], from: string, to: string): boolean {
+  return !findUmbrellaConflict(bookings, umbrella.id, from, to);
 }
 
 // For Quadro/Archivi: iterating actual Booking records directly (never 'libero').

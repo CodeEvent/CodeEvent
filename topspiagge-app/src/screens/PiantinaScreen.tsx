@@ -10,7 +10,12 @@ import { useStore } from '../store/StoreContext';
 import { colors, spacing } from '../theme';
 import { Umbrella } from '../types';
 import { ROWS } from '../data/seed';
-import { DEFAULT_BOOKING_FILTERS, umbrellaMatchesFilters } from '../utils/bookingFilters';
+import {
+  DEFAULT_BOOKING_FILTERS,
+  effectiveDateRange,
+  isUmbrellaFreeForRange,
+  umbrellaMatchesFilters,
+} from '../utils/bookingFilters';
 import {
   BaseDisplayStatus,
   baseDisplayStatusFor,
@@ -160,7 +165,7 @@ const UmbrellaCell: React.FC<{
 };
 
 export const PiantinaScreen: React.FC = () => {
-  const { umbrellas, swapUmbrellas, getBooking, getCustomer } = useStore();
+  const { umbrellas, bookings, swapUmbrellas, getBooking, getCustomer } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingExtraIds, setPendingExtraIds] = useState<string[]>([]);
   const [filters, setFilters] = useState(DEFAULT_BOOKING_FILTERS);
@@ -191,6 +196,23 @@ export const PiantinaScreen: React.FC = () => {
     [umbrellas]
   );
 
+  // A chosen "Quando" range switches the whole map from today's rich status (occupato/
+  // sgombera/stagionale/da saldare) to a simple free/not-free view computed for that specific
+  // range -- so a stagionale umbrella whose booking doesn't overlap the picked dates correctly
+  // shows green, and one that does still shows as unavailable. Today-only nuances (checking
+  // out today, an outstanding balance today) don't generalize to an arbitrary future range, so
+  // they're suppressed while this view is active.
+  const range = effectiveDateRange(filters);
+  const periodFreeCounts = useMemo(() => {
+    if (!range) return null;
+    return {
+      nord: umbrellas.filter((u) => u.side === 'nord' && isUmbrellaFreeForRange(u, bookings, range.from, range.to))
+        .length,
+      sud: umbrellas.filter((u) => u.side === 'sud' && isUmbrellaFreeForRange(u, bookings, range.from, range.to))
+        .length,
+    };
+  }, [range, umbrellas, bookings]);
+
   // Tapping an umbrella to start a new booking never touches the store until "Conferma" --
   // this local pending set just drives a temporary red/blue highlight so the operator can
   // see what they're about to book, and it clears itself (see below) on every cancel path.
@@ -218,16 +240,31 @@ export const PiantinaScreen: React.FC = () => {
           </Pressable>
         </View>
         <View style={styles.legendRow}>
-          {PIANTINA_LEGEND.map(({ key, label }) => (
-            <View key={key} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: displayStatusColor[key] }]} />
-              <Text style={styles.legendText}>{label}</Text>
-            </View>
-          ))}
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, styles.unpaidDotStatic]} />
-            <Text style={styles.legendText}>Da saldare</Text>
-          </View>
+          {range ? (
+            <>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: colors.libero }]} />
+                <Text style={styles.legendText}>Libero per il periodo scelto</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: colors.occupato }]} />
+                <Text style={styles.legendText}>Non disponibile</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              {PIANTINA_LEGEND.map(({ key, label }) => (
+                <View key={key} style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: displayStatusColor[key] }]} />
+                  <Text style={styles.legendText}>{label}</Text>
+                </View>
+              ))}
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, styles.unpaidDotStatic]} />
+                <Text style={styles.legendText}>Da saldare</Text>
+              </View>
+            </>
+          )}
         </View>
       </View>
 
@@ -244,9 +281,19 @@ export const PiantinaScreen: React.FC = () => {
         cellSize={cellSize}
         rowHeight={rowHeight}
         labelWidth={labelWidth}
-        footerText={`Liberi oggi: ${freeCounts.nord + freeCounts.sud} (Nord ${freeCounts.nord} · Sud ${freeCounts.sud})`}
+        footerText={
+          range
+            ? `Liberi per il periodo scelto: ${periodFreeCounts!.nord + periodFreeCounts!.sud} (Nord ${
+                periodFreeCounts!.nord
+              } · Sud ${periodFreeCounts!.sud})`
+            : `Liberi oggi: ${freeCounts.nord + freeCounts.sud} (Nord ${freeCounts.nord} · Sud ${freeCounts.sud})`
+        }
         renderCell={(u, position) => {
-          const status = baseDisplayStatusFor(u, getBooking);
+          const status: BaseDisplayStatus = range
+            ? isUmbrellaFreeForRange(u, bookings, range.from, range.to)
+              ? 'libero'
+              : 'occupato'
+            : baseDisplayStatusFor(u, getBooking);
           return (
             <UmbrellaCell
               key={u.id}
@@ -256,9 +303,9 @@ export const PiantinaScreen: React.FC = () => {
               allUmbrellas={umbrellas}
               cellSize={cellSize}
               status={status}
-              unpaid={hasOutstandingBalance(u, getBooking)}
-              caption={captionFor(status, u, getBooking, getCustomer)}
-              dimmed={!umbrellaMatchesFilters(u, filters, getBooking, getCustomer, today)}
+              unpaid={range ? false : hasOutstandingBalance(u, getBooking)}
+              caption={range ? undefined : captionFor(status, u, getBooking, getCustomer)}
+              dimmed={!umbrellaMatchesFilters(u, filters, bookings, getBooking, getCustomer, today)}
               pending={pendingIds.includes(u.id)}
               onDrop={swapUmbrellas}
               onTap={selectUmbrella}
