@@ -1,5 +1,5 @@
 import { ROWS } from '../data/seed';
-import { Umbrella } from '../types';
+import { PriceList, Umbrella } from '../types';
 import { isoDate } from './format';
 
 export interface EquipmentBundle {
@@ -68,6 +68,21 @@ export function studentDiscount(
   if (now.getDay() !== 1) return 0; // Monday
   if (!isStudentDiscountEligibleRow(umbrella)) return 0;
   return 0.2;
+}
+
+// Extra beds/chairs added to an *existing* booking (via Conto's POS or the customer's own
+// self-service screen) are charged at the season's plain per-day rate for the whole stay --
+// the Fila 1/2 bundle and same-day discounts above only ever apply to the original booking
+// wizard's up-front price, never to a top-up added after the fact.
+export function equipmentPriceDelta(
+  priceList: PriceList,
+  days: number,
+  deltaBeds: number,
+  deltaChairs: number
+): number {
+  const bedRate = priceList.prices['art-lettino'] ?? 6;
+  const chairRate = priceList.prices['art-sdraio'] ?? 4;
+  return Math.round((deltaBeds * bedRate + deltaChairs * chairRate) * days * 100) / 100;
 }
 
 export interface DiscountBreakdown {

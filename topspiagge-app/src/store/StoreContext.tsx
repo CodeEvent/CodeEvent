@@ -31,7 +31,8 @@ import {
   PriceList,
   Umbrella,
 } from '../types';
-import { isoDate } from '../utils/format';
+import { daysBetween, isoDate } from '../utils/format';
+import { equipmentPriceDelta } from '../utils/pricing';
 import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 import {
   articleToRow,
@@ -106,6 +107,7 @@ type Action =
   | { type: 'UPSERT_PRICELIST'; priceList: PriceList }
   | { type: 'DELETE_PRICELIST'; priceListId: string }
   | { type: 'PAY_BOOKING'; bookingId: string; amount: number }
+  | { type: 'UPDATE_BOOKING_EQUIPMENT'; bookingId: string; beds: number; chairs: number; priceDelta: number }
   | { type: 'CLOSE_CONTO'; conto: Conto }
   | { type: 'RENAME_ZONE'; row: number; name: string }
   | { type: 'REORDER_ZONE'; row: number; direction: 'up' | 'down' }
@@ -271,6 +273,20 @@ function reducer(state: AppState, action: Action): AppState {
     case 'PAY_BOOKING': {
       const bookings = state.bookings.map((b) =>
         b.id === action.bookingId ? { ...b, paid: Math.min(b.totalPrice, b.paid + action.amount) } : b
+      );
+      return { ...state, bookings };
+    }
+
+    case 'UPDATE_BOOKING_EQUIPMENT': {
+      const bookings = state.bookings.map((b) =>
+        b.id === action.bookingId
+          ? {
+              ...b,
+              beds: action.beds,
+              chairs: action.chairs,
+              totalPrice: Math.round((b.totalPrice + action.priceDelta) * 100) / 100,
+            }
+          : b
       );
       return { ...state, bookings };
     }
@@ -456,6 +472,7 @@ interface StoreContextValue extends AppState {
   upsertPriceList: (priceList: PriceList) => void;
   deletePriceList: (priceListId: string) => void;
   payBooking: (bookingId: string, amount: number) => void;
+  updateBookingEquipment: (bookingId: string, beds: number, chairs: number) => void;
   closeConto: (conto: Conto) => void;
   renameZone: (row: number, name: string) => void;
   reorderZone: (row: number, direction: 'up' | 'down') => void;
@@ -880,6 +897,37 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     }
   }, []);
 
+  // Adding beds/chairs to an already-existing booking -- from Conto's POS catalog or the
+  // customer's own self-service screen. Priced at the plain per-day rate for the whole stay
+  // (see equipmentPriceDelta) and folded straight into totalPrice, so the extra cost simply
+  // becomes part of the same balance the operator already settles in Conto.
+  const updateBookingEquipment = useCallback((bookingId: string, beds: number, chairs: number) => {
+    const prev = stateRef.current;
+    const booking = prev.bookings.find((b) => b.id === bookingId);
+    if (!booking) return;
+    const today = isoDate(0);
+    const priceList =
+      prev.priceLists.find((p) => p.activeFrom <= today && today <= p.activeTo) ?? prev.priceLists[0];
+    const days = daysBetween(booking.dateFrom, booking.dateTo);
+    const priceDelta = equipmentPriceDelta(priceList, days, beds - (booking.beds ?? 0), chairs - (booking.chairs ?? 0));
+    const action: Action = { type: 'UPDATE_BOOKING_EQUIPMENT', bookingId, beds, chairs, priceDelta };
+    const next = reducer(prev, action);
+    dispatch(action);
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
+      const updated = next.bookings.find((b) => b.id === bookingId);
+      if (updated)
+        runSync(
+          client
+            .from('bookings')
+            .update({ beds: updated.beds ?? null, chairs: updated.chairs ?? null, total_price: updated.totalPrice })
+            .eq('beach_id', beachId)
+            .eq('id', bookingId)
+        );
+    }
+  }, []);
+
   const renameZone = useCallback((row: number, name: string) => {
     dispatch({ type: 'RENAME_ZONE', row, name });
     const client = supabase;
@@ -1033,6 +1081,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       upsertPriceList,
       deletePriceList,
       payBooking,
+      updateBookingEquipment,
       closeConto,
       renameZone,
       reorderZone,
@@ -1064,6 +1113,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       upsertPriceList,
       deletePriceList,
       payBooking,
+      updateBookingEquipment,
       closeConto,
       renameZone,
       reorderZone,

@@ -4,12 +4,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
-import { Button, Card, Chip, SectionHeader, StatusPill } from '../components/UI';
+import { Button, Card, Chip, SectionHeader, StatusPill, Stepper } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Conto, ContoItem, DocType, PaymentMethod } from '../types';
+import { MAX_EQUIPMENT_PER_UMBRELLA } from '../utils/booking';
 import { baseDisplayStatusFor, hasOutstandingBalance } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort } from '../utils/format';
+
+// Lettino/Sdraio in the catalog below are the same articles the booking wizard prices
+// equipment with -- for an umbrella with an active booking, adding one here writes straight
+// into that booking's persistent beds/chairs (and its total price) instead of the one-off
+// cart, so the map caption and the customer's own account always agree with what Conto shows.
+const EQUIPMENT_ARTICLE_IDS = new Set(['art-lettino', 'art-sdraio']);
 
 const CATEGORY_LABEL: Record<ArticleCategory, string> = {
   ombrellone: 'Spiaggia',
@@ -34,8 +41,18 @@ const CATEGORY_ICON: Record<ArticleCategory, keyof typeof Ionicons.glyphMap> = {
 export const ContoScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { umbrellas, articles, getUmbrella, getBooking, getCustomer, getActivePriceList, payBooking, closeConto, freeUmbrella } =
-    useStore();
+  const {
+    umbrellas,
+    articles,
+    getUmbrella,
+    getBooking,
+    getCustomer,
+    getActivePriceList,
+    payBooking,
+    updateBookingEquipment,
+    closeConto,
+    freeUmbrella,
+  } = useStore();
   const alert = useAppAlert();
 
   const [umbrellaId, setUmbrellaId] = useState<string | undefined>(route.params?.umbrellaId);
@@ -65,7 +82,23 @@ export const ContoScreen: React.FC = () => {
 
   const priceFor = (article: Article) => priceList.prices[article.id] ?? article.basePrice;
 
+  const setEquipment = (beds: number, chairs: number) => {
+    if (!booking) return;
+    updateBookingEquipment(
+      booking.id,
+      Math.max(0, Math.min(MAX_EQUIPMENT_PER_UMBRELLA, beds)),
+      Math.max(0, Math.min(MAX_EQUIPMENT_PER_UMBRELLA, chairs))
+    );
+  };
+
   const addItem = (article: Article) => {
+    // With an active booking, Lettino/Sdraio go straight onto that booking's account instead
+    // of the transient cart -- see EQUIPMENT_ARTICLE_IDS above.
+    if (booking && EQUIPMENT_ARTICLE_IDS.has(article.id)) {
+      if (article.id === 'art-lettino') setEquipment((booking.beds ?? 0) + 1, booking.chairs ?? 0);
+      else setEquipment(booking.beds ?? 0, (booking.chairs ?? 0) + 1);
+      return;
+    }
     setItems((prev) => {
       const existing = prev.find((i) => i.articleId === article.id);
       if (existing) {
@@ -198,13 +231,22 @@ export const ContoScreen: React.FC = () => {
                       {booking.guests.childrenUnder5 ? ` · ${booking.guests.childrenUnder5} bambini <5` : ''}
                     </Text>
                   )}
-                  {(booking.beds || booking.chairs) && (
-                    <Text style={styles.muted}>
-                      {booking.beds ? `${booking.beds} lettin${booking.beds === 1 ? 'o' : 'i'}` : ''}
-                      {booking.beds && booking.chairs ? ' · ' : ''}
-                      {booking.chairs ? `${booking.chairs} sdra${booking.chairs === 1 ? 'io' : 'i'}` : ''}
-                    </Text>
-                  )}
+                  <View style={styles.equipmentBlock}>
+                    <Stepper
+                      label="Lettini"
+                      icon="bed-outline"
+                      value={booking.beds ?? 0}
+                      max={MAX_EQUIPMENT_PER_UMBRELLA}
+                      onChange={(v) => setEquipment(v, booking.chairs ?? 0)}
+                    />
+                    <Stepper
+                      label="Sdraio"
+                      icon="sunny-outline"
+                      value={booking.chairs ?? 0}
+                      max={MAX_EQUIPMENT_PER_UMBRELLA}
+                      onChange={(v) => setEquipment(booking.beds ?? 0, v)}
+                    />
+                  </View>
                   <Text style={styles.muted}>
                     Prenotazione: {formatCurrency(booking.totalPrice)} · Pagato {formatCurrency(booking.paid)}
                   </Text>
@@ -233,20 +275,24 @@ export const ContoScreen: React.FC = () => {
               />
             ))}
           </ScrollView>
-          {filteredArticles.map((a) => (
-            <View key={a.id} style={styles.articleRow}>
-              <View style={styles.articleIconBox}>
-                <Ionicons name={CATEGORY_ICON[a.category]} size={18} color={colors.primary} />
+          {filteredArticles.map((a) => {
+            const linkedToBooking = !!booking && EQUIPMENT_ARTICLE_IDS.has(a.id);
+            return (
+              <View key={a.id} style={styles.articleRow}>
+                <View style={styles.articleIconBox}>
+                  <Ionicons name={CATEGORY_ICON[a.category]} size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.articleName}>{a.name}</Text>
+                  <Text style={styles.muted}>
+                    {formatCurrency(priceFor(a))} / {a.unit}
+                    {linkedToBooking ? ' · sull\'account della prenotazione' : ''}
+                  </Text>
+                </View>
+                <Button title="+ Aggiungi" variant="secondary" onPress={() => addItem(a)} style={{ paddingVertical: 6 }} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.articleName}>{a.name}</Text>
-                <Text style={styles.muted}>
-                  {formatCurrency(priceFor(a))} / {a.unit}
-                </Text>
-              </View>
-              <Button title="+ Aggiungi" variant="secondary" onPress={() => addItem(a)} style={{ paddingVertical: 6 }} />
-            </View>
-          ))}
+            );
+          })}
         </Card>
 
         <Card style={{ marginBottom: spacing.lg }}>
@@ -367,6 +413,13 @@ const styles = StyleSheet.create({
   },
   customerName: { fontWeight: '700', fontSize: 15, color: colors.text },
   referenceText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12, marginTop: 2, letterSpacing: 0.5 },
+  equipmentBlock: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+  },
   articleRow: {
     flexDirection: 'row',
     alignItems: 'center',

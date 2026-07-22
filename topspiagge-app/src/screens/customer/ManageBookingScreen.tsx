@@ -3,10 +3,11 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
-import { Button, Card, StatusPill } from '../../components/UI';
+import { Button, Card, StatusPill, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { Booking, Customer } from '../../types';
+import { MAX_EQUIPMENT_PER_UMBRELLA } from '../../utils/booking';
 import { displayStatusForBooking, isStagionaleBooking } from '../../utils/displayStatus';
 import { isDepositRefundable } from '../../utils/cancellation';
 import { formatCurrency, formatDateShort, isoDate } from '../../utils/format';
@@ -23,7 +24,7 @@ interface Props {
 // of last name / email / phone -- a simple two-factor lookup so a reference number alone
 // (which could leak or be guessed) isn't enough to reach someone else's booking.
 export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
-  const { bookings, customers, getUmbrella, cancelBooking } = useStore();
+  const { bookings, customers, getUmbrella, cancelBooking, updateBookingEquipment } = useStore();
   const alert = useAppAlert();
   const [reference, setReference] = useState('');
   const [identity, setIdentity] = useState('');
@@ -151,6 +152,7 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
             </Text>
             {result.group.map((b) => {
               const u = getUmbrella(b.umbrellaId);
+              const stagionale = isStagionaleBooking(b);
               return (
                 <Card key={b.id} style={{ marginTop: spacing.sm }}>
                   <View style={styles.rowBetween}>
@@ -162,6 +164,24 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
                   <Text style={styles.muted}>
                     {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
                   </Text>
+                  {!stagionale && (
+                    <View style={styles.equipmentBlock}>
+                      <Stepper
+                        label="Lettini"
+                        icon="bed-outline"
+                        value={b.beds ?? 0}
+                        max={MAX_EQUIPMENT_PER_UMBRELLA}
+                        onChange={(v) => updateBookingEquipment(b.id, v, b.chairs ?? 0)}
+                      />
+                      <Stepper
+                        label="Sdraio"
+                        icon="sunny-outline"
+                        value={b.chairs ?? 0}
+                        max={MAX_EQUIPMENT_PER_UMBRELLA}
+                        onChange={(v) => updateBookingEquipment(b.id, b.beds ?? 0, v)}
+                      />
+                    </View>
+                  )}
                 </Card>
               );
             })}
@@ -233,6 +253,12 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { fontWeight: '700', fontSize: 14, color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
+  equipmentBlock: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
