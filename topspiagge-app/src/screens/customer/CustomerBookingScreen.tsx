@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
 import { GAP, MIN_CELL, BeachCanvas, useUmbrellaPositions } from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
+import { QRCode } from '../../components/QRCode';
 import { Button, Card, Checkbox, Chip, StepProgressBar, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
@@ -1131,8 +1132,12 @@ const ConfirmationModal: React.FC<{
           <View style={styles.referenceBox}>
             <Text style={styles.referenceLabel}>Codice prenotazione</Text>
             <Text style={styles.referenceValue}>{primary.reference}</Text>
+            <View style={{ marginTop: spacing.sm }}>
+              <QRCode value={primary.reference} size={120} />
+            </View>
             <Text style={styles.referenceHint}>
-              Conservalo: ti servirà per modificare o cancellare la prenotazione
+              Conservalo: ti servirà per modificare o cancellare la prenotazione, oppure mostra il
+              codice QR in reception per il check-in
             </Text>
           </View>
 

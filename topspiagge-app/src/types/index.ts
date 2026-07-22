@@ -57,6 +57,30 @@ export interface Booking {
   groupId?: string; // links sibling bookings made together for a party > 4 adults, spread across umbrellas
   reference: string; // short code shown to the customer, shared by every booking in the same group
   isStudent?: boolean; // self-declared, honor-system -- only ever matters for the same-day student discount
+  checkedInAt?: string; // ISO datetime -- set once the operator confirms the guest at reception; while
+  // unset, the customer can still freely remove equipment themselves (see EquipmentChange below)
+}
+
+// A guest-initiated change to their own booking's beds/chairs, made from "Gestisci la mia
+// prenotazione" -- kept as its own append-only log (rather than mutating the booking directly
+// for adds) so the operator has something concrete to act on:
+//  - 'add': the guest requested more equipment but pays for it in person at reception, so the
+//    booking itself is untouched until the operator collects payment and confirms the request.
+//  - 'remove': the guest can drop equipment (and get refunded) themselves any time before
+//    check-in -- that already updates the booking immediately, this record is purely the
+//    operator's heads-up to go physically take the item away.
+export type EquipmentChangeType = 'add' | 'remove';
+
+export interface EquipmentChange {
+  id: string;
+  type: EquipmentChangeType;
+  bookingId: string;
+  umbrellaId: string;
+  beds: number; // magnitude of the change (always >= 0), never both beds and chairs > 0 at once
+  chairs: number;
+  amount: number; // to collect at reception ('add') or already refunded to the guest ('remove')
+  createdAt: string;
+  resolved: boolean;
 }
 
 export type ArticleCategory =

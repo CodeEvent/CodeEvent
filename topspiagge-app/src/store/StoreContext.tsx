@@ -27,6 +27,7 @@ import {
   Conto,
   Customer,
   DailyStat,
+  EquipmentChange,
   LayoutElement,
   PriceList,
   Umbrella,
@@ -71,6 +72,7 @@ interface AppState {
   conti: Conto[];
   dailyStats: DailyStat[];
   layoutElements: LayoutElement[];
+  equipmentChanges: EquipmentChange[];
   hydrated: boolean;
 }
 
@@ -88,6 +90,7 @@ function buildInitialState(): AppState {
     conti: buildContiStorico(),
     dailyStats: buildDailyStats(),
     layoutElements: [],
+    equipmentChanges: [],
     hydrated: false,
   };
 }
@@ -108,6 +111,27 @@ type Action =
   | { type: 'DELETE_PRICELIST'; priceListId: string }
   | { type: 'PAY_BOOKING'; bookingId: string; amount: number }
   | { type: 'UPDATE_BOOKING_EQUIPMENT'; bookingId: string; beds: number; chairs: number; priceDelta: number }
+  | { type: 'REQUEST_EQUIPMENT_ADD'; change: EquipmentChange }
+  | { type: 'CANCEL_EQUIPMENT_ADD'; changeId: string }
+  | {
+      type: 'CONFIRM_EQUIPMENT_ADD';
+      changeId: string;
+      bookingId: string;
+      beds: number;
+      chairs: number;
+      priceDelta: number;
+    }
+  | {
+      type: 'REMOVE_EQUIPMENT_REFUND';
+      bookingId: string;
+      beds: number;
+      chairs: number;
+      priceDelta: number;
+      refundAmount: number;
+      change: EquipmentChange;
+    }
+  | { type: 'RESOLVE_EQUIPMENT_CHANGE'; changeId: string }
+  | { type: 'CONFIRM_CHECK_IN'; bookingId: string; checkedInAt: string }
   | { type: 'CLOSE_CONTO'; conto: Conto }
   | { type: 'RENAME_ZONE'; row: number; name: string }
   | { type: 'REORDER_ZONE'; row: number; direction: 'up' | 'down' }
@@ -287,6 +311,62 @@ function reducer(state: AppState, action: Action): AppState {
               totalPrice: Math.round((b.totalPrice + action.priceDelta) * 100) / 100,
             }
           : b
+      );
+      return { ...state, bookings };
+    }
+
+    case 'REQUEST_EQUIPMENT_ADD':
+      return { ...state, equipmentChanges: [...state.equipmentChanges, action.change] };
+
+    case 'CANCEL_EQUIPMENT_ADD':
+      return {
+        ...state,
+        equipmentChanges: state.equipmentChanges.filter((c) => c.id !== action.changeId),
+      };
+
+    case 'CONFIRM_EQUIPMENT_ADD': {
+      const bookings = state.bookings.map((b) =>
+        b.id === action.bookingId
+          ? {
+              ...b,
+              beds: action.beds,
+              chairs: action.chairs,
+              totalPrice: Math.round((b.totalPrice + action.priceDelta) * 100) / 100,
+            }
+          : b
+      );
+      const equipmentChanges = state.equipmentChanges.map((c) =>
+        c.id === action.changeId ? { ...c, resolved: true } : c
+      );
+      return { ...state, bookings, equipmentChanges };
+    }
+
+    case 'REMOVE_EQUIPMENT_REFUND': {
+      const bookings = state.bookings.map((b) =>
+        b.id === action.bookingId
+          ? {
+              ...b,
+              beds: action.beds,
+              chairs: action.chairs,
+              totalPrice: Math.round((b.totalPrice + action.priceDelta) * 100) / 100,
+              paid: Math.max(0, Math.round((b.paid - action.refundAmount) * 100) / 100),
+            }
+          : b
+      );
+      return { ...state, bookings, equipmentChanges: [...state.equipmentChanges, action.change] };
+    }
+
+    case 'RESOLVE_EQUIPMENT_CHANGE':
+      return {
+        ...state,
+        equipmentChanges: state.equipmentChanges.map((c) =>
+          c.id === action.changeId ? { ...c, resolved: true } : c
+        ),
+      };
+
+    case 'CONFIRM_CHECK_IN': {
+      const bookings = state.bookings.map((b) =>
+        b.id === action.bookingId ? { ...b, checkedInAt: action.checkedInAt } : b
       );
       return { ...state, bookings };
     }
@@ -473,6 +553,12 @@ interface StoreContextValue extends AppState {
   deletePriceList: (priceListId: string) => void;
   payBooking: (bookingId: string, amount: number) => void;
   updateBookingEquipment: (bookingId: string, beds: number, chairs: number) => void;
+  requestEquipmentAdd: (bookingId: string, umbrellaId: string, deltaBeds: number, deltaChairs: number) => void;
+  cancelEquipmentAdd: (changeId: string) => void;
+  confirmEquipmentAdd: (changeId: string) => void;
+  removeEquipmentAndRefund: (bookingId: string, deltaBeds: number, deltaChairs: number) => void;
+  resolveEquipmentChange: (changeId: string) => void;
+  confirmCheckIn: (bookingId: string) => void;
   closeConto: (conto: Conto) => void;
   renameZone: (row: number, name: string) => void;
   reorderZone: (row: number, direction: 'up' | 'down') => void;
@@ -576,6 +662,10 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
               // No Supabase table yet -- restored right after by the dedicated local-storage
               // effect below (layout decorations are device-local for now even in Supabase mode).
               layoutElements: [],
+              // No Supabase table yet either -- guest equipment requests/refunds are lost on
+              // refresh once Supabase is configured, until a real table backs this (see the
+              // backend-fortification follow-up); local-fallback mode keeps them via STORAGE_KEY.
+              equipmentChanges: [],
               hydrated: true,
             },
           });
@@ -928,6 +1018,149 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     }
   }, []);
 
+  // Guest-initiated equipment change requests (from "Gestisci la mia prenotazione") -- see
+  // EquipmentChange in types/index.ts for why 'add' and 'remove' behave so differently.
+  const requestEquipmentAdd = useCallback(
+    (bookingId: string, umbrellaId: string, deltaBeds: number, deltaChairs: number) => {
+      const prev = stateRef.current;
+      const booking = prev.bookings.find((b) => b.id === bookingId);
+      if (!booking) return;
+      const today = isoDate(0);
+      const priceList =
+        prev.priceLists.find((p) => p.activeFrom <= today && today <= p.activeTo) ?? prev.priceLists[0];
+      const days = daysBetween(booking.dateFrom, booking.dateTo);
+      const amount = equipmentPriceDelta(priceList, days, deltaBeds, deltaChairs);
+      const change: EquipmentChange = {
+        id: `eq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: 'add',
+        bookingId,
+        umbrellaId,
+        beds: deltaBeds,
+        chairs: deltaChairs,
+        amount,
+        createdAt: new Date().toISOString(),
+        resolved: false,
+      };
+      dispatch({ type: 'REQUEST_EQUIPMENT_ADD', change });
+    },
+    []
+  );
+
+  // The guest changed their mind before paying at reception -- the booking was never touched,
+  // so undoing this is just dropping the request.
+  const cancelEquipmentAdd = useCallback((changeId: string) => {
+    dispatch({ type: 'CANCEL_EQUIPMENT_ADD', changeId });
+  }, []);
+
+  // Operator collected the payment in person and applies it -- same booking mutation as
+  // updateBookingEquipment, plus marking the request resolved so it drops off the pending list.
+  const confirmEquipmentAdd = useCallback((changeId: string) => {
+    const prev = stateRef.current;
+    const change = prev.equipmentChanges.find((c) => c.id === changeId);
+    if (!change) return;
+    const booking = prev.bookings.find((b) => b.id === change.bookingId);
+    if (!booking) return;
+    const beds = (booking.beds ?? 0) + change.beds;
+    const chairs = (booking.chairs ?? 0) + change.chairs;
+    const action: Action = {
+      type: 'CONFIRM_EQUIPMENT_ADD',
+      changeId,
+      bookingId: change.bookingId,
+      beds,
+      chairs,
+      priceDelta: change.amount,
+    };
+    const next = reducer(prev, action);
+    dispatch(action);
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
+      const updated = next.bookings.find((b) => b.id === change.bookingId);
+      if (updated)
+        runSync(
+          client
+            .from('bookings')
+            .update({ beds: updated.beds ?? null, chairs: updated.chairs ?? null, total_price: updated.totalPrice })
+            .eq('beach_id', beachId)
+            .eq('id', change.bookingId)
+        );
+    }
+  }, []);
+
+  // The guest drops equipment themselves (only ever offered before check-in) -- unlike an add,
+  // this takes effect immediately: the booking's total shrinks and whatever they'd already paid
+  // toward it is refunded on the spot, so there's no "pending payment" step to gate it on.
+  const removeEquipmentAndRefund = useCallback((bookingId: string, deltaBeds: number, deltaChairs: number) => {
+    const prev = stateRef.current;
+    const booking = prev.bookings.find((b) => b.id === bookingId);
+    if (!booking) return;
+    const today = isoDate(0);
+    const priceList =
+      prev.priceLists.find((p) => p.activeFrom <= today && today <= p.activeTo) ?? prev.priceLists[0];
+    const days = daysBetween(booking.dateFrom, booking.dateTo);
+    const priceDelta = equipmentPriceDelta(priceList, days, -deltaBeds, -deltaChairs);
+    const refundAmount = Math.min(booking.paid, -priceDelta);
+    const beds = Math.max(0, (booking.beds ?? 0) - deltaBeds);
+    const chairs = Math.max(0, (booking.chairs ?? 0) - deltaChairs);
+    const change: EquipmentChange = {
+      id: `eq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'remove',
+      bookingId,
+      umbrellaId: booking.umbrellaId,
+      beds: deltaBeds,
+      chairs: deltaChairs,
+      amount: refundAmount,
+      createdAt: new Date().toISOString(),
+      resolved: false,
+    };
+    const action: Action = {
+      type: 'REMOVE_EQUIPMENT_REFUND',
+      bookingId,
+      beds,
+      chairs,
+      priceDelta,
+      refundAmount,
+      change,
+    };
+    const next = reducer(prev, action);
+    dispatch(action);
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
+      const updated = next.bookings.find((b) => b.id === bookingId);
+      if (updated)
+        runSync(
+          client
+            .from('bookings')
+            .update({
+              beds: updated.beds ?? null,
+              chairs: updated.chairs ?? null,
+              total_price: updated.totalPrice,
+              paid: updated.paid,
+            })
+            .eq('beach_id', beachId)
+            .eq('id', bookingId)
+        );
+    }
+  }, []);
+
+  // Operator has physically taken the item away (and already handed back the refund at request
+  // time) -- dismissing here just clears it off the pending-notifications list.
+  const resolveEquipmentChange = useCallback((changeId: string) => {
+    dispatch({ type: 'RESOLVE_EQUIPMENT_CHANGE', changeId });
+  }, []);
+
+  const confirmCheckIn = useCallback((bookingId: string) => {
+    const checkedInAt = new Date().toISOString();
+    const action: Action = { type: 'CONFIRM_CHECK_IN', bookingId, checkedInAt };
+    dispatch(action);
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
+      runSync(client.from('bookings').update({ checked_in_at: checkedInAt }).eq('beach_id', beachId).eq('id', bookingId));
+    }
+  }, []);
+
   const renameZone = useCallback((row: number, name: string) => {
     dispatch({ type: 'RENAME_ZONE', row, name });
     const client = supabase;
@@ -1082,6 +1315,12 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       deletePriceList,
       payBooking,
       updateBookingEquipment,
+      requestEquipmentAdd,
+      cancelEquipmentAdd,
+      confirmEquipmentAdd,
+      removeEquipmentAndRefund,
+      resolveEquipmentChange,
+      confirmCheckIn,
       closeConto,
       renameZone,
       reorderZone,
@@ -1114,6 +1353,12 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       deletePriceList,
       payBooking,
       updateBookingEquipment,
+      requestEquipmentAdd,
+      cancelEquipmentAdd,
+      confirmEquipmentAdd,
+      removeEquipmentAndRefund,
+      resolveEquipmentChange,
+      confirmCheckIn,
       closeConto,
       renameZone,
       reorderZone,

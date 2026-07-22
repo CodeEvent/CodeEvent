@@ -3,14 +3,17 @@ import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
-import { Button, Card, StatusPill, Stepper } from '../../components/UI';
+import { PaymentSummary } from '../../components/PaymentSummary';
+import { QRCode } from '../../components/QRCode';
+import { Button, Card, StatusPill } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { Booking, Customer } from '../../types';
 import { MAX_EQUIPMENT_PER_UMBRELLA } from '../../utils/booking';
 import { displayStatusForBooking, isStagionaleBooking } from '../../utils/displayStatus';
 import { isDepositRefundable } from '../../utils/cancellation';
-import { formatCurrency, formatDateShort, isoDate } from '../../utils/format';
+import { daysBetween, formatCurrency, formatDateShort, isoDate } from '../../utils/format';
+import { equipmentPriceDelta } from '../../utils/pricing';
 import { referencesMatch } from '../../utils/reference';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
@@ -24,7 +27,17 @@ interface Props {
 // of last name / email / phone -- a simple two-factor lookup so a reference number alone
 // (which could leak or be guessed) isn't enough to reach someone else's booking.
 export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
-  const { bookings, customers, getUmbrella, cancelBooking, updateBookingEquipment } = useStore();
+  const {
+    bookings,
+    customers,
+    getUmbrella,
+    cancelBooking,
+    equipmentChanges,
+    requestEquipmentAdd,
+    cancelEquipmentAdd,
+    removeEquipmentAndRefund,
+    getActivePriceList,
+  } = useStore();
   const alert = useAppAlert();
   const [reference, setReference] = useState('');
   const [identity, setIdentity] = useState('');
@@ -91,6 +104,24 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
     );
   };
 
+  const confirmRemove = (booking: Booking, label: string, deltaBeds: number, deltaChairs: number) => {
+    const priceList = getActivePriceList();
+    const days = daysBetween(booking.dateFrom, booking.dateTo);
+    const refund = Math.min(booking.paid, -equipmentPriceDelta(priceList, days, -deltaBeds, -deltaChairs));
+    alert(
+      `Togliere ${label}?`,
+      `Ti verranno rimborsati ${formatCurrency(refund)}. Segnaliamo al gestore di rimuovere l'articolo dalla tua postazione.`,
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Togli e rimborsa',
+          style: 'destructive',
+          onPress: () => removeEquipmentAndRefund(booking.id, deltaBeds, deltaChairs),
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
@@ -147,12 +178,29 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
         {result.group.length > 0 && result.customer && (
           <View style={{ marginTop: spacing.lg }}>
             <Text style={styles.welcomeText}>Ciao, {result.customer.name}! 👋</Text>
+
+            {primary && (
+              <View style={styles.qrCard}>
+                <QRCode value={primary.reference} size={140} />
+                <Text style={styles.qrReference}>{primary.reference}</Text>
+                <Text style={styles.qrHint}>Mostra questo codice in reception per il check-in</Text>
+              </View>
+            )}
+
             <Text style={styles.sectionLabel}>
               {result.group.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
             </Text>
             {result.group.map((b) => {
               const u = getUmbrella(b.umbrellaId);
               const stagionale = isStagionaleBooking(b);
+              const checkedIn = !!b.checkedInAt;
+              const pendingAdd = equipmentChanges.find(
+                (c) => c.bookingId === b.id && c.type === 'add' && !c.resolved
+              );
+              const beds = b.beds ?? 0;
+              const chairs = b.chairs ?? 0;
+              const addBlocked = !!pendingAdd;
+
               return (
                 <Card key={b.id} style={{ marginTop: spacing.sm }}>
                   <View style={styles.rowBetween}>
@@ -162,25 +210,58 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
                     <StatusPill status={displayStatusForBooking(b)} />
                   </View>
                   <Text style={styles.muted}>
-                    {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
+                    {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)}
                   </Text>
-                  {!stagionale && (
-                    <View style={styles.equipmentBlock}>
-                      <Stepper
-                        label="Lettini"
-                        icon="bed-outline"
-                        value={b.beds ?? 0}
-                        max={MAX_EQUIPMENT_PER_UMBRELLA}
-                        onChange={(v) => updateBookingEquipment(b.id, v, b.chairs ?? 0)}
-                      />
-                      <Stepper
-                        label="Sdraio"
-                        icon="sunny-outline"
-                        value={b.chairs ?? 0}
-                        max={MAX_EQUIPMENT_PER_UMBRELLA}
-                        onChange={(v) => updateBookingEquipment(b.id, b.beds ?? 0, v)}
-                      />
+
+                  {checkedIn && (
+                    <View style={styles.checkedInBox}>
+                      <Ionicons name="checkmark-circle" size={14} color={colors.libero} />
+                      <Text style={styles.checkedInText}>Check-in confermato in reception</Text>
                     </View>
+                  )}
+
+                  <PaymentSummary booking={b} pendingAddAmount={pendingAdd?.amount ?? 0} />
+
+                  {!stagionale && !checkedIn && (
+                    <View style={styles.equipmentBlock}>
+                      {renderEquipRow({
+                        label: 'Lettini',
+                        icon: 'bed-outline',
+                        count: beds,
+                        addDisabled: addBlocked || beds >= MAX_EQUIPMENT_PER_UMBRELLA,
+                        onAdd: () => requestEquipmentAdd(b.id, b.umbrellaId, 1, 0),
+                        onRemove: () => confirmRemove(b, '1 lettino', 1, 0),
+                      })}
+                      {renderEquipRow({
+                        label: 'Sdraio',
+                        icon: 'sunny-outline',
+                        count: chairs,
+                        addDisabled: addBlocked || chairs >= MAX_EQUIPMENT_PER_UMBRELLA,
+                        onAdd: () => requestEquipmentAdd(b.id, b.umbrellaId, 0, 1),
+                        onRemove: () => confirmRemove(b, '1 sdraio', 0, 1),
+                      })}
+                      {pendingAdd && (
+                        <View style={styles.pendingBox}>
+                          <Text style={styles.pendingText}>
+                            Richiesta in corso: {pendingAdd.beds ? `+${pendingAdd.beds} lettini` : ''}
+                            {pendingAdd.beds && pendingAdd.chairs ? ' · ' : ''}
+                            {pendingAdd.chairs ? `+${pendingAdd.chairs} sdraio` : ''} ·{' '}
+                            {formatCurrency(pendingAdd.amount)} da pagare in reception
+                          </Text>
+                          <Button
+                            title="Annulla richiesta"
+                            variant="ghost"
+                            onPress={() => cancelEquipmentAdd(pendingAdd.id)}
+                            style={{ marginTop: spacing.xs, paddingVertical: 4 }}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  {!stagionale && checkedIn && (
+                    <Text style={styles.checkinLockedText}>
+                      Dopo il check-in, per aggiungere o togliere lettini/sdraio contatta la reception.
+                    </Text>
                   )}
                 </Card>
               );
@@ -224,6 +305,64 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
   );
 };
 
+interface EquipRowProps {
+  label: string;
+  icon: 'bed-outline' | 'sunny-outline';
+  count: number;
+  addDisabled: boolean;
+  onAdd: () => void;
+  onRemove: () => void;
+}
+
+// Deliberately not the shared <Stepper>: "+" and "-" here trigger two very different flows
+// (request-and-pay-later vs remove-and-refund-now), not a single symmetric onChange(value).
+function renderEquipRow({ label, icon, count, addDisabled, onAdd, onRemove }: EquipRowProps) {
+  return (
+    <View style={equipStyles.row} key={label}>
+      <View style={equipStyles.labelRow}>
+        <Ionicons name={icon} size={16} color={colors.textMuted} />
+        <Text style={equipStyles.label}>{label}</Text>
+      </View>
+      <View style={equipStyles.controls}>
+        <Pressable
+          onPress={onRemove}
+          disabled={count <= 0}
+          style={[equipStyles.btn, count <= 0 && equipStyles.btnDisabled]}
+        >
+          <Ionicons name="remove" size={16} color={count <= 0 ? colors.border : colors.primary} />
+        </Pressable>
+        <Text style={equipStyles.count}>{count}</Text>
+        <Pressable
+          onPress={onAdd}
+          disabled={addDisabled}
+          style={[equipStyles.btn, addDisabled && equipStyles.btnDisabled]}
+        >
+          <Ionicons name="add" size={16} color={addDisabled ? colors.border : colors.primary} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const equipStyles = StyleSheet.create({
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  label: { fontSize: 13, fontWeight: '600', color: colors.text },
+  controls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  btn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  btnDisabled: { opacity: 0.5 },
+  count: { fontWeight: '700', color: colors.text, minWidth: 18, textAlign: 'center' },
+});
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.card },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.sm },
@@ -249,16 +388,35 @@ const styles = StyleSheet.create({
   },
   notFoundText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
   welcomeText: { color: colors.libero, fontWeight: '700', fontSize: 14, marginBottom: spacing.sm },
+  qrCard: {
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  qrReference: { marginTop: spacing.sm, fontWeight: '800', fontSize: 15, color: colors.primaryDark, letterSpacing: 1 },
+  qrHint: { marginTop: 2, fontSize: 11, color: colors.textMuted },
   sectionLabel: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { fontWeight: '700', fontSize: 14, color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
+  checkedInBox: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.xs },
+  checkedInText: { color: colors.libero, fontWeight: '700', fontSize: 12 },
   equipmentBlock: {
     marginTop: spacing.sm,
     paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
+  pendingBox: {
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  pendingText: { color: colors.primaryDark, fontSize: 12, fontWeight: '600' },
+  checkinLockedText: { fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, fontStyle: 'italic' },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

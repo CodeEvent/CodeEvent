@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
+import { PaymentSummary } from '../components/PaymentSummary';
 import { Button, Card, Chip, SectionHeader, StatusPill, Stepper } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
@@ -50,6 +51,9 @@ export const ContoScreen: React.FC = () => {
     getActivePriceList,
     payBooking,
     updateBookingEquipment,
+    equipmentChanges,
+    confirmEquipmentAdd,
+    confirmCheckIn,
     closeConto,
     freeUmbrella,
   } = useStore();
@@ -74,6 +78,9 @@ export const ContoScreen: React.FC = () => {
   const booking = getBooking(umbrella?.currentBookingId);
   const customer = getCustomer(booking?.customerId);
   const remainingBalance = booking ? Math.max(0, booking.totalPrice - booking.paid) : 0;
+  const pendingAddChange = booking
+    ? equipmentChanges.find((c) => c.bookingId === booking.id && c.type === 'add' && !c.resolved)
+    : undefined;
 
   const occupiedUmbrellas = useMemo(
     () => umbrellas.filter((u) => u.status !== 'libero'),
@@ -231,6 +238,41 @@ export const ContoScreen: React.FC = () => {
                       {booking.guests.childrenUnder5 ? ` · ${booking.guests.childrenUnder5} bambini <5` : ''}
                     </Text>
                   )}
+
+                  <View style={styles.checkinRow}>
+                    {booking.checkedInAt ? (
+                      <View style={styles.checkedInBadge}>
+                        <Ionicons name="checkmark-circle" size={14} color={colors.libero} />
+                        <Text style={styles.checkedInBadgeText}>Check-in confermato</Text>
+                      </View>
+                    ) : (
+                      <Button
+                        title="Conferma check-in"
+                        variant="secondary"
+                        icon="checkmark-circle-outline"
+                        onPress={() => confirmCheckIn(booking.id)}
+                        style={{ paddingVertical: 6 }}
+                      />
+                    )}
+                  </View>
+
+                  {pendingAddChange && (
+                    <View style={styles.pendingRequestBox}>
+                      <Text style={styles.pendingRequestText}>
+                        Il cliente ha richiesto {pendingAddChange.beds ? `+${pendingAddChange.beds} lettini` : ''}
+                        {pendingAddChange.beds && pendingAddChange.chairs ? ' · ' : ''}
+                        {pendingAddChange.chairs ? `+${pendingAddChange.chairs} sdraio` : ''} dall'app · da incassare{' '}
+                        {formatCurrency(pendingAddChange.amount)} in reception
+                      </Text>
+                      <Button
+                        title="Conferma pagamento e aggiungi"
+                        variant="success"
+                        onPress={() => confirmEquipmentAdd(pendingAddChange.id)}
+                        style={{ marginTop: spacing.xs, paddingVertical: 6 }}
+                      />
+                    </View>
+                  )}
+
                   <View style={styles.equipmentBlock}>
                     <Stepper
                       label="Lettini"
@@ -247,9 +289,9 @@ export const ContoScreen: React.FC = () => {
                       onChange={(v) => setEquipment(booking.beds ?? 0, v)}
                     />
                   </View>
-                  <Text style={styles.muted}>
-                    Prenotazione: {formatCurrency(booking.totalPrice)} · Pagato {formatCurrency(booking.paid)}
-                  </Text>
+
+                  <PaymentSummary booking={booking} pendingAddAmount={pendingAddChange?.amount ?? 0} />
+
                   {remainingBalance > 0 && (
                     <Chip
                       label={`Salda ombrellone: ${formatCurrency(remainingBalance)}`}
@@ -413,6 +455,16 @@ const styles = StyleSheet.create({
   },
   customerName: { fontWeight: '700', fontSize: 15, color: colors.text },
   referenceText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12, marginTop: 2, letterSpacing: 0.5 },
+  checkinRow: { marginTop: spacing.sm },
+  checkedInBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  checkedInBadgeText: { color: colors.libero, fontWeight: '700', fontSize: 12 },
+  pendingRequestBox: {
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  pendingRequestText: { color: colors.primaryDark, fontSize: 12, fontWeight: '600' },
   equipmentBlock: {
     marginTop: spacing.sm,
     marginBottom: spacing.xs,

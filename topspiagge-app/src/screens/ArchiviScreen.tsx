@@ -73,10 +73,22 @@ export const ArchiviScreen: React.FC = () => {
 
 const OggiTab: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { bookings, umbrellas, getUmbrella, getCustomer, getBooking, freeUmbrella } = useStore();
+  const {
+    bookings,
+    umbrellas,
+    getUmbrella,
+    getCustomer,
+    getBooking,
+    freeUmbrella,
+    equipmentChanges,
+    confirmEquipmentAdd,
+    resolveEquipmentChange,
+    confirmCheckIn,
+  } = useStore();
   const alert = useAppAlert();
   const today = isoDate(0);
 
+  const pendingChanges = useMemo(() => equipmentChanges.filter((c) => !c.resolved), [equipmentChanges]);
   const arrivals = useMemo(() => bookings.filter((b) => b.dateFrom === today), [bookings, today]);
   const departures = useMemo(() => bookings.filter((b) => b.dateTo === today), [bookings, today]);
   const daSaldareUmbrellas = useMemo(
@@ -99,7 +111,44 @@ const OggiTab: React.FC = () => {
 
   return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
-      <Text style={styles.dateSectionHeader}>Arrivi di oggi ({arrivals.length})</Text>
+      <Text style={styles.dateSectionHeader}>Richieste in sospeso ({pendingChanges.length})</Text>
+      {pendingChanges.length === 0 && (
+        <Text style={styles.muted}>Nessuna richiesta di lettini/sdraio dall'app in sospeso.</Text>
+      )}
+      {pendingChanges.map((c) => {
+        const u = getUmbrella(c.umbrellaId);
+        const b = getBooking(c.bookingId);
+        const customer = getCustomer(b?.customerId);
+        const equipLabel = [c.beds ? `${c.beds} lettini` : null, c.chairs ? `${c.chairs} sdraio` : null]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <Card key={c.id} style={{ marginBottom: spacing.md }}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.itemTitle}>
+                Ombrellone N.{u?.number} · {u?.zone}
+              </Text>
+              <Text style={[styles.muted, { color: c.type === 'add' ? colors.primaryDark : colors.libero }]}>
+                {c.type === 'add' ? 'Da incassare' : 'Rimborsato'}
+              </Text>
+            </View>
+            <Text style={styles.muted}>{customer?.name ?? 'Cliente'}</Text>
+            <Text style={styles.muted}>
+              {c.type === 'add'
+                ? `Richiesto dall'app: +${equipLabel} · ${formatCurrency(c.amount)} da pagare in reception`
+                : `Rimosso dal cliente: ${equipLabel} · ${formatCurrency(c.amount)} già rimborsati`}
+            </Text>
+            <Button
+              title={c.type === 'add' ? 'Conferma pagamento e aggiungi' : 'Segna come rimosso'}
+              variant={c.type === 'add' ? 'success' : 'secondary'}
+              onPress={() => (c.type === 'add' ? confirmEquipmentAdd(c.id) : resolveEquipmentChange(c.id))}
+              style={{ marginTop: spacing.sm, paddingVertical: 6 }}
+            />
+          </Card>
+        );
+      })}
+
+      <Text style={[styles.dateSectionHeader, { marginTop: spacing.lg }]}>Arrivi di oggi ({arrivals.length})</Text>
       {arrivals.length === 0 && <Text style={styles.muted}>Nessun arrivo previsto oggi.</Text>}
       {arrivals.map((b) => {
         const u = getUmbrella(b.umbrellaId);
@@ -115,12 +164,27 @@ const OggiTab: React.FC = () => {
             <Text style={styles.muted}>
               {customer?.name ?? 'Cliente'} · {customer?.phone}
             </Text>
-            <Button
-              title="Vai alla Piantina"
-              variant="secondary"
-              onPress={() => navigation.navigate('Piantina', { umbrellaId: b.umbrellaId })}
-              style={{ marginTop: spacing.sm, paddingVertical: 6 }}
-            />
+            <Text style={styles.muted}>Codice: {b.reference}</Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+              <Button
+                title="Vai alla Piantina"
+                variant="secondary"
+                onPress={() => navigation.navigate('Piantina', { umbrellaId: b.umbrellaId })}
+                style={{ flex: 1, paddingVertical: 6 }}
+              />
+              {b.checkedInAt ? (
+                <View style={styles.checkedInPill}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.libero} />
+                  <Text style={styles.checkedInPillText}>Check-in fatto</Text>
+                </View>
+              ) : (
+                <Button
+                  title="Conferma check-in"
+                  onPress={() => confirmCheckIn(b.id)}
+                  style={{ flex: 1, paddingVertical: 6 }}
+                />
+              )}
+            </View>
           </Card>
         );
       })}
@@ -1744,6 +1808,17 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { fontWeight: '700', fontSize: 15, color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  checkedInPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.liberoBg,
+    borderRadius: radius.sm,
+    paddingVertical: 6,
+  },
+  checkedInPillText: { color: colors.libero, fontWeight: '700', fontSize: 12 },
   notes: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic', marginTop: 4 },
   assignedTag: { color: colors.primaryDark, fontSize: 11, fontWeight: '700', marginTop: 4 },
   statRow: {

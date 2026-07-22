@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -6,6 +7,7 @@ import { colors, radius, spacing } from '../theme';
 import { baseDisplayStatusFor, hasOutstandingBalance, isStagionaleBooking } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort } from '../utils/format';
 import { useAppAlert } from './AppAlert';
+import { PaymentSummary } from './PaymentSummary';
 import { QuickBookingForm } from './QuickBookingForm';
 import { Button, Chip, StatusPill } from './UI';
 
@@ -19,7 +21,17 @@ interface Props {
 }
 
 export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onExtrasChange }) => {
-  const { getUmbrella, getBooking, getCustomer, freeUmbrella, customers, assignCustomer } = useStore();
+  const {
+    getUmbrella,
+    getBooking,
+    getCustomer,
+    freeUmbrella,
+    customers,
+    assignCustomer,
+    equipmentChanges,
+    confirmEquipmentAdd,
+    confirmCheckIn,
+  } = useStore();
   const navigation = useNavigation<any>();
   const alert = useAppAlert();
   const [mode, setMode] = useState<'detail' | 'new_booking'>('detail');
@@ -50,6 +62,9 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
   };
 
   const remaining = booking ? booking.totalPrice - booking.paid : 0;
+  const pendingAddChange = booking
+    ? equipmentChanges.find((c) => c.bookingId === booking.id && c.type === 'add' && !c.resolved)
+    : undefined;
   const status = baseDisplayStatusFor(umbrella, getBooking);
   const unpaid = hasOutstandingBalance(umbrella, getBooking);
   const isStagionale = !!booking && isStagionaleBooking(booking);
@@ -188,22 +203,39 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
                       <Text style={styles.infoValue}>{booking.reference}</Text>
                     </View>
                   )}
-                  <View style={styles.infoRow}>
-                    <Text style={styles.muted}>Totale</Text>
-                    <Text style={styles.infoValue}>{formatCurrency(booking.totalPrice)}</Text>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.muted}>Pagato</Text>
-                    <Text style={styles.infoValue}>{formatCurrency(booking.paid)}</Text>
-                  </View>
-                  {remaining > 0 && (
-                    <View style={styles.infoRow}>
-                      <Text style={[styles.muted, { color: colors.occupato }]}>Da saldare</Text>
-                      <Text style={[styles.infoValue, { color: colors.occupato }]}>
-                        {formatCurrency(remaining)}
+
+                  {booking.checkedInAt ? (
+                    <View style={styles.checkedInRow}>
+                      <Ionicons name="checkmark-circle" size={14} color={colors.libero} />
+                      <Text style={styles.checkedInText}>Check-in confermato</Text>
+                    </View>
+                  ) : (
+                    <Button
+                      title="Conferma check-in"
+                      variant="secondary"
+                      onPress={() => confirmCheckIn(booking.id)}
+                      style={{ marginTop: spacing.sm }}
+                    />
+                  )}
+
+                  {pendingAddChange && (
+                    <View style={styles.pendingBox}>
+                      <Text style={styles.pendingText}>
+                        Richiesta dall'app: {pendingAddChange.beds ? `+${pendingAddChange.beds} lettini` : ''}
+                        {pendingAddChange.beds && pendingAddChange.chairs ? ' · ' : ''}
+                        {pendingAddChange.chairs ? `+${pendingAddChange.chairs} sdraio` : ''} ·{' '}
+                        {formatCurrency(pendingAddChange.amount)} da incassare in reception
                       </Text>
+                      <Button
+                        title="Conferma pagamento e aggiungi"
+                        variant="success"
+                        onPress={() => confirmEquipmentAdd(pendingAddChange.id)}
+                        style={{ marginTop: spacing.xs, paddingVertical: 6 }}
+                      />
                     </View>
                   )}
+
+                  <PaymentSummary booking={booking} pendingAddAmount={pendingAddChange?.amount ?? 0} />
 
                   <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
                     <Button title="Vai al Conto" onPress={goToConto} />
@@ -285,6 +317,15 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 17, fontWeight: '700', color: colors.text },
   muted: { color: colors.textMuted, fontSize: 13 },
+  checkedInRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm },
+  checkedInText: { color: colors.libero, fontWeight: '700', fontSize: 12 },
+  pendingBox: {
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  pendingText: { color: colors.primaryDark, fontSize: 12, fontWeight: '600' },
   customerName: { fontSize: 16, fontWeight: '700', color: colors.text },
   infoRow: {
     flexDirection: 'row',
