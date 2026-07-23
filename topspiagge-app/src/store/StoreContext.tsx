@@ -201,8 +201,13 @@ function bumpDailyStat(
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
+    // Spreading action.payload alone over nothing would leave any field missing from an older
+    // persisted blob (e.g. a browser that cached state from before equipmentChanges/dailyStats
+    // existed) as undefined instead of falling back to a sane default -- crashing the first
+    // component that does something like equipmentChanges.filter(...). Merging onto a fresh
+    // buildInitialState() first guarantees every field is at least present.
     case 'HYDRATE':
-      return { ...action.payload, hydrated: true };
+      return { ...buildInitialState(), ...action.payload, hydrated: true };
 
     case 'ADD_ROW':
       return { ...state, umbrellas: [...state.umbrellas, ...action.umbrellas] };
