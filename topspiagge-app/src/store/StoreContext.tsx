@@ -10,12 +10,8 @@ import React, {
 } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import {
-  applySeasonalAssignments,
   buildArticles,
-  buildBookings,
   buildContiStorico,
-  buildCustomers,
-  buildDailyStats,
   buildPriceLists,
   buildUmbrellas,
   COLS_PER_SIDE,
@@ -82,19 +78,19 @@ interface AppState {
   hydrated: boolean;
 }
 
+// A fresh beach: the physical layout (umbrellas/rows/zones), articles catalog, and price lists
+// are seeded so the beach is ready to sell, but there are no demo customers, bookings, history,
+// or revenue -- every umbrella starts "libero" and Archivi/Statistiche start at zero.
 function buildInitialState(): AppState {
   const umbrellas = buildUmbrellas();
-  const customers = buildCustomers();
-  const bookings = buildBookings(umbrellas, customers);
-  applySeasonalAssignments(umbrellas, customers);
   return {
     umbrellas,
-    customers,
-    bookings,
+    customers: [],
+    bookings: [],
     articles: buildArticles(),
     priceLists: buildPriceLists(),
     conti: buildContiStorico(),
-    dailyStats: buildDailyStats(),
+    dailyStats: [],
     layoutElements: [],
     equipmentChanges: [],
     hydrated: false,
