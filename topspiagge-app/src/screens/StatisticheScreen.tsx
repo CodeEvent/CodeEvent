@@ -29,11 +29,28 @@ export const StatisticheScreen: React.FC = () => {
   const occupancyRate = umbrellas.length > 0 ? (occupiedTodayCount / umbrellas.length) * 100 : 0;
 
   // Repeat-customer rate: of customers who have booked at least once, how many booked more than
-  // once -- a loyalty signal distinct from raw booking counts.
-  const bookedCustomers = useMemo(() => customers.filter((c) => c.bookingHistory.length > 0), [customers]);
+  // once -- a loyalty signal distinct from raw booking counts. Computed straight from `bookings`
+  // (grouped by groupId) rather than `Customer.bookingHistory.length`, since a single
+  // multi-umbrella group booking (see QuickBookingForm) pushes one id per umbrella onto
+  // bookingHistory -- that would otherwise make a family's very first visit already look like a
+  // repeat visit.
+  const visitCountByCustomer = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    bookings.forEach((b) => {
+      if (b.cancelled) return;
+      const set = map.get(b.customerId) ?? new Set<string>();
+      set.add(b.groupId ?? b.id);
+      map.set(b.customerId, set);
+    });
+    return map;
+  }, [bookings]);
+  const bookedCustomers = useMemo(
+    () => customers.filter((c) => (visitCountByCustomer.get(c.id)?.size ?? 0) > 0),
+    [customers, visitCountByCustomer]
+  );
   const repeatCustomers = useMemo(
-    () => bookedCustomers.filter((c) => c.bookingHistory.length > 1),
-    [bookedCustomers]
+    () => bookedCustomers.filter((c) => (visitCountByCustomer.get(c.id)?.size ?? 0) > 1),
+    [bookedCustomers, visitCountByCustomer]
   );
   const repeatRate = bookedCustomers.length > 0 ? (repeatCustomers.length / bookedCustomers.length) * 100 : null;
 
