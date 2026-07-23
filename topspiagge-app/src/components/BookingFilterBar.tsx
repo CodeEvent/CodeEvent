@@ -6,6 +6,7 @@ import { BeachSide } from '../types';
 import { DISPLAY_STATUSES, DisplayStatus, displayStatusColor, displayStatusLabel } from '../utils/displayStatus';
 import { BookingFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
 import { formatDateShort, isoDate, toDateKey } from '../utils/format';
+import { sidebarBackdrop, sidebarSheet, useSidebarMode } from './sidebarSheet';
 import { Button, Chip } from './UI';
 import { DateRangePicker } from './DateRangePicker';
 
@@ -222,19 +223,35 @@ interface FilterSheetModalProps extends Props {
 // the screen on anything shorter than a full desktop window, with no scroll affordance to
 // reach what's cut off. Presenting it as its own scrollable sheet, capped well under full
 // height, keeps every option reachable regardless of viewport size.
-export const FilterSheetModal: React.FC<FilterSheetModalProps> = ({ visible, onClose, ...filterBarProps }) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <Pressable style={styles.backdrop} onPress={onClose}>
-      <Pressable style={styles.filterSheet} onPress={(e) => e.stopPropagation()}>
-        <View style={styles.handle} />
-        <ScrollView showsVerticalScrollIndicator={false}>
-          <BookingFilterBar {...filterBarProps} />
-        </ScrollView>
-        <Button title="Applica filtri" onPress={onClose} style={{ marginTop: spacing.sm }} />
+export const FilterSheetModal: React.FC<FilterSheetModalProps> = ({ visible, onClose, ...filterBarProps }) => {
+  const sidebarMode = useSidebarMode();
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType={sidebarMode ? 'fade' : 'slide'}
+      onRequestClose={onClose}
+    >
+      <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={onClose}>
+        <Pressable style={sidebarMode ? sidebarSheet() : styles.filterSheet} onPress={(e) => e.stopPropagation()}>
+          {!sidebarMode && <View style={styles.handle} />}
+          {sidebarMode && (
+            <View style={styles.sidebarHeader}>
+              <Text style={styles.sheetTitle}>Filtri</Text>
+              <Pressable onPress={onClose} hitSlop={8}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          )}
+          <ScrollView showsVerticalScrollIndicator={false} style={sidebarMode ? { flex: 1 } : undefined}>
+            <BookingFilterBar {...filterBarProps} />
+          </ScrollView>
+          <Button title="Applica filtri" onPress={onClose} style={{ marginTop: spacing.sm }} />
+        </Pressable>
       </Pressable>
-    </Pressable>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 function countActiveFilters(filters: BookingFilters): number {
   let n = 0;
@@ -323,4 +340,10 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   sheetHint: { fontSize: 12, color: colors.textMuted, marginTop: 2, marginBottom: spacing.md },
   sheetActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  sidebarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
 });

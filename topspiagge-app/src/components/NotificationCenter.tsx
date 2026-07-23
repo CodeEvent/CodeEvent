@@ -6,6 +6,7 @@ import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { findUmbrellaConflict } from '../utils/booking';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
+import { sidebarBackdrop, sidebarSheet, useSidebarMode } from './sidebarSheet';
 import { SimulatedCheckoutModal } from './SimulatedCheckoutModal';
 import { Button, Card } from './UI';
 
@@ -15,6 +16,7 @@ import { Button, Card } from './UI';
 // Dashboard, easy to miss if an operator lived in Piantina/Conto all day.
 export const NotificationCenter: React.FC = () => {
   const navigation = useNavigation<any>();
+  const sidebarMode = useSidebarMode();
   const {
     bookings,
     equipmentChanges,
@@ -71,15 +73,15 @@ export const NotificationCenter: React.FC = () => {
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.panel} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={() => setOpen(false)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.panel} onPress={(e) => e.stopPropagation()}>
             <View style={styles.panelHeader}>
               <Text style={styles.panelTitle}>Notifiche</Text>
               <Pressable onPress={() => setOpen(false)}>
                 <Ionicons name="close" size={22} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={{ maxHeight: 420 }}>
+            <ScrollView style={sidebarMode ? { flex: 1 } : { maxHeight: 420 }}>
               {badgeCount === 0 && (
                 <Text style={styles.empty}>Nessuna notifica al momento.</Text>
               )}

@@ -6,6 +6,7 @@ import { colors, radius, spacing } from '../theme';
 import { LayoutElement, LayoutElementType } from '../types';
 import { useAppAlert } from './AppAlert';
 import { CELL as GRID_CELL, COLS_PER_SIDE, GAP, WALKWAY_WIDTH, useUmbrellaPositions } from './BeachCanvas';
+import { sidebarBackdrop, sidebarSheet, useSidebarMode } from './sidebarSheet';
 import { Button, Stepper } from './UI';
 
 // Room around the umbrella grid where decorations (entry, bar, sea, ...) usually belong --
@@ -191,6 +192,7 @@ const LayoutElementEditor: React.FC<{
 
 export const LayoutDesignerScreen: React.FC = () => {
   const { umbrellas, layoutElements, addLayoutElement, updateLayoutElement, deleteLayoutElement } = useStore();
+  const sidebarMode = useSidebarMode();
   const [editingId, setEditingId] = useState<string | null>(null);
   const alert = useAppAlert();
 
@@ -303,9 +305,14 @@ export const LayoutDesignerScreen: React.FC = () => {
         </ScrollView>
       </View>
 
-      <Modal visible={!!editingElement} transparent animationType="slide" onRequestClose={() => setEditingId(null)}>
-        <Pressable style={styles.backdrop} onPress={() => setEditingId(null)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+      <Modal
+        visible={!!editingElement}
+        transparent
+        animationType={sidebarMode ? 'fade' : 'slide'}
+        onRequestClose={() => setEditingId(null)}
+      >
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={() => setEditingId(null)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.sheet} onPress={(e) => e.stopPropagation()}>
             {editingElement && (
               <LayoutElementEditor
                 element={editingElement}

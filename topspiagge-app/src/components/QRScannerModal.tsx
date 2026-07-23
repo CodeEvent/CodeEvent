@@ -5,6 +5,7 @@ import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, Vi
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { referencesMatch } from '../utils/reference';
+import { sidebarBackdrop, sidebarSheet, useSidebarMode } from './sidebarSheet';
 import { Button, Card } from './UI';
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
 // browser -- by typing the reference code in by hand. Both paths land on the same lookup.
 export const QRScannerModal: React.FC<Props> = ({ visible, onClose }) => {
   const { bookings, getUmbrella, getCustomer, confirmCheckIn } = useStore();
+  const sidebarMode = useSidebarMode();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(true);
   const [manualCode, setManualCode] = useState('');
@@ -58,9 +60,14 @@ export const QRScannerModal: React.FC<Props> = ({ visible, onClose }) => {
     : [];
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <Pressable style={styles.backdrop} onPress={handleClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={sidebarMode ? 'fade' : 'slide'}
+      onRequestClose={handleClose}
+    >
+      <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={handleClose}>
+        <Pressable style={sidebarMode ? sidebarSheet() : styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.header}>
             <Text style={styles.title}>Scansiona QR check-in</Text>
             <Pressable onPress={handleClose}>

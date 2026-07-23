@@ -8,6 +8,7 @@ import { BeachCanvas, useUmbrellaPositions } from '../components/BeachCanvas';
 import { FilterSheetModal } from '../components/BookingFilterBar';
 import { CustomerForm } from '../components/CustomerForm';
 import { LayoutDesignerScreen } from '../components/LayoutDesigner';
+import { sidebarBackdrop, sidebarSheet, useSidebarMode } from '../components/sidebarSheet';
 import { SimulatedCheckoutModal } from '../components/SimulatedCheckoutModal';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
 import { inviteOperator } from '../lib/inviteOperator';
@@ -341,6 +342,7 @@ const OggiTab: React.FC = () => {
 
 const PrenotazioniTab: React.FC = () => {
   const { bookings, getUmbrella, getCustomer } = useStore();
+  const sidebarMode = useSidebarMode();
   const [query, setQuery] = useState('');
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
 
@@ -457,11 +459,11 @@ const PrenotazioniTab: React.FC = () => {
       <Modal
         visible={!!selectedBooking}
         transparent
-        animationType="slide"
+        animationType={sidebarMode ? 'fade' : 'slide'}
         onRequestClose={() => setSelectedBookingId(null)}
       >
-        <Pressable style={styles.backdrop} onPress={() => setSelectedBookingId(null)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={() => setSelectedBookingId(null)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.sheet} onPress={(e) => e.stopPropagation()}>
             {selectedBooking && (
               <BookingDetail booking={selectedBooking} onClose={() => setSelectedBookingId(null)} />
             )}
@@ -942,6 +944,7 @@ const DispositionUmbrellaCell: React.FC<{
 
 const DisposizioneTab: React.FC = () => {
   const { umbrellas, getCustomer, renameZone, reorderZone, addRow, swapUmbrellaPositions } = useStore();
+  const sidebarMode = useSidebarMode();
   const [editingUmbrellaId, setEditingUmbrellaId] = useState<string | null>(null);
   const [renamingRow, setRenamingRow] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -1068,11 +1071,11 @@ const DisposizioneTab: React.FC = () => {
       <Modal
         visible={!!editingUmbrellaId}
         transparent
-        animationType="slide"
+        animationType={sidebarMode ? 'fade' : 'slide'}
         onRequestClose={() => setEditingUmbrellaId(null)}
       >
-        <Pressable style={styles.backdrop} onPress={() => setEditingUmbrellaId(null)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={() => setEditingUmbrellaId(null)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.sheet} onPress={(e) => e.stopPropagation()}>
             {editingUmbrellaId && (
               <UmbrellaEditForm umbrellaId={editingUmbrellaId} onClose={() => setEditingUmbrellaId(null)} />
             )}
@@ -1225,6 +1228,7 @@ const SEASON_SWATCH: Record<Season, string> = {
 const ListiniTab: React.FC = () => {
   const { priceLists, articles, upsertPriceList, deletePriceList } = useStore();
   const alert = useAppAlert();
+  const sidebarMode = useSidebarMode();
   const [editing, setEditing] = useState<PriceList | null>(null);
 
   const newPriceList = (): PriceList => ({
@@ -1271,9 +1275,14 @@ const ListiniTab: React.FC = () => {
       ))}
       <Button title="+ Nuovo listino" variant="ghost" onPress={() => setEditing(newPriceList())} />
 
-      <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
-        <Pressable style={styles.backdrop} onPress={() => setEditing(null)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+      <Modal
+        visible={!!editing}
+        transparent
+        animationType={sidebarMode ? 'fade' : 'slide'}
+        onRequestClose={() => setEditing(null)}
+      >
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={() => setEditing(null)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.sheet} onPress={(e) => e.stopPropagation()}>
             {editing && (
               <PriceListForm
                 priceList={editing}
@@ -1353,6 +1362,7 @@ const NO_RECENT_VISIT_DAYS = 90;
 const ClientiTab: React.FC = () => {
   const { customers, bookings, upsertCustomer, deleteCustomer } = useStore();
   const alert = useAppAlert();
+  const sidebarMode = useSidebarMode();
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Customer | null>(null);
   const [vipOnly, setVipOnly] = useState(false);
@@ -1515,9 +1525,14 @@ const ClientiTab: React.FC = () => {
       })}
       <Button title="+ Nuovo cliente" variant="ghost" onPress={() => setEditing(newCustomer())} style={{ marginTop: spacing.md }} />
 
-      <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
-        <Pressable style={styles.backdrop} onPress={() => setEditing(null)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+      <Modal
+        visible={!!editing}
+        transparent
+        animationType={sidebarMode ? 'fade' : 'slide'}
+        onRequestClose={() => setEditing(null)}
+      >
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={() => setEditing(null)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.sheet} onPress={(e) => e.stopPropagation()}>
             {editing && (
               <CustomerForm
                 customer={editing}
@@ -1540,6 +1555,7 @@ const ClientiTab: React.FC = () => {
 const ArticoliTab: React.FC = () => {
   const { articles, upsertArticle, deleteArticle } = useStore();
   const alert = useAppAlert();
+  const sidebarMode = useSidebarMode();
   const [editing, setEditing] = useState<Article | null>(null);
 
   const confirmDelete = (a: Article) => {
@@ -1594,9 +1610,14 @@ const ArticoliTab: React.FC = () => {
       ))}
       <Button title="+ Nuovo articolo" variant="ghost" onPress={() => setEditing(newArticle())} />
 
-      <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
-        <Pressable style={styles.backdrop} onPress={() => setEditing(null)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+      <Modal
+        visible={!!editing}
+        transparent
+        animationType={sidebarMode ? 'fade' : 'slide'}
+        onRequestClose={() => setEditing(null)}
+      >
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={() => setEditing(null)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.sheet} onPress={(e) => e.stopPropagation()}>
             {editing && (
               <ArticleForm
                 article={editing}

@@ -15,6 +15,7 @@ import { useAppAlert } from '../../components/AppAlert';
 import { GAP, MIN_CELL, BeachCanvas, useUmbrellaPositions } from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
 import { QRCode } from '../../components/QRCode';
+import { sidebarBackdrop, sidebarSheet, useSidebarMode } from '../../components/sidebarSheet';
 import { Button, Card, Checkbox, Chip, StepProgressBar, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
@@ -294,10 +295,15 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       )}
 
       {dateEditVisible && (
-        <Modal visible transparent animationType="slide" onRequestClose={() => setDateEditVisible(false)}>
-          <Pressable style={styles.backdrop} onPress={() => setDateEditVisible(false)}>
-            <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
-              <View style={styles.handle} />
+        <Modal
+          visible
+          transparent
+          animationType={isWide ? 'fade' : 'slide'}
+          onRequestClose={() => setDateEditVisible(false)}
+        >
+          <Pressable style={isWide ? sidebarBackdrop : styles.backdrop} onPress={() => setDateEditVisible(false)}>
+            <Pressable style={isWide ? sidebarSheet() : styles.formSheet} onPress={(e) => e.stopPropagation()}>
+              {!isWide && <View style={styles.handle} />}
               <DateStep
                 startOffset={startOffset}
                 days={days}
@@ -1230,6 +1236,7 @@ const ConfirmationModal: React.FC<{
   onSeeMyBookings: () => void;
 }> = ({ bookings, isEdit, onClose, onSeeMyBookings }) => {
   const { getUmbrella, getCustomer } = useStore();
+  const sidebarMode = useSidebarMode();
   if (!bookings || bookings.length === 0) return null;
   const primary = bookings[0];
   const umbrellas = bookings.map((b) => getUmbrella(b.umbrellaId));
@@ -1249,10 +1256,8 @@ const ConfirmationModal: React.FC<{
     { beds: 0, chairs: 0 }
   );
 
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.confirmCard}>
+  const body = (
+    <View style={sidebarMode ? { width: '100%', alignItems: 'center' } : styles.confirmCard}>
           <View style={styles.confirmIconCircle}>
             <Ionicons name="checkmark" size={32} color={colors.white} />
           </View>
@@ -1315,7 +1320,21 @@ const ConfirmationModal: React.FC<{
             onPress={onSeeMyBookings}
             style={{ marginTop: spacing.sm, width: '100%' }}
           />
-        </View>
+    </View>
+  );
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={sidebarMode ? sidebarBackdrop : styles.backdrop}>
+        {sidebarMode ? (
+          <View style={sidebarSheet()}>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ alignItems: 'center' }}>
+              {body}
+            </ScrollView>
+          </View>
+        ) : (
+          body
+        )}
       </View>
     </Modal>
   );

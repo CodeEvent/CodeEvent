@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
 import { CustomerForm } from '../components/CustomerForm';
 import { PaymentSummary } from '../components/PaymentSummary';
+import { sidebarBackdrop, sidebarSheet, useSidebarMode } from '../components/sidebarSheet';
 import { SimulatedCheckoutModal } from '../components/SimulatedCheckoutModal';
 import { Button, Card, Chip, SectionHeader, StatusPill, Stepper } from '../components/UI';
 import { useStore } from '../store/StoreContext';
@@ -44,6 +45,7 @@ const CATEGORY_ICON: Record<ArticleCategory, keyof typeof Ionicons.glyphMap> = {
 export const ContoScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const sidebarMode = useSidebarMode();
   const {
     umbrellas,
     articles,
@@ -577,11 +579,11 @@ export const ContoScreen: React.FC = () => {
       <Modal
         visible={!!editingCustomer}
         transparent
-        animationType="slide"
+        animationType={sidebarMode ? 'fade' : 'slide'}
         onRequestClose={() => setEditingCustomer(null)}
       >
-        <Pressable style={styles.customerModalBackdrop} onPress={() => setEditingCustomer(null)}>
-          <Pressable style={styles.customerModalSheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.customerModalBackdrop} onPress={() => setEditingCustomer(null)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.customerModalSheet} onPress={(e) => e.stopPropagation()}>
             {editingCustomer && (
               <CustomerForm
                 customer={editingCustomer}

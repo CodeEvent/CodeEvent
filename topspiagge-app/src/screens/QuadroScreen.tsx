@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FilterSheetModal } from '../components/BookingFilterBar';
 import { QuickBookingForm } from '../components/QuickBookingForm';
+import { sidebarBackdrop, sidebarSheet, useSidebarMode } from '../components/sidebarSheet';
 import { Button } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
@@ -34,10 +35,9 @@ function dayIndexInWindow(dateIso: string, windowStartIso: string): number {
 export const QuadroScreen: React.FC = () => {
   const { umbrellas, bookings, getUmbrella, getCustomer } = useStore();
   const navigation = useNavigation<any>();
-  const { width } = useWindowDimensions();
-  // Same laptop-or-wider sidebar treatment as UmbrellaDetailModal's "new booking" form -- a
-  // docked side panel reads better than a small centered card once there's room for one.
-  const sidebarMode = width >= 900;
+  // Same laptop-or-wider sidebar treatment as UmbrellaDetailModal -- a docked side panel reads
+  // better than a small centered card once there's room for one.
+  const sidebarMode = useSidebarMode();
   const [windowStart, setWindowStart] = useState(0);
   const [filters, setFilters] = useState<BookingFilters>({ ...DEFAULT_BOOKING_FILTERS, side: 'nord' });
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -210,11 +210,16 @@ export const QuadroScreen: React.FC = () => {
         </View>
       </ScrollView>
 
-      {/* Booking info modal */}
-      <Modal visible={!!selectedBooking} transparent animationType="fade" onRequestClose={closeModals}>
-        <Pressable style={styles.backdrop} onPress={closeModals}>
-          <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+      {/* Booking info modal -- docked sidebar on laptop-or-wider screens, centered card on phone */}
+      <Modal
+        visible={!!selectedBooking}
+        transparent
+        animationType={sidebarMode ? 'fade' : 'slide'}
+        onRequestClose={closeModals}
+      >
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={closeModals}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.card} onPress={(e) => e.stopPropagation()}>
+            <ScrollView showsVerticalScrollIndicator={false} style={sidebarMode ? { flex: 1 } : undefined}>
               {selectedBooking && (
                 <BookingInfo
                   booking={selectedBooking}
@@ -237,8 +242,8 @@ export const QuadroScreen: React.FC = () => {
         animationType={sidebarMode ? 'fade' : 'slide'}
         onRequestClose={closeModals}
       >
-        <Pressable style={sidebarMode ? styles.backdropSidebar : styles.backdrop} onPress={closeModals}>
-          <Pressable style={sidebarMode ? styles.cardSidebar : styles.card} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.backdrop} onPress={closeModals}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.card} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalTitleRow}>
               <Text style={styles.modalTitle}>
                 Nuova prenotazione ·{' '}
@@ -380,26 +385,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     alignSelf: 'center',
-  },
-  backdropSidebar: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  cardSidebar: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radius.xl,
-    borderBottomLeftRadius: radius.xl,
-    padding: spacing.lg,
-    width: 460,
-    maxWidth: '92%',
-    height: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: -2, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 12,
   },
   modalTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: spacing.sm, flex: 1 },
