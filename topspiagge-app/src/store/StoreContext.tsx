@@ -317,7 +317,13 @@ function reducer(state: AppState, action: Action): AppState {
           ? { ...c, bookingHistory: c.bookingHistory.filter((id) => !idsToRemove.has(id)) }
           : c
       );
-      return { ...state, bookings, umbrellas, customers };
+      // A pending equipment-add/remove request tied to a now-gone booking must not linger as
+      // "unresolved" -- otherwise the notification bell keeps offering to charge/refund for a
+      // reservation that no longer exists.
+      const equipmentChanges = state.equipmentChanges.map((c) =>
+        idsToRemove.has(c.bookingId) && !c.resolved ? { ...c, resolved: true } : c
+      );
+      return { ...state, bookings, umbrellas, customers, equipmentChanges };
     }
 
     // Operator-initiated cancel (Archivi's BookingDetail) -- unlike CANCEL_BOOKING above (also
@@ -347,7 +353,12 @@ function reducer(state: AppState, action: Action): AppState {
           ? { ...c, bookingHistory: c.bookingHistory.filter((id) => !idsToCancel.has(id)) }
           : c
       );
-      return { ...state, bookings, umbrellas, customers };
+      // Same reasoning as CANCEL_BOOKING above -- a still-pending equipment request for a
+      // cancelled booking must not keep nagging the operator to charge/refund it.
+      const equipmentChanges = state.equipmentChanges.map((c) =>
+        idsToCancel.has(c.bookingId) && !c.resolved ? { ...c, resolved: true } : c
+      );
+      return { ...state, bookings, umbrellas, customers, equipmentChanges };
     }
 
     case 'GRANT_VOUCHER': {
@@ -1116,6 +1127,11 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       const customer = next.customers.find((c) => c.id === booking.customerId);
       if (customer)
         runSync(client.from('customers').update(customerToRow(customer, beachId)).eq('beach_id', beachId).eq('id', customer.id));
+      const orphanedChangeIds = prev.equipmentChanges
+        .filter((c) => idsToRemove.includes(c.bookingId) && !c.resolved)
+        .map((c) => c.id);
+      if (orphanedChangeIds.length)
+        runSync(client.from('equipment_changes').update({ resolved: true }).eq('beach_id', beachId).in('id', orphanedChangeIds));
     }
   }, []);
 
@@ -1149,6 +1165,11 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       const customer = next.customers.find((c) => c.id === booking.customerId);
       if (customer)
         runSync(client.from('customers').update(customerToRow(customer, beachId)).eq('beach_id', beachId).eq('id', customer.id));
+      const orphanedChangeIds = prev.equipmentChanges
+        .filter((c) => idsToCancel.includes(c.bookingId) && !c.resolved)
+        .map((c) => c.id);
+      if (orphanedChangeIds.length)
+        runSync(client.from('equipment_changes').update({ resolved: true }).eq('beach_id', beachId).in('id', orphanedChangeIds));
     }
   }, []);
 
