@@ -9,15 +9,19 @@ interface Props {
   // Sum of this booking's unresolved 'add' equipment requests -- money the guest still has to
   // hand over in person before it becomes part of the booking's real total.
   pendingAddAmount?: number;
+  // When this booking is one umbrella of a multi-umbrella group (see QuickBookingForm), the
+  // caller passes totalPrice/paid already summed across the whole group -- groupCount says how
+  // many umbrellas that covers, so the numbers don't read as if they were for this one alone.
+  groupCount?: number;
 }
 
 // One shared "what's included, what's been paid" block, reused on both the guest's own
 // "Gestisci la mia prenotazione" and every operator screen that shows a booking (Conto,
 // UmbrellaDetailModal) -- so the numbers always read the same way regardless of who's looking.
-export const PaymentSummary: React.FC<Props> = ({ booking, pendingAddAmount = 0 }) => {
+export const PaymentSummary: React.FC<Props> = ({ booking, pendingAddAmount = 0, groupCount = 1 }) => {
   const due = Math.max(0, booking.totalPrice - booking.paid);
   const includes = [
-    'Ombrellone',
+    groupCount > 1 ? `${groupCount} ombrelloni (gruppo)` : 'Ombrellone',
     booking.beds ? `${booking.beds} lettin${booking.beds === 1 ? 'o' : 'i'}` : null,
     booking.chairs ? `${booking.chairs} sdra${booking.chairs === 1 ? 'io' : 'i'}` : null,
   ]

@@ -87,7 +87,18 @@ export const ContoScreen: React.FC = () => {
   const umbrella = umbrellaId ? getUmbrella(umbrellaId) : undefined;
   const booking = getBooking(umbrella?.currentBookingId);
   const customer = getCustomer(booking?.customerId);
-  const remainingBalance = booking ? Math.max(0, booking.totalPrice - booking.paid) : 0;
+  // A multi-umbrella group booking (see QuickBookingForm) splits its price across one Booking
+  // record per umbrella -- settling "the balance" here has to cover the whole party's remaining
+  // total, not just this one umbrella's slice, or the operator registers what feels like a
+  // single payment while the other umbrella(s) in the same reservation silently stay "da
+  // saldare" in Archivi/Statistiche.
+  const groupBookings = useMemo(
+    () => (booking?.groupId ? bookings.filter((b) => b.groupId === booking.groupId) : booking ? [booking] : []),
+    [bookings, booking]
+  );
+  const remainingBalance = groupBookings.reduce((sum, b) => sum + Math.max(0, b.totalPrice - b.paid), 0);
+  const groupTotalPrice = groupBookings.reduce((sum, b) => sum + b.totalPrice, 0);
+  const groupPaid = groupBookings.reduce((sum, b) => sum + b.paid, 0);
   const pendingAddChange = booking
     ? equipmentChanges.find((c) => c.bookingId === booking.id && c.type === 'add' && !c.resolved)
     : undefined;
@@ -217,8 +228,13 @@ export const ContoScreen: React.FC = () => {
       closed: true,
     };
     closeConto(conto);
-    if (booking && includeBalance && remainingBalance > 0) {
-      payBooking(booking.id, remainingBalance);
+    if (includeBalance && remainingBalance > 0) {
+      // Settle every umbrella in this group, not just the one currently open here -- see
+      // groupBookings above.
+      groupBookings.forEach((b) => {
+        const due = b.totalPrice - b.paid;
+        if (due > 0) payBooking(b.id, due);
+      });
     }
     if (freeAfter && umbrella) {
       freeUmbrella(umbrella.id);
@@ -370,7 +386,11 @@ export const ContoScreen: React.FC = () => {
                     />
                   </View>
 
-                  <PaymentSummary booking={booking} pendingAddAmount={pendingAddChange?.amount ?? 0} />
+                  <PaymentSummary
+                    booking={{ ...booking, totalPrice: groupTotalPrice, paid: groupPaid }}
+                    pendingAddAmount={pendingAddChange?.amount ?? 0}
+                    groupCount={groupBookings.length}
+                  />
 
                   {remainingBalance > 0 && (
                     <Chip
