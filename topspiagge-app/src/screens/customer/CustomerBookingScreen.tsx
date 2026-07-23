@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -43,6 +44,11 @@ import { generateBookingReference } from '../../utils/reference';
 
 const WIDE_BREAKPOINT = 700;
 const SIDEBAR_WIDTH = 380;
+
+// details (guests/phone/policy) -> equipment ("Lettini e sdraio") -> confirm ("Conferma e
+// paga", read-only review) -> payment (card entry, Stripe-only -- see BookingForm's payment
+// stage).
+type BookingFormStage = 'details' | 'equipment' | 'confirm' | 'payment';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 
@@ -113,15 +119,22 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
     () => (selectedUmbrellaId ? [selectedUmbrellaId, ...pendingExtraIds] : []),
     [selectedUmbrellaId, pendingExtraIds]
   );
-  const [formStage, setFormStage] = useState<'details' | 'review'>('details');
+  const [formStage, setFormStage] = useState<BookingFormStage>('details');
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
   const [confirmedIsEdit, setConfirmedIsEdit] = useState(false);
   const [dateEditVisible, setDateEditVisible] = useState(false);
   const [waitlistUmbrella, setWaitlistUmbrella] = useState<Umbrella | null>(null);
 
-  // Mirrors the classic booking-flow progress bar: Map (pick dates + spot) -> Dettagli
-  // (guests/phone/policy) -> Riepilogo (final editable review before confirming).
-  const currentStepIndex = !selectedUmbrellaId ? 0 : formStage === 'details' ? 1 : 2;
+  // Mirrors the booking-flow progress bar: Map (pick dates + spot) -> Dettagli
+  // (guests/phone/policy) -> Lettini e sdraio (equipment) -> Conferma e paga (review) ->
+  // Pagamento (card entry).
+  const stepIndexForStage: Record<BookingFormStage, number> = {
+    details: 1,
+    equipment: 2,
+    confirm: 3,
+    payment: 4,
+  };
+  const currentStepIndex = !selectedUmbrellaId ? 0 : stepIndexForStage[formStage];
 
   const isWide = width >= WIDE_BREAKPOINT;
 
@@ -222,7 +235,10 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
         <Text style={styles.headerSubtitle}>Bagno Pietrasanta</Text>
       </View>
 
-      <StepProgressBar steps={['Mappa', 'Dettagli', 'Riepilogo']} currentIndex={currentStepIndex} />
+      <StepProgressBar
+        steps={['Mappa', 'Dettagli', 'Lettini e sdraio', 'Conferma e paga', 'Pagamento']}
+        currentIndex={currentStepIndex}
+      />
 
       {step === 'dates' ? (
         <DateStep
@@ -651,8 +667,8 @@ const BookingForm: React.FC<{
   onClose: () => void;
   onConfirmed: (bookings: Booking[], isEdit: boolean) => void;
   onEditDates: () => void;
-  stage: 'details' | 'review';
-  onStageChange: (stage: 'details' | 'review') => void;
+  stage: BookingFormStage;
+  onStageChange: (stage: BookingFormStage) => void;
   /** Reports the currently-selected extra umbrellas so the map behind this form can
    * highlight them as "pending" (not yet confirmed) instead of showing their real,
    * still-free status. */
@@ -689,6 +705,7 @@ const BookingForm: React.FC<{
 
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [adults, setAdults] = useState(() =>
     editBookings.length ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1 : 2
   );
@@ -700,6 +717,8 @@ const BookingForm: React.FC<{
   );
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [isStudent, setIsStudent] = useState(false);
+  const [cardNumber, setCardNumber] = useState('');
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>(() =>
     isOriginalPrimary ? editBookings.filter((b) => b.umbrellaId !== umbrellaId).map((b) => b.umbrellaId) : []
   );
@@ -874,7 +893,9 @@ const BookingForm: React.FC<{
   const customerConflictUmbrella = getUmbrella(customerConflict?.umbrellaId ?? '');
 
   const canConfirm =
-    (editContext || !!matchedCustomer || (isNewCustomer && newName.trim().length > 0)) &&
+    (editContext ||
+      !!matchedCustomer ||
+      (isNewCustomer && newName.trim().length > 0 && newEmail.includes('@'))) &&
     !conflict &&
     !customerConflict &&
     capacityOk &&
@@ -888,7 +909,7 @@ const BookingForm: React.FC<{
         id: `cust-${Date.now()}`,
         name: newName.trim(),
         phone: phone.trim(),
-        email: '',
+        email: newEmail.trim(),
         notes: '',
         vip: false,
         bookingHistory: [],
@@ -897,9 +918,10 @@ const BookingForm: React.FC<{
       };
       upsertCustomer(customer);
       customerId = customer.id;
-    } else if (voucherApplied > 0 && matchedCustomer) {
+    } else if (matchedCustomer && (voucherApplied > 0 || (!matchedCustomer.email && newEmail.includes('@')))) {
       upsertCustomer({
         ...matchedCustomer,
+        email: matchedCustomer.email || newEmail.trim(),
         voucherBalance: Math.round(((matchedCustomer.voucherBalance ?? 0) - voucherApplied) * 100) / 100,
       });
     }
@@ -973,7 +995,7 @@ const BookingForm: React.FC<{
     </>
   );
 
-  if (stage === 'review') {
+  if (stage === 'equipment') {
     return (
       <View style={styles.formOuter}>
         <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
@@ -982,7 +1004,7 @@ const BookingForm: React.FC<{
             <Text style={styles.backLinkText}>Modifica ospiti e telefono</Text>
           </Pressable>
 
-          <Text style={styles.sheetTitle}>Riepilogo prenotazione</Text>
+          <Text style={styles.sheetTitle}>Lettini e sdraio</Text>
 
           <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
 
@@ -1043,10 +1065,136 @@ const BookingForm: React.FC<{
           deposit={deposit}
           voucherApplied={voucherApplied}
           umbrellaCount={allUmbrellaIds.length}
-          primaryLabel={editContext ? 'Conferma modifica' : 'Conferma e prenota'}
+          primaryLabel={editContext ? 'Conferma modifica' : 'Conferma e paga'}
           primaryIcon="checkmark-circle-outline"
-          onPrimary={confirm}
+          onPrimary={editContext ? confirm : () => onStageChange('confirm')}
           primaryDisabled={!canConfirm}
+          onCancel={onClose}
+        />
+      </View>
+    );
+  }
+
+  // Read-only review -- no more editing here, just a final check before moving to payment.
+  // Editing a booking that's already paid (editContext) never reaches this stage or the next
+  // one; it confirms directly from the equipment stage above, since there's no new charge to
+  // review or collect.
+  if (stage === 'confirm') {
+    return (
+      <View style={styles.formOuter}>
+        <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
+          <Pressable onPress={() => onStageChange('equipment')} style={styles.backLink}>
+            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+            <Text style={styles.backLinkText}>Modifica lettini e sdraio</Text>
+          </Pressable>
+
+          <Text style={styles.sheetTitle}>Conferma e paga</Text>
+
+          <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
+
+          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Ospiti</Text>
+          <Text style={styles.muted}>
+            {adults} adulti
+            {children5to15 > 0 ? ` · ${children5to15} bambini 5-15` : ''}
+            {childrenUnder5 > 0 ? ` · ${childrenUnder5} under 5` : ''}
+          </Text>
+
+          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>
+            {allUmbrellaIds.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
+          </Text>
+          {allUmbrellaIds.map((id) => {
+            const u = getUmbrella(id);
+            if (!u) return null;
+            const eq = equipment[id] ?? defaultEquipmentFor(id);
+            return (
+              <View key={id} style={styles.equipmentCard}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.equipmentTitle}>
+                    Ombrellone N.{u.number} · {u.zone}
+                  </Text>
+                  <Text style={styles.equipmentPrice}>{formatCurrency(umbrellaTotal(id))}</Text>
+                </View>
+                <Text style={styles.muted}>
+                  {eq.beds} lettini · {eq.chairs} sdraio
+                </Text>
+              </View>
+            );
+          })}
+
+          {conflictBanner}
+        </ScrollView>
+        <BookingFooter
+          total={grossTotal}
+          deposit={deposit}
+          voucherApplied={voucherApplied}
+          umbrellaCount={allUmbrellaIds.length}
+          primaryLabel="Procedi al pagamento"
+          primaryIcon="card-outline"
+          onPrimary={() => onStageChange('payment')}
+          primaryDisabled={!canConfirm}
+          onCancel={onClose}
+        />
+      </View>
+    );
+  }
+
+  if (stage === 'payment') {
+    const startPayment = () => {
+      setPaymentProcessing(true);
+      setTimeout(() => {
+        setPaymentProcessing(false);
+        confirm();
+      }, 1100);
+    };
+    return (
+      <View style={styles.formOuter}>
+        <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
+          <Pressable onPress={() => onStageChange('confirm')} style={styles.backLink}>
+            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+            <Text style={styles.backLinkText}>Torna al riepilogo</Text>
+          </Pressable>
+
+          <Text style={styles.sheetTitle}>Pagamento</Text>
+
+          <View style={styles.simBadge}>
+            <Ionicons name="flask-outline" size={12} color={colors.primaryDark} />
+            <Text style={styles.simBadgeText}>Pagamento simulato -- demo, nessun addebito reale</Text>
+          </View>
+
+          {paymentProcessing ? (
+            <View style={styles.paymentProcessingBox}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.title, { marginTop: spacing.md }]}>Elaborazione pagamento...</Text>
+              <Text style={styles.muted}>Un istante, stiamo confermando con la banca.</Text>
+            </View>
+          ) : (
+            <View style={styles.paymentCard}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.equipmentTitle}>Carta di credito/debito</Text>
+                <Text style={styles.stripeBadgeText}>Powered by Stripe</Text>
+              </View>
+              <Text style={[styles.muted, { marginTop: 2 }]}>Unico metodo di pagamento disponibile online.</Text>
+              <TextInput
+                style={[styles.input, { marginTop: spacing.md }]}
+                placeholder="Numero carta (demo) es. 4242 4242 4242 4242"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                value={cardNumber}
+                onChangeText={setCardNumber}
+                maxLength={19}
+              />
+            </View>
+          )}
+        </ScrollView>
+        <BookingFooter
+          total={grossTotal}
+          deposit={deposit}
+          voucherApplied={voucherApplied}
+          umbrellaCount={allUmbrellaIds.length}
+          primaryLabel={`Paga ${formatCurrency(deposit)} con carta`}
+          primaryIcon="card-outline"
+          onPrimary={startPayment}
+          primaryDisabled={!canConfirm || paymentProcessing}
           onCancel={onClose}
         />
       </View>
@@ -1151,6 +1299,21 @@ const BookingForm: React.FC<{
                 />
               </View>
             )}
+            {(isNewCustomer || (matchedCustomer && !matchedCustomer.email)) && (
+              <View style={{ marginTop: spacing.sm }}>
+                <Text style={styles.sectionLabel}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="es. mario.rossi@email.it"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={newEmail}
+                  onChangeText={setNewEmail}
+                />
+                <Text style={styles.muted}>Ti invieremo qui la conferma della prenotazione.</Text>
+              </View>
+            )}
           </>
         )}
 
@@ -1219,9 +1382,9 @@ const BookingForm: React.FC<{
         deposit={deposit}
         voucherApplied={voucherApplied}
         umbrellaCount={allUmbrellaIds.length}
-        primaryLabel="Rivedi prenotazione"
-        primaryIcon="receipt-outline"
-        onPrimary={() => onStageChange('review')}
+        primaryLabel="Lettini e sdraio"
+        primaryIcon="bed-outline"
+        onPrimary={() => onStageChange('equipment')}
         primaryDisabled={!canConfirm}
         onCancel={onClose}
       />
@@ -1275,6 +1438,16 @@ const ConfirmationModal: React.FC<{
               codice QR in reception per il check-in
             </Text>
           </View>
+
+          {!!customer?.email && (
+            <View style={styles.simBadge}>
+              <Ionicons name="mail-outline" size={12} color={colors.primaryDark} />
+              <Text style={styles.simBadgeText}>
+                Ti abbiamo inviato un'email di conferma a {customer.email} con i dettagli della
+                prenotazione (simulata in questa demo).
+              </Text>
+            </View>
+          )}
 
           <Card style={{ marginTop: spacing.md, width: '100%' }}>
             <View style={styles.confirmRow}>
@@ -1530,6 +1703,27 @@ const styles = StyleSheet.create({
   },
   equipmentTitle: { fontWeight: '700', color: colors.text, fontSize: 13 },
   equipmentPrice: { fontWeight: '800', color: colors.primaryDark, fontSize: 13 },
+  simBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginTop: spacing.sm,
+    width: '100%',
+  },
+  simBadgeText: { color: colors.primaryDark, fontSize: 11, fontWeight: '700', flexShrink: 1 },
+  paymentProcessingBox: { alignItems: 'center', paddingVertical: spacing.xl },
+  title: { fontSize: 16, fontWeight: '800', color: colors.text, textAlign: 'center' },
+  paymentCard: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  stripeBadgeText: { color: colors.textMuted, fontSize: 11, fontWeight: '700', fontStyle: 'italic' },
   sectionLabel: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
   guestsBox: {
     backgroundColor: colors.bg,
