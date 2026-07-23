@@ -39,7 +39,10 @@ export const QRScannerModal: React.FC<Props> = ({ visible, onClose }) => {
   const lookup = (code: string) => {
     const trimmed = code.trim();
     if (!trimmed) return;
-    const matches = bookings.filter((b) => referencesMatch(b.reference, trimmed));
+    // A cancelled booking (see Booking.cancelled) is kept as a record in Archivi/CRM but should
+    // never be checked in -- otherwise scanning an old, since-cancelled guest's QR would offer a
+    // "Conferma check-in" button for a reservation that no longer exists.
+    const matches = bookings.filter((b) => referencesMatch(b.reference, trimmed) && !b.cancelled);
     if (matches.length === 0) {
       setNotFound(true);
       setFoundReference(null);
@@ -50,7 +53,9 @@ export const QRScannerModal: React.FC<Props> = ({ visible, onClose }) => {
     setFoundReference(matches[0].reference);
   };
 
-  const group = foundReference ? bookings.filter((b) => referencesMatch(b.reference, foundReference)) : [];
+  const group = foundReference
+    ? bookings.filter((b) => referencesMatch(b.reference, foundReference) && !b.cancelled)
+    : [];
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>

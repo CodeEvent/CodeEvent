@@ -33,7 +33,7 @@ export const NotificationCenter: React.FC = () => {
 
   const pendingChanges = useMemo(() => equipmentChanges.filter((c) => !c.resolved), [equipmentChanges]);
   const arrivalsNotCheckedIn = useMemo(
-    () => bookings.filter((b) => b.dateFrom === today && !b.checkedInAt),
+    () => bookings.filter((b) => b.dateFrom === today && !b.checkedInAt && !b.cancelled && !b.released),
     [bookings, today]
   );
   // No "notified"/"resolved" flag on a waitlist entry -- whether it currently matches is purely

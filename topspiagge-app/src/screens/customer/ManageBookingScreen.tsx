@@ -50,7 +50,11 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
   const result = useMemo(() => {
     if (!searched) return { group: [] as Booking[], customer: undefined as Customer | undefined };
     const refInput = reference.trim();
-    const matching = bookings.filter((b) => referencesMatch(b.reference, refInput));
+    // A booking an operator cancelled from Archivi (see Booking.cancelled) is kept as a record
+    // for CRM/history, but the guest shouldn't be able to pull it up here as if it were still
+    // active -- otherwise they could "cancel" (double-refund) or edit a reservation that's
+    // already gone.
+    const matching = bookings.filter((b) => referencesMatch(b.reference, refInput) && !b.cancelled);
     if (matching.length === 0) return { group: [], customer: undefined };
     const customer = customers.find((c) => c.id === matching[0].customerId);
     if (!customer) return { group: [], customer: undefined };
