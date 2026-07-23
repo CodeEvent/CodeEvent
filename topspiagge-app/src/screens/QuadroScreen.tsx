@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FilterSheetModal } from '../components/BookingFilterBar';
 import { QuickBookingForm } from '../components/QuickBookingForm';
@@ -34,6 +34,10 @@ function dayIndexInWindow(dateIso: string, windowStartIso: string): number {
 export const QuadroScreen: React.FC = () => {
   const { umbrellas, bookings, getUmbrella, getCustomer } = useStore();
   const navigation = useNavigation<any>();
+  const { width } = useWindowDimensions();
+  // Same laptop-or-wider sidebar treatment as UmbrellaDetailModal's "new booking" form -- a
+  // docked side panel reads better than a small centered card once there's room for one.
+  const sidebarMode = width >= 900;
   const [windowStart, setWindowStart] = useState(0);
   const [filters, setFilters] = useState<BookingFilters>({ ...DEFAULT_BOOKING_FILTERS, side: 'nord' });
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -226,16 +230,28 @@ export const QuadroScreen: React.FC = () => {
         </Pressable>
       </Modal>
 
-      {/* New booking modal */}
-      <Modal visible={!!newBookingSlot} transparent animationType="slide" onRequestClose={closeModals}>
-        <Pressable style={styles.backdrop} onPress={closeModals}>
-          <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+      {/* New booking modal -- docked sidebar on laptop-or-wider screens, centered card on phone */}
+      <Modal
+        visible={!!newBookingSlot}
+        transparent
+        animationType={sidebarMode ? 'fade' : 'slide'}
+        onRequestClose={closeModals}
+      >
+        <Pressable style={sidebarMode ? styles.backdropSidebar : styles.backdrop} onPress={closeModals}>
+          <Pressable style={sidebarMode ? styles.cardSidebar : styles.card} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalTitleRow}>
               <Text style={styles.modalTitle}>
                 Nuova prenotazione ·{' '}
                 {newBookingSlot &&
                   `Ombrellone ${getUmbrella(newBookingSlot.umbrellaId)?.number} · ${getUmbrella(newBookingSlot.umbrellaId)?.zone}`}
               </Text>
+              {sidebarMode && (
+                <Pressable onPress={closeModals} hitSlop={8}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={sidebarMode ? { flex: 1 } : undefined}>
               {newBookingSlot && (
                 <QuickBookingForm
                   umbrellaId={newBookingSlot.umbrellaId}
@@ -365,6 +381,27 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     alignSelf: 'center',
   },
-  modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
+  backdropSidebar: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  cardSidebar: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.xl,
+    borderBottomLeftRadius: radius.xl,
+    padding: spacing.lg,
+    width: 460,
+    maxWidth: '92%',
+    height: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  modalTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: spacing.sm, flex: 1 },
   muted: { color: colors.textMuted, fontSize: 13, marginBottom: 2 },
 });

@@ -45,7 +45,9 @@ const PERIOD_PRESETS = [
 ];
 
 type Equipment = { beds: number; chairs: number };
-const DEFAULT_EQUIPMENT: Equipment = { beds: 2, chairs: 2 };
+// Standard default for a walk-up booking: 2 lettini, no sdraio -- the operator adds sdraio
+// explicitly if the guest wants them, rather than every booking defaulting to both.
+const DEFAULT_EQUIPMENT: Equipment = { beds: 2, chairs: 0 };
 
 export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialFromOffset = 0, onExtrasChange }) => {
   const { umbrellas, customers, bookings, createBooking, upsertCustomer, getActivePriceList, getUmbrella } =
@@ -372,7 +374,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
 
       <Text style={[styles.label, { marginTop: spacing.lg }]}>Ospiti</Text>
       <View style={styles.guestsBox}>
-        <Stepper label="Adulti" value={adults} min={1} onChange={changeAdults} />
+        <Stepper label="Adulti" value={adults} min={2} onChange={changeAdults} />
         <View style={styles.divider} />
         <Stepper label="Bambini 5–15 anni" value={children5to15} onChange={setChildren5to15} />
         <View style={styles.divider} />

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import React, { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { baseDisplayStatusFor, hasOutstandingBalance, isStagionaleBooking } from '../utils/displayStatus';
@@ -35,7 +35,12 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
   } = useStore();
   const navigation = useNavigation<any>();
   const alert = useAppAlert();
+  const { width } = useWindowDimensions();
   const [mode, setMode] = useState<'detail' | 'new_booking'>('detail');
+  // On a laptop-or-wider screen, the booking form reads better as a docked sidebar (fixed width,
+  // full height) than as a full-width bottom sheet -- narrower/phone widths keep the original
+  // bottom-sheet layout, which still makes sense when there isn't room for a side panel.
+  const sidebarMode = width >= 900 && mode === 'new_booking';
   const [assigningCustomer, setAssigningCustomer] = useState(false);
   const [assigneeQuery, setAssigneeQuery] = useState('');
   const [showEquipmentCheckout, setShowEquipmentCheckout] = useState(false);
@@ -108,16 +113,23 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
 
   return (
     <>
-    <Modal visible transparent animationType="slide" onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.handle} />
-          <ScrollView showsVerticalScrollIndicator={false}>
+    <Modal visible transparent animationType={sidebarMode ? 'fade' : 'slide'} onRequestClose={close}>
+      <Pressable style={sidebarMode ? styles.backdropSidebar : styles.backdrop} onPress={close}>
+        <Pressable style={sidebarMode ? styles.sheetSidebar : styles.sheet} onPress={(e) => e.stopPropagation()}>
+          {!sidebarMode && <View style={styles.handle} />}
+          <ScrollView showsVerticalScrollIndicator={false} style={sidebarMode ? styles.sidebarScroll : undefined}>
           <View style={styles.headerRow}>
             <Text style={styles.title}>
               Ombrellone {umbrella.number} · {umbrella.zone}
             </Text>
-            <StatusPill status={status} unpaid={unpaid} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <StatusPill status={status} unpaid={unpaid} />
+              {sidebarMode && (
+                <Pressable onPress={close} hitSlop={8}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
           </View>
           {umbrella.hasCabin && <Text style={styles.muted}>Con cabina</Text>}
 
@@ -327,6 +339,29 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     maxHeight: '85%',
   },
+  // Laptop-or-wider "new booking" layout: a fixed-width panel docked to the right edge, full
+  // height, instead of the phone-style bottom sheet above.
+  backdropSidebar: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  sheetSidebar: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.xl,
+    borderBottomLeftRadius: radius.xl,
+    padding: spacing.lg,
+    width: 460,
+    maxWidth: '92%',
+    height: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  sidebarScroll: { flex: 1 },
   handle: {
     width: 40,
     height: 4,
