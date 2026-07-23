@@ -1,15 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
+import { CustomerForm } from '../components/CustomerForm';
 import { PaymentSummary } from '../components/PaymentSummary';
 import { SimulatedCheckoutModal } from '../components/SimulatedCheckoutModal';
 import { Button, Card, Chip, SectionHeader, StatusPill, Stepper } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { Article, ArticleCategory, Conto, ContoItem, DocType, PaymentMethod } from '../types';
+import { Article, ArticleCategory, Conto, ContoItem, Customer, DocType, PaymentMethod } from '../types';
 import { MAX_EQUIPMENT_PER_UMBRELLA } from '../utils/booking';
 import { baseDisplayStatusFor, hasOutstandingBalance } from '../utils/displayStatus';
 import { formatCurrency, formatDateShort } from '../utils/format';
@@ -46,6 +47,8 @@ export const ContoScreen: React.FC = () => {
   const {
     umbrellas,
     articles,
+    customers,
+    bookings,
     getUmbrella,
     getBooking,
     getCustomer,
@@ -57,8 +60,12 @@ export const ContoScreen: React.FC = () => {
     confirmCheckIn,
     closeConto,
     freeUmbrella,
+    upsertCustomer,
+    deleteCustomer,
   } = useStore();
   const alert = useAppAlert();
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
   const [umbrellaId, setUmbrellaId] = useState<string | undefined>(route.params?.umbrellaId);
   const [items, setItems] = useState<ContoItem[]>([]);
@@ -89,6 +96,29 @@ export const ContoScreen: React.FC = () => {
     () => umbrellas.filter((u) => u.status !== 'libero'),
     [umbrellas]
   );
+
+  // Independent of whichever umbrella is selected above -- lets the operator pull up and fully
+  // edit (or delete) any guest's account straight from the register, without leaving Conto for
+  // Archivi's Clienti tab.
+  const matchingCustomers = useMemo(() => {
+    const q = customerQuery.trim().toLowerCase();
+    if (!q) return [];
+    return customers.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 6);
+  }, [customers, customerQuery]);
+
+  const confirmDeleteCustomer = (c: Customer) => {
+    alert(`Eliminare ${c.name}?`, 'Operazione non reversibile.', [
+      { text: 'Annulla', style: 'cancel' },
+      {
+        text: 'Elimina',
+        style: 'destructive',
+        onPress: () => {
+          deleteCustomer(c.id);
+          setEditingCustomer(null);
+        },
+      },
+    ]);
+  };
 
   const priceFor = (article: Article) => priceList.prices[article.id] ?? article.basePrice;
 
@@ -224,10 +254,38 @@ export const ContoScreen: React.FC = () => {
             ))}
           </ScrollView>
 
+          <Text style={[styles.cardLabel, { marginTop: spacing.md }]}>Cerca cliente da modificare</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Cerca per nome..."
+            placeholderTextColor={colors.textMuted}
+            value={customerQuery}
+            onChangeText={setCustomerQuery}
+          />
+          {matchingCustomers.map((c) => (
+            <Button
+              key={c.id}
+              title={`${c.name}${c.vip ? ' ⭐' : ''} · ${c.phone}`}
+              variant="secondary"
+              onPress={() => {
+                setEditingCustomer(c);
+                setCustomerQuery('');
+              }}
+              style={{ marginBottom: spacing.xs }}
+            />
+          ))}
+
           {umbrella && (
             <View style={styles.umbrellaInfo}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={styles.customerName}>{customer?.name ?? 'Cliente sconosciuto'}</Text>
+                <Pressable
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}
+                  onPress={() => customer && setEditingCustomer(customer)}
+                  disabled={!customer}
+                >
+                  <Text style={styles.customerName}>{customer?.name ?? 'Cliente sconosciuto'}</Text>
+                  {customer && <Ionicons name="create-outline" size={16} color={colors.primary} />}
+                </Pressable>
                 <StatusPill
                   status={baseDisplayStatusFor(umbrella, getBooking)}
                   unpaid={hasOutstandingBalance(umbrella, getBooking)}
@@ -496,12 +554,47 @@ export const ContoScreen: React.FC = () => {
           onCancel={() => setShowEquipmentCheckout(false)}
         />
       )}
+      <Modal
+        visible={!!editingCustomer}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditingCustomer(null)}
+      >
+        <Pressable style={styles.customerModalBackdrop} onPress={() => setEditingCustomer(null)}>
+          <Pressable style={styles.customerModalSheet} onPress={(e) => e.stopPropagation()}>
+            {editingCustomer && (
+              <CustomerForm
+                customer={editingCustomer}
+                history={bookings.filter((b) => b.customerId === editingCustomer.id)}
+                onCancel={() => setEditingCustomer(null)}
+                onSave={(c) => {
+                  upsertCustomer(c);
+                  setEditingCustomer(null);
+                }}
+                onDelete={confirmDeleteCustomer}
+              />
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  customerModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.35)',
+    justifyContent: 'flex-end',
+  },
+  customerModalSheet: {
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    maxHeight: '85%',
+  },
   cardLabel: { fontWeight: '700', color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   umbrellaInfo: {

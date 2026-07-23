@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../components/AppAlert';
 import { BeachCanvas, useUmbrellaPositions } from '../components/BeachCanvas';
 import { FilterSheetModal } from '../components/BookingFilterBar';
+import { CustomerForm } from '../components/CustomerForm';
 import { LayoutDesignerScreen } from '../components/LayoutDesigner';
 import { SimulatedCheckoutModal } from '../components/SimulatedCheckoutModal';
 import { Button, Card, Chip, EditDeleteRow, SectionHeader, StatusPill } from '../components/UI';
@@ -1289,7 +1290,14 @@ const ClientiTab: React.FC = () => {
   const confirmDelete = (c: Customer) => {
     alert(`Eliminare ${c.name}?`, 'Operazione non reversibile.', [
       { text: 'Annulla', style: 'cancel' },
-      { text: 'Elimina', style: 'destructive', onPress: () => deleteCustomer(c.id) },
+      {
+        text: 'Elimina',
+        style: 'destructive',
+        onPress: () => {
+          deleteCustomer(c.id);
+          setEditing(null);
+        },
+      },
     ]);
   };
 
@@ -1447,178 +1455,12 @@ const ClientiTab: React.FC = () => {
                   upsertCustomer(c);
                   setEditing(null);
                 }}
+                onDelete={confirmDelete}
               />
             )}
           </Pressable>
         </Pressable>
       </Modal>
-    </ScrollView>
-  );
-};
-
-const CustomerForm: React.FC<{
-  customer: Customer;
-  history: Booking[];
-  onSave: (c: Customer) => void;
-  onCancel: () => void;
-}> = ({ customer, history, onSave, onCancel }) => {
-  const navigation = useNavigation<any>();
-  const { umbrellas, getUmbrella, assignCustomer } = useStore();
-  const [name, setName] = useState(customer.name);
-  const [phone, setPhone] = useState(customer.phone);
-  const [notes, setNotes] = useState(customer.notes ?? '');
-  const [vip, setVip] = useState(customer.vip);
-  const [tags, setTags] = useState<string[]>(customer.tags);
-  const [tagInput, setTagInput] = useState('');
-  const [assigning, setAssigning] = useState(false);
-  const [umbrellaQuery, setUmbrellaQuery] = useState('');
-
-  const assignedUmbrella = getUmbrella(customer.assignedUmbrellaId ?? '');
-  const filteredUmbrellas = umbrellas
-    .filter((u) => String(u.number).includes(umbrellaQuery) || u.zone.toLowerCase().includes(umbrellaQuery.toLowerCase()))
-    .slice(0, 8);
-  const stats = useMemo(() => computeCustomerStats(customer, history), [customer, history]);
-
-  const addTag = () => {
-    const value = tagInput.trim();
-    if (!value || tags.includes(value)) {
-      setTagInput('');
-      return;
-    }
-    setTags((prev) => [...prev, value]);
-    setTagInput('');
-  };
-
-  return (
-    <ScrollView showsVerticalScrollIndicator={false}>
-      <View style={styles.statRow}>
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{formatCurrency(stats.totalSpend)}</Text>
-          <Text style={styles.statLabel}>Spesa totale</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{stats.visitCount}</Text>
-          <Text style={styles.statLabel}>Visite</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{stats.lastVisitDate ? formatDateShort(stats.lastVisitDate) : '—'}</Text>
-          <Text style={styles.statLabel}>Ultima visita</Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{stats.avgNights ? stats.avgNights.toFixed(1) : '—'}</Text>
-          <Text style={styles.statLabel}>Notti medie</Text>
-        </View>
-      </View>
-
-      <Text style={styles.formLabel}>Nome</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} />
-      <Text style={styles.formLabel}>Telefono</Text>
-      <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-      <Text style={styles.formLabel}>Note / preferenze</Text>
-      <TextInput style={styles.input} value={notes} onChangeText={setNotes} multiline />
-      <View style={[styles.rowBetween, { marginTop: spacing.md }]}>
-        <Text style={styles.formLabel}>Cliente VIP</Text>
-        <Switch value={vip} onValueChange={setVip} />
-      </View>
-
-      <Text style={[styles.formLabel, { marginTop: spacing.md }]}>Tag</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-        {tags.map((t) => (
-          <View key={t} style={styles.presetChipWrap}>
-            <Chip label={t} onPress={() => {}} />
-            <Pressable style={styles.presetDelete} onPress={() => setTags((prev) => prev.filter((x) => x !== t))}>
-              <Ionicons name="close" size={10} color={colors.textMuted} />
-            </Pressable>
-          </View>
-        ))}
-      </View>
-      <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
-        <TextInput
-          style={[styles.input, { flex: 1, marginBottom: 0 }]}
-          placeholder="Aggiungi tag (es. famiglia)..."
-          placeholderTextColor={colors.textMuted}
-          value={tagInput}
-          onChangeText={setTagInput}
-          onSubmitEditing={addTag}
-        />
-        <Button title="+" onPress={addTag} style={{ paddingHorizontal: spacing.lg }} />
-      </View>
-
-      <Text style={[styles.formLabel, { marginTop: spacing.lg }]}>Ombrellone stagionale</Text>
-      {assignedUmbrella ? (
-        <View style={styles.assigneeBox}>
-          <Text style={styles.itemTitle}>
-            N.{assignedUmbrella.number} · {assignedUmbrella.zone}
-          </Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-            <Button
-              title="Vai alla Piantina"
-              variant="secondary"
-              onPress={() => {
-                onCancel();
-                navigation.navigate('Piantina', { umbrellaId: assignedUmbrella.id });
-              }}
-              style={{ paddingVertical: 6, paddingHorizontal: spacing.sm }}
-            />
-            <Button
-              title="Rimuovi"
-              variant="danger"
-              onPress={() => assignCustomer(assignedUmbrella.id, undefined)}
-              style={{ paddingVertical: 6, paddingHorizontal: spacing.sm }}
-            />
-          </View>
-        </View>
-      ) : assigning ? (
-        <View>
-          <TextInput
-            style={styles.input}
-            placeholder="Cerca per numero o fila..."
-            placeholderTextColor={colors.textMuted}
-            value={umbrellaQuery}
-            onChangeText={setUmbrellaQuery}
-          />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {filteredUmbrellas.map((u) => (
-              <Chip
-                key={u.id}
-                label={`N.${u.number} · ${u.zone}${u.assignedCustomerId ? ' (occupato)' : ''}`}
-                onPress={() => {
-                  assignCustomer(u.id, customer.id);
-                  setAssigning(false);
-                }}
-              />
-            ))}
-          </View>
-        </View>
-      ) : (
-        <Button title="Assegna ombrellone" variant="secondary" onPress={() => setAssigning(true)} />
-      )}
-
-      {history.length > 0 && (
-        <>
-          <Text style={[styles.formLabel, { marginTop: spacing.lg }]}>Storico prenotazioni</Text>
-          {history.map((b) => (
-            <Pressable
-              key={b.id}
-              style={styles.historyRow}
-              onPress={() => {
-                onCancel();
-                navigation.navigate('Piantina', { umbrellaId: b.umbrellaId });
-              }}
-            >
-              <Text style={styles.notes}>
-                {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
-              </Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-            </Pressable>
-          ))}
-        </>
-      )}
-
-      <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
-        <Button title="Salva" onPress={() => onSave({ ...customer, name, phone, notes, vip, tags })} style={{ flex: 1 }} />
-        <Button title="Annulla" variant="ghost" onPress={onCancel} style={{ flex: 1 }} />
-      </View>
     </ScrollView>
   );
 };

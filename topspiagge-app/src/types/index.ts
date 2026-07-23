@@ -59,6 +59,9 @@ export interface Booking {
   isStudent?: boolean; // self-declared, honor-system -- only ever matters for the same-day student discount
   checkedInAt?: string; // ISO datetime -- set once the operator confirms the guest at reception; while
   // unset, the customer can still freely remove equipment themselves (see EquipmentChange below)
+  released?: boolean; // true once the operator has freed the umbrella (checkout done) -- the record
+  // is kept for history (CRM, Archivi, Statistiche) but no longer counts as occupying the
+  // calendar, so the same umbrella/date range can be booked again (see findUmbrellaConflict).
 }
 
 // A guest-initiated change to their own booking's beds/chairs, made from "Gestisci la mia

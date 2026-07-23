@@ -38,9 +38,15 @@ export const NotificationCenter: React.FC = () => {
     : undefined;
   const badgeCount = pendingChanges.length + arrivalsNotCheckedIn.length;
 
+  // NotificationCenter is mounted as a sibling of the operator Tab.Navigator (see
+  // OperatorApp.tsx's StaffTabs), not inside one of its screens, so useNavigation() here
+  // resolves to the root stack navigator (which only knows 'Customer'/'Operator') rather than
+  // the tab navigator's own screens. Navigating into a nested screen from an ancestor navigator
+  // needs the { screen, params } form -- a plain navigation.navigate('Piantina', ...) silently
+  // does nothing since 'Piantina' isn't one of the root navigator's own routes.
   const goTo = (screen: string, params?: any) => {
     setOpen(false);
-    navigation.navigate(screen, params);
+    navigation.navigate('Operator', { screen, params });
   };
 
   return (

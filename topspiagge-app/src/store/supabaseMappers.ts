@@ -87,6 +87,7 @@ export function rowToBooking(r: any): Booking {
     reference: r.reference,
     isStudent: r.is_student ?? undefined,
     checkedInAt: r.checked_in_at ?? undefined,
+    released: r.released ?? undefined,
   };
 }
 
@@ -110,6 +111,7 @@ export function bookingToRow(b: Booking, beachId: string) {
     reference: b.reference,
     is_student: b.isStudent ?? null,
     checked_in_at: b.checkedInAt ?? null,
+    released: b.released ?? false,
   };
 }
 

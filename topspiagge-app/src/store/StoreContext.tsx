@@ -272,12 +272,19 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'FREE_UMBRELLA': {
+      const freedUmbrella = state.umbrellas.find((u) => u.id === action.umbrellaId);
       const umbrellas = state.umbrellas.map((u) =>
         u.id === action.umbrellaId
           ? { ...u, status: 'libero' as const, currentBookingId: undefined }
           : u
       );
-      return { ...state, umbrellas };
+      // The booking record itself stays (history for CRM/Archivi/Statistiche), but is marked
+      // released so it stops blocking new bookings for the same umbrella/dates -- see
+      // findUmbrellaConflict/findCustomerConflict in utils/booking.ts.
+      const bookings = freedUmbrella?.currentBookingId
+        ? state.bookings.map((b) => (b.id === freedUmbrella.currentBookingId ? { ...b, released: true } : b))
+        : state.bookings;
+      return { ...state, umbrellas, bookings };
     }
 
     case 'CANCEL_BOOKING': {
@@ -990,6 +997,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
   }, []);
 
   const freeUmbrella = useCallback((umbrellaId: string) => {
+    const freedBookingId = stateRef.current.umbrellas.find((u) => u.id === umbrellaId)?.currentBookingId;
     dispatch({ type: 'FREE_UMBRELLA', umbrellaId });
     const client = supabase;
     const beachId = beachIdRef.current;
@@ -1001,6 +1009,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
           .eq('beach_id', beachId)
           .eq('id', umbrellaId)
       );
+      if (freedBookingId)
+        runSync(client.from('bookings').update({ released: true }).eq('beach_id', beachId).eq('id', freedBookingId));
     }
   }, []);
 

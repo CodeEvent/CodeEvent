@@ -84,6 +84,7 @@ create table if not exists bookings (
   reference text not null,
   is_student boolean,
   checked_in_at text,
+  released boolean not null default false,
   primary key (beach_id, id),
   foreign key (beach_id, umbrella_id) references umbrellas(beach_id, id) on delete cascade,
   foreign key (beach_id, customer_id) references customers(beach_id, id) on delete cascade
@@ -100,6 +101,9 @@ create index if not exists bookings_beach_id_idx on bookings (beach_id);
 -- the date range. Bounds are inclusive on both ends ('[]') to match findUmbrellaConflict's own
 -- `dateFrom <= b.dateTo && dateTo >= b.dateFrom` semantics -- a checkout day and the next guest's
 -- check-in day on the same umbrella already count as a conflict throughout this app.
+-- The `where (not released)` clause mirrors findUmbrellaConflict/findCustomerConflict's own
+-- `!b.released` check: once the operator frees an umbrella (checkout done), its old booking row
+-- is kept for history but must stop blocking new bookings for the same umbrella/dates.
 create extension if not exists btree_gist;
 alter table bookings drop constraint if exists bookings_no_overlap;
 alter table bookings
@@ -108,7 +112,7 @@ alter table bookings
     beach_id with =,
     umbrella_id with =,
     daterange(date_from::date, date_to::date, '[]') with &&
-  );
+  ) where (not released);
 
 create table if not exists equipment_changes (
   id text not null,
