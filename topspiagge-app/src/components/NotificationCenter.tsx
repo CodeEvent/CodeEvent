@@ -5,7 +5,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { findUmbrellaConflict } from '../utils/booking';
-import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
+import { formatCurrency, formatDateShort } from '../utils/format';
 import { sidebarBackdrop, sidebarSheet, useSidebarMode } from './sidebarSheet';
 import { SimulatedCheckoutModal } from './SimulatedCheckoutModal';
 import { Button, Card } from './UI';
@@ -26,18 +26,12 @@ export const NotificationCenter: React.FC = () => {
     getCustomer,
     confirmEquipmentAdd,
     resolveEquipmentChange,
-    confirmCheckIn,
     leaveWaitlist,
   } = useStore();
   const [open, setOpen] = useState(false);
   const [cardCheckoutChangeId, setCardCheckoutChangeId] = useState<string | null>(null);
-  const today = isoDate(0);
 
   const pendingChanges = useMemo(() => equipmentChanges.filter((c) => !c.resolved), [equipmentChanges]);
-  const arrivalsNotCheckedIn = useMemo(
-    () => bookings.filter((b) => b.dateFrom === today && !b.checkedInAt && !b.cancelled && !b.released),
-    [bookings, today]
-  );
   // No "notified"/"resolved" flag on a waitlist entry -- whether it currently matches is purely
   // derived from live bookings, so an entry that gets booked by someone else before the operator
   // acts on it just stops matching here on its own, with nothing stale left to clean up.
@@ -48,7 +42,7 @@ export const NotificationCenter: React.FC = () => {
   const cardCheckoutChange = cardCheckoutChangeId
     ? pendingChanges.find((c) => c.id === cardCheckoutChangeId)
     : undefined;
-  const badgeCount = pendingChanges.length + arrivalsNotCheckedIn.length + waitlistMatches.length;
+  const badgeCount = pendingChanges.length + waitlistMatches.length;
 
   // NotificationCenter is mounted as a sibling of the operator Tab.Navigator (see
   // OperatorApp.tsx's StaffTabs), not inside one of its screens, so useNavigation() here
@@ -126,32 +120,6 @@ export const NotificationCenter: React.FC = () => {
                         style={{ marginTop: spacing.xs, paddingVertical: 6 }}
                       />
                     )}
-                  </Card>
-                );
-              })}
-
-              {arrivalsNotCheckedIn.map((b) => {
-                const u = getUmbrella(b.umbrellaId);
-                const customer = getCustomer(b.customerId);
-                return (
-                  <Card key={b.id} style={{ marginBottom: spacing.sm }}>
-                    <Text style={styles.itemTitle}>
-                      Arrivo: Ombrellone N.{u?.number} · {customer?.name ?? 'Cliente'}
-                    </Text>
-                    <Text style={styles.itemDetail}>Codice {b.reference} · check-in da confermare</Text>
-                    <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs }}>
-                      <Button
-                        title="Vai alla Piantina"
-                        variant="secondary"
-                        onPress={() => goTo('Piantina', { umbrellaId: b.umbrellaId })}
-                        style={{ flex: 1, paddingVertical: 6 }}
-                      />
-                      <Button
-                        title="Conferma check-in"
-                        onPress={() => confirmCheckIn(b.id)}
-                        style={{ flex: 1, paddingVertical: 6 }}
-                      />
-                    </View>
                   </Card>
                 );
               })}

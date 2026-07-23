@@ -5,7 +5,7 @@ import { colors, radius, spacing } from '../theme';
 // phone" chrome used by every substantial modal/panel in the app (booking forms, detail
 // views, CRM editors, filters, notifications, QR scanner...). Kept in one place so every
 // screen's modal reads the same way instead of each reinventing its own breakpoint/shadow.
-export const SIDEBAR_BREAKPOINT = 900;
+export const SIDEBAR_BREAKPOINT = 700;
 
 export function useSidebarMode(): boolean {
   const { width } = useWindowDimensions();

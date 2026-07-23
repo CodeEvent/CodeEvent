@@ -41,7 +41,7 @@ import {
 } from '../../utils/pricing';
 import { generateBookingReference } from '../../utils/reference';
 
-const WIDE_BREAKPOINT = 860;
+const WIDE_BREAKPOINT = 700;
 const SIDEBAR_WIDTH = 380;
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');

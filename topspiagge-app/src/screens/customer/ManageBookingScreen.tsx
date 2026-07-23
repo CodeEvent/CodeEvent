@@ -14,7 +14,7 @@ import { displayStatusForBooking, isStagionaleBooking } from '../../utils/displa
 import { isRefundEligible, REFUND_CUTOFF_DAYS } from '../../utils/cancellation';
 import { daysBetween, formatCurrency, formatDateShort, isoDate } from '../../utils/format';
 import { equipmentPriceDelta } from '../../utils/pricing';
-import { referencesMatch } from '../../utils/reference';
+import { referencesMatch, verificationCodeFor } from '../../utils/reference';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 
@@ -77,6 +77,10 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
   const total = result.group.reduce((sum, b) => sum + b.totalPrice, 0);
   const paid = result.group.reduce((sum, b) => sum + b.paid, 0);
   const primary = result.group[0];
+  // Once the full balance is settled, reception needs a way to confirm that claim (rather than
+  // just taking the guest's word for it) before checking them in -- see verificationCodeFor.
+  const fullyPaid = paid >= total - 0.01;
+  const allCheckedIn = result.group.length > 0 && result.group.every((b) => !!b.checkedInAt);
   // A stagionale (30+ day, pre-paid) booking can only be changed by the lido operator -- the
   // customer can see it here but not edit or cancel it themselves.
   const hasStagionale = result.group.some((b) => isStagionaleBooking(b));
@@ -196,6 +200,21 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
                 <QRCode value={primary.reference} size={140} />
                 <Text style={styles.qrReference}>{primary.reference}</Text>
                 <Text style={styles.qrHint}>Mostra questo codice in reception per il check-in</Text>
+              </View>
+            )}
+
+            {primary && fullyPaid && !allCheckedIn && (
+              <View style={styles.verificationBox}>
+                <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.verificationTitle}>Codice di verifica pagamento</Text>
+                  <Text style={styles.verificationCode}>{verificationCodeFor(primary.reference)}</Text>
+                  <Text style={styles.verificationHint}>
+                    Il pagamento risulta completato: questo è il codice che ti abbiamo inviato via
+                    email/SMS. Comunicalo in reception per completare il check-in -- in alternativa
+                    porta con te la ricevuta di pagamento ricevuta via email o dell'estratto conto.
+                  </Text>
+                </View>
               </View>
             )}
 
@@ -415,6 +434,25 @@ const styles = StyleSheet.create({
   },
   qrReference: { marginTop: spacing.sm, fontWeight: '800', fontSize: 15, color: colors.primaryDark, letterSpacing: 1 },
   qrHint: { marginTop: 2, fontSize: 11, color: colors.textMuted },
+  verificationBox: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  verificationTitle: { fontWeight: '700', fontSize: 12, color: colors.text },
+  verificationCode: {
+    fontWeight: '800',
+    fontSize: 20,
+    color: colors.primaryDark,
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  verificationHint: { fontSize: 11, color: colors.textMuted, marginTop: 4 },
   sectionLabel: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { fontWeight: '700', fontSize: 14, color: colors.text },

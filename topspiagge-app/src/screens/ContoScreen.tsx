@@ -59,7 +59,6 @@ export const ContoScreen: React.FC = () => {
     updateBookingEquipment,
     equipmentChanges,
     confirmEquipmentAdd,
-    confirmCheckIn,
     closeConto,
     freeUmbrella,
     upsertCustomer,
@@ -332,23 +331,6 @@ export const ContoScreen: React.FC = () => {
                       {booking.guests.childrenUnder5 ? ` · ${booking.guests.childrenUnder5} bambini <5` : ''}
                     </Text>
                   )}
-
-                  <View style={styles.checkinRow}>
-                    {booking.checkedInAt ? (
-                      <View style={styles.checkedInBadge}>
-                        <Ionicons name="checkmark-circle" size={14} color={colors.libero} />
-                        <Text style={styles.checkedInBadgeText}>Check-in confermato</Text>
-                      </View>
-                    ) : (
-                      <Button
-                        title="Conferma check-in"
-                        variant="secondary"
-                        icon="checkmark-circle-outline"
-                        onPress={() => confirmCheckIn(booking.id)}
-                        style={{ paddingVertical: 6 }}
-                      />
-                    )}
-                  </View>
 
                   {pendingAddChange && (
                     <View style={styles.pendingRequestBox}>
@@ -627,9 +609,6 @@ const styles = StyleSheet.create({
   },
   customerName: { fontWeight: '700', fontSize: 15, color: colors.text },
   referenceText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12, marginTop: 2, letterSpacing: 0.5 },
-  checkinRow: { marginTop: spacing.sm },
-  checkedInBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  checkedInBadgeText: { color: colors.libero, fontWeight: '700', fontSize: 12 },
   pendingRequestBox: {
     backgroundColor: colors.prenotatoBg,
     borderRadius: radius.md,

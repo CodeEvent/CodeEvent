@@ -89,7 +89,6 @@ const OggiTab: React.FC = () => {
     equipmentChanges,
     confirmEquipmentAdd,
     resolveEquipmentChange,
-    confirmCheckIn,
   } = useStore();
   const alert = useAppAlert();
   const today = isoDate(0);
@@ -208,18 +207,6 @@ const OggiTab: React.FC = () => {
                 onPress={() => navigation.navigate('Piantina', { umbrellaId: b.umbrellaId })}
                 style={{ flex: 1, paddingVertical: 6 }}
               />
-              {b.checkedInAt ? (
-                <View style={styles.checkedInPill}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.libero} />
-                  <Text style={styles.checkedInPillText}>Check-in fatto</Text>
-                </View>
-              ) : (
-                <Button
-                  title="Conferma check-in"
-                  onPress={() => confirmCheckIn(b.id)}
-                  style={{ flex: 1, paddingVertical: 6 }}
-                />
-              )}
             </View>
           </Card>
         );
@@ -1799,17 +1786,6 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { fontWeight: '700', fontSize: 15, color: colors.text },
   muted: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  checkedInPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.liberoBg,
-    borderRadius: radius.sm,
-    paddingVertical: 6,
-  },
-  checkedInPillText: { color: colors.libero, fontWeight: '700', fontSize: 12 },
   notes: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic', marginTop: 4 },
   assignedTag: { color: colors.primaryDark, fontSize: 11, fontWeight: '700', marginTop: 4 },
   statRow: {

@@ -32,7 +32,6 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
     assignCustomer,
     equipmentChanges,
     confirmEquipmentAdd,
-    confirmCheckIn,
   } = useStore();
   const navigation = useNavigation<any>();
   const alert = useAppAlert();
@@ -220,20 +219,6 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
                     </View>
                   )}
 
-                  {booking.checkedInAt ? (
-                    <View style={styles.checkedInRow}>
-                      <Ionicons name="checkmark-circle" size={14} color={colors.libero} />
-                      <Text style={styles.checkedInText}>Check-in confermato</Text>
-                    </View>
-                  ) : (
-                    <Button
-                      title="Conferma check-in"
-                      variant="secondary"
-                      onPress={() => confirmCheckIn(booking.id)}
-                      style={{ marginTop: spacing.sm }}
-                    />
-                  )}
-
                   {pendingAddChange && (
                     <View style={styles.pendingBox}>
                       <Text style={styles.pendingText}>
@@ -263,16 +248,6 @@ export const UmbrellaDetailModal: React.FC<Props> = ({ umbrellaId, onClose, onEx
 
                   <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
                     <Button title="Vai al Conto" onPress={goToConto} />
-                    {(umbrella.status === 'in_arrivo' || umbrella.status === 'prenotato') && (
-                      <Button
-                        title="Check-in (segna occupato)"
-                        variant="secondary"
-                        onPress={() => {
-                          freeUmbrella(umbrella.id);
-                          close();
-                        }}
-                      />
-                    )}
                     <Button
                       title={
                         isStagionale
@@ -356,8 +331,6 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 17, fontWeight: '700', color: colors.text },
   muted: { color: colors.textMuted, fontSize: 13 },
-  checkedInRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm },
-  checkedInText: { color: colors.libero, fontWeight: '700', fontSize: 12 },
   pendingBox: {
     backgroundColor: colors.prenotatoBg,
     borderRadius: radius.md,
