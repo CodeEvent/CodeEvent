@@ -57,10 +57,10 @@ export function distributeGuests(guests: GuestCount, umbrellaCount: number): Gue
   return slots;
 }
 
-// A released booking (the operator has already freed that umbrella -- checkout done) is kept
-// around for history but no longer occupies the calendar, so it's excluded from both conflict
-// checks below -- otherwise a freshly-freed, visibly "Libero" umbrella would stay permanently
-// unbookable for its old dates.
+// A released booking (the operator has already freed that umbrella -- checkout done) or a
+// cancelled one (see Booking.cancelled) is kept around for history but no longer occupies the
+// calendar, so both are excluded from the conflict checks below -- otherwise a freshly-freed,
+// visibly "Libero" umbrella would stay permanently unbookable for its old dates.
 export function findUmbrellaConflict(
   bookings: Booking[],
   umbrellaId: string,
@@ -68,7 +68,7 @@ export function findUmbrellaConflict(
   dateTo: string
 ): Booking | undefined {
   return bookings.find(
-    (b) => !b.released && b.umbrellaId === umbrellaId && dateFrom <= b.dateTo && dateTo >= b.dateFrom
+    (b) => !b.released && !b.cancelled && b.umbrellaId === umbrellaId && dateFrom <= b.dateTo && dateTo >= b.dateFrom
   );
 }
 
@@ -82,6 +82,7 @@ export function findCustomerConflict(
   return bookings.find(
     (b) =>
       !b.released &&
+      !b.cancelled &&
       b.customerId === customerId &&
       b.umbrellaId !== umbrellaId &&
       dateFrom <= b.dateTo &&

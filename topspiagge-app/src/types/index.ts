@@ -64,6 +64,14 @@ export interface Booking {
   released?: boolean; // true once the operator has freed the umbrella (checkout done) -- the record
   // is kept for history (CRM, Archivi, Statistiche) but no longer counts as occupying the
   // calendar, so the same umbrella/date range can be booked again (see findUmbrellaConflict).
+  cancelled?: boolean; // true when an operator cancels the booking from Archivi (distinct from a
+  // completed stay's `released`) -- always set together with `released` so it frees the
+  // umbrella/stops blocking new bookings the same way, but the record is kept (with a
+  // "Cancellata" label) instead of being deleted, and is excluded from customer stats and
+  // occupancy/no-show analytics so it isn't counted as a real visit. Only used by the
+  // operator's own cancellation (see cancelBookingKeepRecord in StoreContext.tsx) -- a
+  // customer's self-service cancellation and the edit-booking replace-in-place flow both still
+  // fully remove the booking via the plain `cancelBooking`.
 }
 
 // A customer's request to be told when a specific umbrella/date range frees up, joined from the

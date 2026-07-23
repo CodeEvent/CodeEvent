@@ -114,6 +114,7 @@ type Action =
   | { type: 'CREATE_BOOKING'; booking: Booking }
   | { type: 'FREE_UMBRELLA'; umbrellaId: string }
   | { type: 'CANCEL_BOOKING'; bookingId: string }
+  | { type: 'CANCEL_BOOKING_KEEP_RECORD'; bookingId: string }
   | { type: 'GRANT_VOUCHER'; customerId: string; amount: number }
   | { type: 'JOIN_WAITLIST'; entry: WaitlistEntry }
   | { type: 'LEAVE_WAITLIST'; entryId: string }
@@ -314,6 +315,36 @@ function reducer(state: AppState, action: Action): AppState {
       const customers = state.customers.map((c) =>
         c.id === booking.customerId
           ? { ...c, bookingHistory: c.bookingHistory.filter((id) => !idsToRemove.has(id)) }
+          : c
+      );
+      return { ...state, bookings, umbrellas, customers };
+    }
+
+    // Operator-initiated cancel (Archivi's BookingDetail) -- unlike CANCEL_BOOKING above (also
+    // used by a customer's own self-service cancel and the edit-booking replace-in-place flow),
+    // this keeps the booking row instead of deleting it: marked cancelled+released so it frees
+    // the umbrella and stops blocking new bookings the same way a completed stay's `released`
+    // does, but stays visible as a record (see PrenotazioniTab/CustomerForm) instead of
+    // vanishing without a trace.
+    case 'CANCEL_BOOKING_KEEP_RECORD': {
+      const booking = state.bookings.find((b) => b.id === action.bookingId);
+      if (!booking) return state;
+      const idsToCancel = new Set(
+        booking.groupId
+          ? state.bookings.filter((b) => b.groupId === booking.groupId).map((b) => b.id)
+          : [booking.id]
+      );
+      const bookings = state.bookings.map((b) =>
+        idsToCancel.has(b.id) ? { ...b, cancelled: true, released: true } : b
+      );
+      const umbrellas = state.umbrellas.map((u) =>
+        u.currentBookingId && idsToCancel.has(u.currentBookingId)
+          ? { ...u, status: 'libero' as const, currentBookingId: undefined }
+          : u
+      );
+      const customers = state.customers.map((c) =>
+        c.id === booking.customerId
+          ? { ...c, bookingHistory: c.bookingHistory.filter((id) => !idsToCancel.has(id)) }
           : c
       );
       return { ...state, bookings, umbrellas, customers };
@@ -680,6 +711,7 @@ interface StoreContextValue extends AppState {
   createBooking: (booking: Booking, onConflict?: () => void) => void;
   freeUmbrella: (umbrellaId: string) => void;
   cancelBooking: (bookingId: string) => void;
+  cancelBookingKeepRecord: (bookingId: string) => void;
   grantVoucher: (customerId: string, amount: number) => void;
   joinWaitlist: (entry: Omit<WaitlistEntry, 'id' | 'createdAt'>) => void;
   leaveWaitlist: (entryId: string) => void;
@@ -1076,6 +1108,39 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       runSync(client.from('bookings').delete().eq('beach_id', beachId).in('id', idsToRemove));
       const affectedUmbrellaIds = prev.umbrellas
         .filter((u) => u.currentBookingId && idsToRemove.includes(u.currentBookingId))
+        .map((u) => u.id);
+      affectedUmbrellaIds.forEach((id) => {
+        const u = next.umbrellas.find((x) => x.id === id);
+        if (u) runSync(client.from('umbrellas').update(umbrellaToRow(u, beachId)).eq('beach_id', beachId).eq('id', id));
+      });
+      const customer = next.customers.find((c) => c.id === booking.customerId);
+      if (customer)
+        runSync(client.from('customers').update(customerToRow(customer, beachId)).eq('beach_id', beachId).eq('id', customer.id));
+    }
+  }, []);
+
+  // Operator-initiated cancel (Archivi) -- see the CANCEL_BOOKING_KEEP_RECORD reducer case for
+  // why this is a distinct action from cancelBooking above rather than a flag on it: the other
+  // two callers of cancelBooking (customer self-service cancel, and the edit-booking
+  // replace-in-place flow) must keep hard-deleting, or every booking edit would leave a
+  // cancelled ghost record behind.
+  const cancelBookingKeepRecord = useCallback((bookingId: string) => {
+    const prev = stateRef.current;
+    const booking = prev.bookings.find((b) => b.id === bookingId);
+    const action: Action = { type: 'CANCEL_BOOKING_KEEP_RECORD', bookingId };
+    const next = reducer(prev, action);
+    dispatch(action);
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId && booking) {
+      const idsToCancel = booking.groupId
+        ? prev.bookings.filter((b) => b.groupId === booking.groupId).map((b) => b.id)
+        : [booking.id];
+      runSync(
+        client.from('bookings').update({ cancelled: true, released: true }).eq('beach_id', beachId).in('id', idsToCancel)
+      );
+      const affectedUmbrellaIds = prev.umbrellas
+        .filter((u) => u.currentBookingId && idsToCancel.includes(u.currentBookingId))
         .map((u) => u.id);
       affectedUmbrellaIds.forEach((id) => {
         const u = next.umbrellas.find((x) => x.id === id);
@@ -1571,6 +1636,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       createBooking,
       freeUmbrella,
       cancelBooking,
+      cancelBookingKeepRecord,
       grantVoucher,
       joinWaitlist,
       leaveWaitlist,
@@ -1612,6 +1678,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       createBooking,
       freeUmbrella,
       cancelBooking,
+      cancelBookingKeepRecord,
       grantVoucher,
       joinWaitlist,
       leaveWaitlist,

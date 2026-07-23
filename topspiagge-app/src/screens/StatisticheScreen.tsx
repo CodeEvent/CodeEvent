@@ -20,7 +20,9 @@ export const StatisticheScreen: React.FC = () => {
   // a snapshot of "how full are we right now", independent of dailyStats' revenue figures.
   const occupiedTodayCount = useMemo(() => {
     const ids = new Set(
-      bookings.filter((b) => b.dateFrom <= today && b.dateTo >= today).map((b) => b.umbrellaId)
+      bookings
+        .filter((b) => !b.released && !b.cancelled && b.dateFrom <= today && b.dateTo >= today)
+        .map((b) => b.umbrellaId)
     );
     return ids.size;
   }, [bookings, today]);
@@ -38,7 +40,10 @@ export const StatisticheScreen: React.FC = () => {
   // No-show rate: of bookings whose entire stay has already ended, how many never had their
   // check-in confirmed at reception -- only fully-elapsed stays count, so a guest still partway
   // through a multi-day booking isn't prematurely flagged.
-  const completedBookings = useMemo(() => bookings.filter((b) => b.dateTo < today), [bookings, today]);
+  const completedBookings = useMemo(
+    () => bookings.filter((b) => b.dateTo < today && !b.cancelled),
+    [bookings, today]
+  );
   const noShowBookings = useMemo(() => completedBookings.filter((b) => !b.checkedInAt), [completedBookings]);
   const noShowRate = completedBookings.length > 0 ? (noShowBookings.length / completedBookings.length) * 100 : null;
 

@@ -178,8 +178,9 @@ export const CustomerForm: React.FC<Props> = ({ customer, history, onSave, onCan
                 navigation.navigate('Piantina', { umbrellaId: b.umbrellaId });
               }}
             >
-              <Text style={styles.notes}>
+              <Text style={[styles.notes, b.cancelled && styles.notesCancelled]}>
                 {formatDateShort(b.dateFrom)} → {formatDateShort(b.dateTo)} · {formatCurrency(b.totalPrice)}
+                {b.cancelled ? ' · Cancellata' : ''}
               </Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
             </Pressable>
@@ -211,6 +212,7 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { fontWeight: '700', fontSize: 15, color: colors.text },
   notes: { color: colors.textMuted, fontSize: 12, fontStyle: 'italic', marginTop: 4 },
+  notesCancelled: { color: colors.occupato, textDecorationLine: 'line-through' },
   statRow: {
     flexDirection: 'row',
     backgroundColor: colors.bg,

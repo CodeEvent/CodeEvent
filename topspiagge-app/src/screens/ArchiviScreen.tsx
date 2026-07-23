@@ -98,8 +98,14 @@ const OggiTab: React.FC = () => {
   const cardCheckoutChange = cardCheckoutChangeId
     ? pendingChanges.find((c) => c.id === cardCheckoutChangeId)
     : undefined;
-  const arrivals = useMemo(() => bookings.filter((b) => b.dateFrom === today), [bookings, today]);
-  const departures = useMemo(() => bookings.filter((b) => b.dateTo === today), [bookings, today]);
+  const arrivals = useMemo(
+    () => bookings.filter((b) => b.dateFrom === today && !b.cancelled),
+    [bookings, today]
+  );
+  const departures = useMemo(
+    () => bookings.filter((b) => b.dateTo === today && !b.cancelled),
+    [bookings, today]
+  );
   const daSaldareUmbrellas = useMemo(
     () => umbrellas.filter((u) => displayStatusFor(u, getBooking) === 'da_saldare'),
     [umbrellas, getBooking]
@@ -107,7 +113,10 @@ const OggiTab: React.FC = () => {
   // "New bookings" is by creation date, not stay date -- a booking placed today for a future
   // arrival still belongs here, distinct from "Arrivi di oggi" (which is by dateFrom).
   const newBookings = useMemo(
-    () => bookings.filter((b) => b.createdAt === today).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom)),
+    () =>
+      bookings
+        .filter((b) => b.createdAt === today && !b.cancelled)
+        .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom)),
     [bookings, today]
   );
 
@@ -341,7 +350,7 @@ const PrenotazioniTab: React.FC = () => {
   const upcoming = useMemo(() => {
     const q = query.trim().toLowerCase();
     return bookings
-      .filter((b) => b.dateTo >= today)
+      .filter((b) => b.dateTo >= today && !b.cancelled)
       .filter((b) => {
         if (!q) return true;
         const customer = getCustomer(b.customerId);
@@ -465,14 +474,14 @@ const PrenotazioniTab: React.FC = () => {
 
 const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ booking, onClose }) => {
   const navigation = useNavigation<any>();
-  const { getCustomer, getUmbrella, cancelBooking } = useStore();
+  const { getCustomer, getUmbrella, cancelBookingKeepRecord } = useStore();
   const alert = useAppAlert();
   const customer = getCustomer(booking.customerId);
   const umbrella = getUmbrella(booking.umbrellaId);
   const remaining = booking.totalPrice - booking.paid;
 
   const doCancel = () => {
-    cancelBooking(booking.id);
+    cancelBookingKeepRecord(booking.id);
     onClose();
   };
 
@@ -491,7 +500,7 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
             onPress: () =>
               alert(
                 'Conferma definitiva',
-                'La prenotazione stagionale pre-pagata verrà persa e non potrà essere recuperata. Confermi la cancellazione?',
+                "L'ombrellone verrà liberato subito. La prenotazione resterà come record cancellato in Archivi/CRM, ma il pagamento anticipato non potrà essere recuperato. Confermi la cancellazione?",
                 [
                   { text: 'Annulla', style: 'cancel' },
                   { text: 'Cancella definitivamente', style: 'destructive', onPress: doCancel },
@@ -504,7 +513,7 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
     }
     alert(
       'Cancellare questa prenotazione?',
-      `${customer?.name ?? 'Cliente'} · Ombrellone N.${umbrella?.number} (${umbrella?.zone}). L'operazione non è reversibile.`,
+      `${customer?.name ?? 'Cliente'} · Ombrellone N.${umbrella?.number} (${umbrella?.zone}). L'ombrellone tornerà libero subito; la prenotazione resterà come record cancellato in Archivi.`,
       [
         { text: 'Annulla', style: 'cancel' },
         { text: 'Cancella prenotazione', style: 'destructive', onPress: doCancel },

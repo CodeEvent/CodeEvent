@@ -11,7 +11,9 @@ export interface CustomerStats {
 // Pure derived stats computed from the bookings already in the store -- nothing here is
 // persisted, so there's no new schema/column to keep in sync as bookings change.
 export function computeCustomerStats(customer: Customer, bookings: Booking[]): CustomerStats {
-  const own = bookings.filter((b) => b.customerId === customer.id);
+  // A cancelled booking (see Booking.cancelled) never happened, so it's excluded here even
+  // though it's kept in the raw history list the caller passes in for display.
+  const own = bookings.filter((b) => b.customerId === customer.id && !b.cancelled);
   if (own.length === 0) {
     return { totalSpend: 0, visitCount: 0, lastVisitDate: null, avgNights: null };
   }

@@ -86,6 +86,10 @@ create table if not exists bookings (
   is_student boolean,
   checked_in_at text,
   released boolean not null default false,
+  -- Set (together with released) by an operator's cancellation from Archivi -- see
+  -- Booking.cancelled in src/types/index.ts. The row is kept as a record instead of being
+  -- deleted; a customer's own self-service cancellation still deletes the row outright.
+  cancelled boolean not null default false,
   primary key (beach_id, id),
   foreign key (beach_id, umbrella_id) references umbrellas(beach_id, id) on delete cascade,
   foreign key (beach_id, customer_id) references customers(beach_id, id) on delete cascade
