@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArchiviScreen } from '../ArchiviScreen';
 import { ContoScreen } from '../ContoScreen';
-import { GrigliaScreen } from '../GrigliaScreen';
 import { PiantinaScreen } from '../PiantinaScreen';
 import { QuadroScreen } from '../QuadroScreen';
 import { StatisticheScreen } from '../StatisticheScreen';
@@ -19,7 +18,6 @@ const Tab = createBottomTabNavigator();
 
 const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Piantina: 'location-outline',
-  Griglia: 'grid-outline',
   Quadro: 'reorder-four-outline',
   Conto: 'card-outline',
   Statistiche: 'stats-chart-outline',
@@ -52,7 +50,6 @@ const StaffTabs: React.FC = () => {
         })}
       >
         <Tab.Screen name="Piantina" component={PiantinaScreen} />
-        <Tab.Screen name="Griglia" component={GrigliaScreen} />
         <Tab.Screen name="Quadro" component={QuadroScreen} />
         <Tab.Screen name="Conto" component={ContoScreen} />
         <Tab.Screen name="Statistiche" component={StatisticheScreen} />

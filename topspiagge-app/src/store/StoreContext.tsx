@@ -51,7 +51,11 @@ import {
   umbrellaToRow,
 } from './supabaseMappers';
 
-const STORAGE_KEY = 'topspiagge:v1';
+// Bumped whenever a change to buildInitialState() (e.g. resetting to an empty beach with no
+// demo bookings) needs to actually take effect for a browser/device that already has an older
+// blob persisted under the previous key -- otherwise HYDRATE would keep restoring that stale
+// state forever instead of picking up the new default.
+const STORAGE_KEY = 'topspiagge:v2';
 
 // Fire-and-forget Supabase write: local state is already updated optimistically by the time
 // this runs, so a failure here just means this device's change hasn't reached the shared
