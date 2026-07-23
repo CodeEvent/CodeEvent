@@ -73,6 +73,12 @@ export const QuadroScreen: React.FC = () => {
   const bookingsByUmbrella = useMemo(() => {
     const map = new Map<string, Booking[]>();
     bookings.forEach((b) => {
+      // A released (freed early or at checkout) or cancelled booking no longer blocks its
+      // umbrella/dates -- see findUmbrellaConflict in utils/booking.ts -- so it shouldn't keep
+      // drawing a bar here either, or the Gantt would show an umbrella as occupied through its
+      // original checkout date right after the operator just freed it (e.g. via Conto's "Libera
+      // ombrellone dopo il pagamento").
+      if (b.released || b.cancelled) return;
       if (b.dateTo < windowStartIso || b.dateFrom > windowEndIso) return;
       const list = map.get(b.umbrellaId) ?? [];
       list.push(b);

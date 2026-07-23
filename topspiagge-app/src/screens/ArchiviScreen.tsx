@@ -702,6 +702,7 @@ const FiltriTab: React.FC = () => {
   const results = useMemo(
     () =>
       bookings
+        .filter((b) => !b.cancelled)
         .filter((b) => bookingMatchesFilters(b, getUmbrella(b.umbrellaId), getCustomer(b.customerId), filters, today))
         .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom)),
     [bookings, filters, getUmbrella, getCustomer, today]
