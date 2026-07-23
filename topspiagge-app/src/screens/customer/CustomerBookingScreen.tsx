@@ -29,7 +29,7 @@ import {
   MAX_EQUIPMENT_PER_UMBRELLA,
   umbrellasNeededFor,
 } from '../../utils/booking';
-import { DEPOSIT_RATE, refundCutoffDate } from '../../utils/cancellation';
+import { PREPAYMENT_RATE, REFUND_CUTOFF_DAYS, refundCutoffDate } from '../../utils/cancellation';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate, offsetFromToday } from '../../utils/format';
 import {
   bundleForUmbrella,
@@ -523,13 +523,14 @@ const PeriodHero: React.FC<{ dateFrom: string; dateTo: string; days: number; onE
 const BookingFooter: React.FC<{
   total: number;
   deposit: number;
+  voucherApplied?: number;
   umbrellaCount: number;
   primaryLabel: string;
   primaryIcon: keyof typeof Ionicons.glyphMap;
   onPrimary: () => void;
   primaryDisabled: boolean;
   onCancel: () => void;
-}> = ({ total, deposit, umbrellaCount, primaryLabel, primaryIcon, onPrimary, primaryDisabled, onCancel }) => (
+}> = ({ total, deposit, voucherApplied, umbrellaCount, primaryLabel, primaryIcon, onPrimary, primaryDisabled, onCancel }) => (
   <View style={styles.stickyFooter}>
     <View style={styles.totalRow}>
       <Text style={styles.totalLabel}>
@@ -537,7 +538,12 @@ const BookingFooter: React.FC<{
       </Text>
       <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
     </View>
-    <Text style={styles.muted}>Acconto da versare ora: {formatCurrency(deposit)}</Text>
+    {!!voucherApplied && (
+      <Text style={[styles.muted, { color: colors.libero }]}>
+        Credito voucher applicato: -{formatCurrency(voucherApplied)}
+      </Text>
+    )}
+    <Text style={styles.muted}>Da pagare ora (pagamento anticipato): {formatCurrency(deposit)}</Text>
     <Button title={primaryLabel} icon={primaryIcon} onPress={onPrimary} disabled={primaryDisabled} style={{ marginTop: spacing.md }} />
     <Button title="Annulla" variant="ghost" onPress={onCancel} style={{ marginTop: spacing.sm }} />
   </View>
@@ -741,16 +747,27 @@ const BookingForm: React.FC<{
     const u = getUmbrella(id);
     return !!u && isStudentDiscountEligibleRow(u);
   });
-  const umbrellaDeposit = (id: string) => Math.round(umbrellaTotal(id) * DEPOSIT_RATE);
-
-  const total = allUmbrellaIds.reduce((sum, id) => sum + umbrellaTotal(id), 0);
-  const deposit = allUmbrellaIds.reduce((sum, id) => sum + umbrellaDeposit(id), 0);
-
   const matchedCustomer = useMemo(() => {
     const p = normalizePhone(phone);
     if (!p) return undefined;
     return customers.find((c) => normalizePhone(c.phone) === p);
   }, [customers, phone]);
+
+  const grossTotal = allUmbrellaIds.reduce((sum, id) => sum + umbrellaTotal(id), 0);
+  // A voucher earned from an eligible past cancellation (see ManageBookingScreen's grantVoucher)
+  // is auto-applied against this new booking's total -- never while editing an existing one,
+  // so re-picking dates on a booking already in progress can't silently spend the credit again.
+  const voucherApplied = editContext
+    ? 0
+    : Math.round(Math.min(matchedCustomer?.voucherBalance ?? 0, grossTotal) * 100) / 100;
+  const voucherShare = (id: string) =>
+    grossTotal ? Math.round(((voucherApplied * umbrellaTotal(id)) / grossTotal) * 100) / 100 : 0;
+  const umbrellaNetTotal = (id: string) => Math.round((umbrellaTotal(id) - voucherShare(id)) * 100) / 100;
+  // Booking is paid in full at the time of booking (PREPAYMENT_RATE = 1) -- see utils/cancellation.ts.
+  const umbrellaDeposit = (id: string) => Math.round(umbrellaNetTotal(id) * PREPAYMENT_RATE * 100) / 100;
+
+  const total = Math.round((grossTotal - voucherApplied) * 100) / 100;
+  const deposit = allUmbrellaIds.reduce((sum, id) => sum + umbrellaDeposit(id), 0);
 
   const isNewCustomer = normalizePhone(phone).length >= 6 && !matchedCustomer;
   const effectiveCustomerId = editContext ? editContext.customer.id : matchedCustomer?.id;
@@ -789,6 +806,11 @@ const BookingForm: React.FC<{
       };
       upsertCustomer(customer);
       customerId = customer.id;
+    } else if (voucherApplied > 0 && matchedCustomer) {
+      upsertCustomer({
+        ...matchedCustomer,
+        voucherBalance: Math.round(((matchedCustomer.voucherBalance ?? 0) - voucherApplied) * 100) / 100,
+      });
     }
     const reference = editContext ? editContext.bookings[0].reference : generateBookingReference();
     const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
@@ -801,7 +823,7 @@ const BookingForm: React.FC<{
         customerId: customerId!,
         dateFrom,
         dateTo,
-        totalPrice: umbrellaTotal(uId),
+        totalPrice: umbrellaNetTotal(uId),
         deposit: umbrellaDeposit(uId),
         paid: umbrellaDeposit(uId),
         status: 'prenotato',
@@ -926,8 +948,9 @@ const BookingForm: React.FC<{
           {conflictBanner}
         </ScrollView>
         <BookingFooter
-          total={total}
+          total={grossTotal}
           deposit={deposit}
+          voucherApplied={voucherApplied}
           umbrellaCount={allUmbrellaIds.length}
           primaryLabel={editContext ? 'Conferma modifica' : 'Conferma e prenota'}
           primaryIcon="checkmark-circle-outline"
@@ -1019,6 +1042,12 @@ const BookingForm: React.FC<{
             {matchedCustomer && (
               <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
             )}
+            {matchedCustomer && !editContext && !!matchedCustomer.voucherBalance && (
+              <Text style={styles.welcomeText}>
+                Hai un credito voucher di {formatCurrency(matchedCustomer.voucherBalance)}: verrà applicato a
+                questa prenotazione.
+              </Text>
+            )}
             {isNewCustomer && (
               <View style={{ marginTop: spacing.sm }}>
                 <Text style={styles.sectionLabel}>Nome e cognome</Text>
@@ -1073,29 +1102,31 @@ const BookingForm: React.FC<{
         <View style={styles.policyBox}>
           <View style={styles.policyHeaderRow}>
             <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
-            <Text style={styles.policyTitle}>Acconto e politica di cancellazione</Text>
+            <Text style={styles.policyTitle}>Pagamento anticipato</Text>
           </View>
           <Text style={styles.policyText}>
-            Per confermare versi ora un acconto del 20% ({formatCurrency(deposit)}). Il saldo di{' '}
-            {formatCurrency(total - deposit)} si paga in spiaggia.
+            L'importo totale della prenotazione ({formatCurrency(deposit)}) viene addebitato ora, al momento della
+            prenotazione.
           </Text>
-          <Text style={styles.policyText}>
-            Puoi cancellare gratuitamente entro il <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>{' '}
-            (7 giorni prima dell'arrivo): l'acconto ti verrà restituito. Cancellando dopo tale data, o non
-            presentandoti, l'acconto <Text style={styles.policyBold}>non è rimborsabile</Text>.
+          <Text style={[styles.policyText, { marginTop: spacing.sm }]}>
+            <Text style={styles.policyBold}>Rimborsabile tramite voucher:</Text> se annulli entro il{' '}
+            <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text> ({REFUND_CUTOFF_DAYS} giorni prima
+            dell'arrivo), riceverai un voucher da usare per una prossima prenotazione qui. Annullando dopo tale
+            data, o non presentandoti, l'importo pagato <Text style={styles.policyBold}>non è rimborsabile</Text>.
           </Text>
           <View style={{ marginTop: spacing.sm }}>
             <Checkbox
               checked={policyAccepted}
               onToggle={() => setPolicyAccepted((v) => !v)}
-              label="Ho letto e accetto la politica di acconto e cancellazione"
+              label="Ho letto e accetto la politica di pagamento e cancellazione"
             />
           </View>
         </View>
       </ScrollView>
       <BookingFooter
-        total={total}
+        total={grossTotal}
         deposit={deposit}
+        voucherApplied={voucherApplied}
         umbrellaCount={allUmbrellaIds.length}
         primaryLabel="Rivedi prenotazione"
         primaryIcon="receipt-outline"
@@ -1187,7 +1218,7 @@ const ConfirmationModal: React.FC<{
               <Text style={styles.confirmValue}>{formatCurrency(total)}</Text>
             </View>
             <View style={styles.confirmRow}>
-              <Text style={styles.muted}>Acconto pagato</Text>
+              <Text style={styles.muted}>Pagato</Text>
               <Text style={[styles.confirmValue, { color: colors.libero }]}>{formatCurrency(paid)}</Text>
             </View>
           </Card>

@@ -109,6 +109,7 @@ type Action =
   | { type: 'CREATE_BOOKING'; booking: Booking }
   | { type: 'FREE_UMBRELLA'; umbrellaId: string }
   | { type: 'CANCEL_BOOKING'; bookingId: string }
+  | { type: 'GRANT_VOUCHER'; customerId: string; amount: number }
   | { type: 'UPSERT_CUSTOMER'; customer: Customer }
   | { type: 'DELETE_CUSTOMER'; customerId: string }
   | { type: 'UPSERT_ARTICLE'; article: Article }
@@ -307,6 +308,13 @@ function reducer(state: AppState, action: Action): AppState {
           : c
       );
       return { ...state, bookings, umbrellas, customers };
+    }
+
+    case 'GRANT_VOUCHER': {
+      const customers = state.customers.map((c) =>
+        c.id === action.customerId ? { ...c, voucherBalance: Math.round(((c.voucherBalance ?? 0) + action.amount) * 100) / 100 } : c
+      );
+      return { ...state, customers };
     }
 
     case 'UPSERT_CUSTOMER': {
@@ -646,6 +654,7 @@ interface StoreContextValue extends AppState {
   createBooking: (booking: Booking, onConflict?: () => void) => void;
   freeUmbrella: (umbrellaId: string) => void;
   cancelBooking: (bookingId: string) => void;
+  grantVoucher: (customerId: string, amount: number) => void;
   upsertCustomer: (customer: Customer) => void;
   deleteCustomer: (customerId: string) => void;
   upsertArticle: (article: Article) => void;
@@ -1037,6 +1046,24 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       const customer = next.customers.find((c) => c.id === booking.customerId);
       if (customer)
         runSync(client.from('customers').update(customerToRow(customer, beachId)).eq('beach_id', beachId).eq('id', customer.id));
+    }
+  }, []);
+
+  // Issued alongside cancelBooking by a genuinely customer-initiated cancellation (never by the
+  // edit-a-booking replace-in-place flow, which also calls cancelBooking internally) when it's
+  // within the refund-eligible window -- see utils/cancellation.ts's REFUND_CUTOFF_DAYS. Under
+  // the current policy (full prepayment, no cash refunds) this voucher is the only thing the
+  // guest gets back, redeemable against the total of their next booking at this beach.
+  const grantVoucher = useCallback((customerId: string, amount: number) => {
+    dispatch({ type: 'GRANT_VOUCHER', customerId, amount });
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) {
+      const customer = stateRef.current.customers.find((c) => c.id === customerId);
+      if (customer) {
+        const updated = { ...customer, voucherBalance: Math.round(((customer.voucherBalance ?? 0) + amount) * 100) / 100 };
+        runSync(client.from('customers').update(customerToRow(updated, beachId)).eq('beach_id', beachId).eq('id', customerId));
+      }
     }
   }, []);
 
@@ -1491,6 +1518,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       createBooking,
       freeUmbrella,
       cancelBooking,
+      grantVoucher,
       upsertCustomer,
       deleteCustomer,
       upsertArticle,
@@ -1529,6 +1557,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       createBooking,
       freeUmbrella,
       cancelBooking,
+      grantVoucher,
       upsertCustomer,
       deleteCustomer,
       upsertArticle,

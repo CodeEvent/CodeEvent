@@ -12,7 +12,7 @@ import {
   MAX_ADULTS_PER_UMBRELLA,
   umbrellasNeededFor,
 } from '../utils/booking';
-import { DEPOSIT_RATE, refundCutoffDate } from '../utils/cancellation';
+import { PREPAYMENT_RATE, REFUND_CUTOFF_DAYS, refundCutoffDate } from '../utils/cancellation';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 import {
   baseUmbrellaPricePerDay,
@@ -85,7 +85,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     const gross = base * days;
     return Math.round(gross * (1 - umbrellaDiscount(id).total) * 100) / 100;
   };
-  const umbrellaDeposit = (id: string) => Math.round(umbrellaTotal(id) * DEPOSIT_RATE);
+  const umbrellaDeposit = (id: string) => Math.round(umbrellaTotal(id) * PREPAYMENT_RATE);
 
   const isFreeForPeriod = (u: { id: string }) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
 
@@ -362,8 +362,9 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       {!isToday && (
         <View style={styles.policyBox}>
           <Text style={styles.policyText}>
-            Acconto 20% ({formatCurrency(deposit)}). Rimborsabile se cancellata entro il{' '}
-            <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>, altrimenti non rimborsabile.
+            Pagamento anticipato: {formatCurrency(deposit)} addebitati ora. Rimborsabile tramite voucher se
+            cancellata entro il <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text> (
+            {REFUND_CUTOFF_DAYS} giorni prima dell'arrivo), altrimenti non rimborsabile.
           </Text>
         </View>
       )}

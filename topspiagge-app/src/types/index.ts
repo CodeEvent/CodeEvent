@@ -30,6 +30,8 @@ export interface Customer {
   assignedUmbrellaId?: string; // reverse pointer of Umbrella.assignedCustomerId
   createdAt: string;
   tags: string[]; // freeform CRM segments, e.g. "famiglia", "cliente storico"
+  voucherBalance?: number; // store credit granted by an eligible cancellation refund (see
+  // grantVoucher in StoreContext.tsx), redeemable against the total of this customer's next booking
 }
 
 export type PaymentMethod = 'contanti' | 'carta' | 'misto';

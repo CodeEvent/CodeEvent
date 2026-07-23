@@ -61,6 +61,7 @@ create table if not exists customers (
   assigned_umbrella_id text,
   created_at text not null,
   tags text[] not null default '{}',
+  voucher_balance numeric not null default 0,
   primary key (beach_id, id)
 );
 create index if not exists customers_beach_id_idx on customers (beach_id);

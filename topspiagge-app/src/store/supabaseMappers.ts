@@ -49,6 +49,7 @@ export function rowToCustomer(r: any): Customer {
     assignedUmbrellaId: r.assigned_umbrella_id ?? undefined,
     createdAt: r.created_at,
     tags: r.tags ?? [],
+    voucherBalance: r.voucher_balance ?? undefined,
   };
 }
 
@@ -65,6 +66,7 @@ export function customerToRow(c: Customer, beachId: string) {
     assigned_umbrella_id: c.assignedUmbrellaId ?? null,
     created_at: c.createdAt,
     tags: c.tags,
+    voucher_balance: c.voucherBalance ?? 0,
   };
 }
 

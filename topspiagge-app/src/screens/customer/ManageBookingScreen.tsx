@@ -11,7 +11,7 @@ import { colors, radius, spacing } from '../../theme';
 import { Booking, Customer } from '../../types';
 import { MAX_EQUIPMENT_PER_UMBRELLA } from '../../utils/booking';
 import { displayStatusForBooking, isStagionaleBooking } from '../../utils/displayStatus';
-import { isDepositRefundable } from '../../utils/cancellation';
+import { isRefundEligible, REFUND_CUTOFF_DAYS } from '../../utils/cancellation';
 import { daysBetween, formatCurrency, formatDateShort, isoDate } from '../../utils/format';
 import { equipmentPriceDelta } from '../../utils/pricing';
 import { referencesMatch } from '../../utils/reference';
@@ -32,6 +32,7 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
     customers,
     getUmbrella,
     cancelBooking,
+    grantVoucher,
     equipmentChanges,
     requestEquipmentAdd,
     cancelEquipmentAdd,
@@ -78,15 +79,15 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
 
   const handleCancel = () => {
     if (!primary) return;
-    const refundable = isDepositRefundable(primary.dateFrom, today);
-    const depositTotal = result.group.reduce((sum, b) => sum + b.deposit, 0);
+    const refundable = isRefundEligible(primary.dateFrom, today);
+    const paidTotal = result.group.reduce((sum, b) => sum + b.paid, 0);
     const groupNote =
       result.group.length > 1 ? ` Verranno cancellati tutti e ${result.group.length} gli ombrelloni.` : '';
     alert(
       'Cancellare questa prenotazione?',
       (refundable
-        ? `L'arrivo è tra almeno 7 giorni: l'acconto di ${formatCurrency(depositTotal)} ti verrà restituito.`
-        : `L'arrivo è tra meno di 7 giorni (o è già iniziato): l'acconto di ${formatCurrency(depositTotal)} non è rimborsabile.`) +
+        ? `L'arrivo è tra almeno ${REFUND_CUTOFF_DAYS} giorni: riceverai un voucher di ${formatCurrency(paidTotal)} da usare per una prossima prenotazione qui.`
+        : `L'arrivo è tra meno di ${REFUND_CUTOFF_DAYS} giorni (o è già iniziato): l'importo pagato di ${formatCurrency(paidTotal)} non è rimborsabile.`) +
         groupNote,
       [
         { text: 'Non cancellare', style: 'cancel' },
@@ -94,6 +95,7 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
           text: 'Cancella prenotazione',
           style: 'destructive',
           onPress: () => {
+            if (refundable && paidTotal > 0 && result.customer) grantVoucher(result.customer.id, paidTotal);
             cancelBooking(primary.id);
             setSearched(false);
             setReference('');
@@ -178,6 +180,12 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
         {result.group.length > 0 && result.customer && (
           <View style={{ marginTop: spacing.lg }}>
             <Text style={styles.welcomeText}>Ciao, {result.customer.name}! 👋</Text>
+            {!!result.customer.voucherBalance && (
+              <Text style={styles.voucherBalanceText}>
+                Hai un credito voucher di {formatCurrency(result.customer.voucherBalance)}, verrà applicato
+                automaticamente alla tua prossima prenotazione.
+              </Text>
+            )}
 
             {primary && (
               <View style={styles.qrCard}>
@@ -388,6 +396,12 @@ const styles = StyleSheet.create({
   },
   notFoundText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
   welcomeText: { color: colors.libero, fontWeight: '700', fontSize: 14, marginBottom: spacing.sm },
+  voucherBalanceText: {
+    color: colors.primaryDark,
+    fontWeight: '600',
+    fontSize: 12,
+    marginBottom: spacing.sm,
+  },
   qrCard: {
     alignItems: 'center',
     backgroundColor: colors.bg,
