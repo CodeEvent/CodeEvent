@@ -4,7 +4,7 @@
 // Every `xToRow` builder takes the owning beach's id explicitly and stamps it onto the row --
 // the schema's primary keys are (beach_id, id) pairs, so every insert/upsert needs it, and every
 // `rowToX` reader ignores beach_id since the app types are already scoped to one beach's store.
-import { Article, Booking, Conto, Customer, DailyStat, EquipmentChange, PriceList, Umbrella } from '../types';
+import { Article, Booking, Conto, Customer, DailyStat, EquipmentChange, PriceList, Umbrella, WaitlistEntry } from '../types';
 
 export function rowToUmbrella(r: any): Umbrella {
   return {
@@ -114,6 +114,31 @@ export function bookingToRow(b: Booking, beachId: string) {
     is_student: b.isStudent ?? null,
     checked_in_at: b.checkedInAt ?? null,
     released: b.released ?? false,
+  };
+}
+
+export function rowToWaitlist(r: any): WaitlistEntry {
+  return {
+    id: r.id,
+    umbrellaId: r.umbrella_id,
+    customerName: r.customer_name,
+    customerPhone: r.customer_phone,
+    dateFrom: r.date_from,
+    dateTo: r.date_to,
+    createdAt: r.created_at,
+  };
+}
+
+export function waitlistToRow(w: WaitlistEntry, beachId: string) {
+  return {
+    id: w.id,
+    beach_id: beachId,
+    umbrella_id: w.umbrellaId,
+    customer_name: w.customerName,
+    customer_phone: w.customerPhone,
+    date_from: w.dateFrom,
+    date_to: w.dateTo,
+    created_at: w.createdAt,
   };
 }
 

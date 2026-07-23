@@ -131,6 +131,23 @@ create table if not exists equipment_changes (
 );
 create index if not exists equipment_changes_beach_id_idx on equipment_changes (beach_id);
 
+-- A customer's request to be told when a specific umbrella/date range frees up (see
+-- WaitlistEntry in src/types/index.ts). No "resolved"/"notified" flag: whether an entry
+-- currently matches is derived at render time from live bookings, not stored here.
+create table if not exists waitlist (
+  id text not null,
+  beach_id text not null references beaches(id) on delete cascade,
+  umbrella_id text not null,
+  customer_name text not null,
+  customer_phone text not null,
+  date_from text not null,
+  date_to text not null,
+  created_at text not null,
+  primary key (beach_id, id),
+  foreign key (beach_id, umbrella_id) references umbrellas(beach_id, id) on delete cascade
+);
+create index if not exists waitlist_beach_id_idx on waitlist (beach_id);
+
 create table if not exists articles (
   id text not null,
   beach_id text not null references beaches(id) on delete cascade,
@@ -212,6 +229,7 @@ alter table price_lists enable row level security;
 alter table conti enable row level security;
 alter table daily_stats enable row level security;
 alter table equipment_changes enable row level security;
+alter table waitlist enable row level security;
 
 -- Returns every beach_id the calling authenticated user operates. `security definer` so it can
 -- read `beach_operators` regardless of that table's own RLS, keeping every other policy a
@@ -316,3 +334,11 @@ create policy "public creates equipment_changes" on equipment_changes for insert
 -- (that one is the operator's audit trail that an item still needs to be physically collected).
 create policy "public cancels pending add requests" on equipment_changes for delete to anon
   using (type = 'add' and resolved = false);
+
+-- Guests join a waitlist from the customer map (see WaitlistEntry) but never see or manage the
+-- list themselves -- only the operator (Archivi's "Lista d'attesa" tab and the notification
+-- match) reads and removes entries.
+create policy "operators manage waitlist" on waitlist for all to authenticated
+  using (beach_id in (select beach_id from current_user_beach_ids()))
+  with check (beach_id in (select beach_id from current_user_beach_ids()));
+create policy "public creates waitlist entries" on waitlist for insert to anon with check (true);

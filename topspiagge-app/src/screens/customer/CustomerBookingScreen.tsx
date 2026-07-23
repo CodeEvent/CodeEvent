@@ -74,7 +74,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   initialStartOffset,
   initialDays,
 }) => {
-  const { umbrellas, bookings } = useStore();
+  const { umbrellas, bookings, joinWaitlist } = useStore();
   const alert = useAppAlert();
   const { width, height } = useWindowDimensions();
 
@@ -116,6 +116,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
   const [confirmedIsEdit, setConfirmedIsEdit] = useState(false);
   const [dateEditVisible, setDateEditVisible] = useState(false);
+  const [waitlistUmbrella, setWaitlistUmbrella] = useState<Umbrella | null>(null);
 
   // Mirrors the classic booking-flow progress bar: Map (pick dates + spot) -> Dettagli
   // (guests/phone/policy) -> Riepilogo (final editable review before confirming).
@@ -164,7 +165,14 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       setSelectedUmbrellaId(u.id);
       setFormStage('details');
     } else {
-      alert('Non disponibile', `L'ombrellone N.${u.number} (${u.zone}) non è disponibile per il periodo scelto.`);
+      alert(
+        'Non disponibile',
+        `L'ombrellone N.${u.number} (${u.zone}) non è disponibile per il periodo scelto.`,
+        [
+          { text: 'Chiudi', style: 'cancel' },
+          { text: "Iscriviti alla lista d'attesa", onPress: () => setWaitlistUmbrella(u) },
+        ]
+      );
     }
   };
 
@@ -322,7 +330,84 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
           onManage();
         }}
       />
+
+      <WaitlistJoinModal
+        umbrella={waitlistUmbrella}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onClose={() => setWaitlistUmbrella(null)}
+        onJoin={(name, phone) => {
+          if (!waitlistUmbrella) return;
+          joinWaitlist({
+            umbrellaId: waitlistUmbrella.id,
+            customerName: name,
+            customerPhone: phone,
+            dateFrom,
+            dateTo,
+          });
+          setWaitlistUmbrella(null);
+          alert(
+            'Iscrizione confermata',
+            `Ti avviseremo se l'ombrellone N.${waitlistUmbrella.number} si libera per il periodo scelto.`
+          );
+        }}
+      />
     </SafeAreaView>
+  );
+};
+
+const WaitlistJoinModal: React.FC<{
+  umbrella: Umbrella | null;
+  dateFrom: string;
+  dateTo: string;
+  onClose: () => void;
+  onJoin: (name: string, phone: string) => void;
+}> = ({ umbrella, dateFrom, dateTo, onClose, onJoin }) => {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+
+  useEffect(() => {
+    if (umbrella) {
+      setName('');
+      setPhone('');
+    }
+  }, [umbrella]);
+
+  return (
+    <Modal visible={!!umbrella} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.backdrop}>
+        <View style={styles.confirmCard}>
+          <Text style={styles.confirmTitle}>Lista d'attesa</Text>
+          <Text style={[styles.confirmSubtitle, { textAlign: 'center' }]}>
+            {umbrella && `Ombrellone N.${umbrella.number} (${umbrella.zone})`}
+            {'\n'}
+            {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+          </Text>
+          <TextInput
+            style={[styles.input, { marginTop: spacing.lg, width: '100%' }]}
+            placeholder="Nome e cognome"
+            placeholderTextColor={colors.textMuted}
+            value={name}
+            onChangeText={setName}
+          />
+          <TextInput
+            style={[styles.input, { marginTop: spacing.sm, width: '100%' }]}
+            placeholder="+39 ..."
+            placeholderTextColor={colors.textMuted}
+            keyboardType="phone-pad"
+            value={phone}
+            onChangeText={setPhone}
+          />
+          <Button
+            title="Iscrivimi"
+            onPress={() => onJoin(name.trim(), phone.trim())}
+            disabled={!name.trim() || !phone.trim()}
+            style={{ marginTop: spacing.lg, width: '100%' }}
+          />
+          <Button title="Annulla" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm, width: '100%' }} />
+        </View>
+      </View>
+    </Modal>
   );
 };
 

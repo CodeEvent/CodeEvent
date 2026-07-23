@@ -16,13 +16,14 @@ import { useOperatorAuth } from '../store/OperatorAuthContext';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Article, ArticleCategory, Booking, Customer, PriceList, Season, Umbrella } from '../types';
+import { findUmbrellaConflict } from '../utils/booking';
 import { BookingFilters, bookingMatchesFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
 import { computeCustomerStats, CustomerStats } from '../utils/customerStats';
 import { baseDisplayStatusForBooking, bookingHasOutstandingBalance, displayStatusFor, isStagionaleBooking } from '../utils/displayStatus';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate } from '../utils/format';
 import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
-type Tab = 'oggi' | 'prenotazioni' | 'filtri' | 'listini' | 'clienti' | 'articoli' | 'disposizione' | 'team';
+type Tab = 'oggi' | 'prenotazioni' | 'attesa' | 'filtri' | 'listini' | 'clienti' | 'articoli' | 'disposizione' | 'team';
 
 const CATEGORY_LABEL: Record<ArticleCategory, string> = {
   ombrellone: 'Spiaggia',
@@ -53,6 +54,7 @@ export const ArchiviScreen: React.FC = () => {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm }}>
           <Chip label="Today's Dashboard" selected={tab === 'oggi'} onPress={() => setTab('oggi')} />
           <Chip label="Prenotazioni" selected={tab === 'prenotazioni'} onPress={() => setTab('prenotazioni')} />
+          <Chip label="Lista d'attesa" selected={tab === 'attesa'} onPress={() => setTab('attesa')} />
           <Chip label="Filtri" selected={tab === 'filtri'} onPress={() => setTab('filtri')} />
           <Chip label="Disposizione" selected={tab === 'disposizione'} onPress={() => setTab('disposizione')} />
           <Chip label="Listini" selected={tab === 'listini'} onPress={() => setTab('listini')} />
@@ -63,6 +65,7 @@ export const ArchiviScreen: React.FC = () => {
       </View>
       {tab === 'oggi' && <OggiTab />}
       {tab === 'prenotazioni' && <PrenotazioniTab />}
+      {tab === 'attesa' && <AttesaTab />}
       {tab === 'filtri' && <FiltriTab />}
       {tab === 'disposizione' && <DisposizioneTab />}
       {tab === 'listini' && <ListiniTab />}
@@ -587,6 +590,65 @@ const BookingDetail: React.FC<{ booking: Booking; onClose: () => void }> = ({ bo
         <Button title="Cancella prenotazione" variant="danger" onPress={confirmCancel} />
       </View>
       <Button title="Chiudi" variant="ghost" onPress={onClose} style={{ marginTop: spacing.sm }} />
+    </ScrollView>
+  );
+};
+
+// Every entry a customer has joined from the map when their chosen umbrella/date range wasn't
+// free (see WaitlistEntry). There's no "resolved" flag on an entry -- whether it currently
+// matches (the umbrella is free again for those dates) is computed here the same way
+// NotificationCenter does it, purely from live bookings.
+const AttesaTab: React.FC = () => {
+  const navigation = useNavigation<any>();
+  const { waitlist, bookings, getUmbrella, leaveWaitlist } = useStore();
+  const alert = useAppAlert();
+
+  const sorted = useMemo(
+    () => [...waitlist].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [waitlist]
+  );
+
+  const confirmRemove = (id: string) => {
+    alert('Rimuovere dalla lista d\'attesa?', undefined, [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Rimuovi', style: 'destructive', onPress: () => leaveWaitlist(id) },
+    ]);
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollBody}>
+      {sorted.length === 0 && <Text style={styles.muted}>Nessuna richiesta in lista d'attesa.</Text>}
+      {sorted.map((w) => {
+        const u = getUmbrella(w.umbrellaId);
+        const isFree = !findUmbrellaConflict(bookings, w.umbrellaId, w.dateFrom, w.dateTo);
+        return (
+          <Card key={w.id} style={{ marginBottom: spacing.md }}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.itemTitle}>
+                Ombrellone N.{u?.number} · {u?.zone}
+              </Text>
+              {isFree && <StatusPill status="libero" />}
+            </View>
+            <Text style={[styles.itemTitle, { fontSize: 14, marginTop: 4 }]}>{w.customerName}</Text>
+            <Text style={styles.muted}>{w.customerPhone}</Text>
+            <View style={styles.infoRow}>
+              <Text style={styles.muted}>Periodo richiesto</Text>
+              <Text style={styles.infoValue}>
+                {formatDateShort(w.dateFrom)} → {formatDateShort(w.dateTo)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+              <Button
+                title="Vai alla Piantina"
+                variant="secondary"
+                onPress={() => navigation.navigate('Piantina', { umbrellaId: w.umbrellaId })}
+                style={{ flex: 1 }}
+              />
+              <Button title="Rimuovi" variant="danger" onPress={() => confirmRemove(w.id)} style={{ flex: 1 }} />
+            </View>
+          </Card>
+        );
+      })}
     </ScrollView>
   );
 };

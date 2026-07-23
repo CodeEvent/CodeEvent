@@ -28,6 +28,7 @@ import {
   PaymentMethod,
   PriceList,
   Umbrella,
+  WaitlistEntry,
 } from '../types';
 import { daysBetween, isoDate } from '../utils/format';
 import { equipmentPriceDelta } from '../utils/pricing';
@@ -48,7 +49,9 @@ import {
   rowToEquipmentChange,
   rowToPriceList,
   rowToUmbrella,
+  rowToWaitlist,
   umbrellaToRow,
+  waitlistToRow,
 } from './supabaseMappers';
 
 // Bumped whenever a change to buildInitialState() (e.g. resetting to an empty beach with no
@@ -79,6 +82,7 @@ interface AppState {
   dailyStats: DailyStat[];
   layoutElements: LayoutElement[];
   equipmentChanges: EquipmentChange[];
+  waitlist: WaitlistEntry[];
   hydrated: boolean;
 }
 
@@ -97,6 +101,7 @@ function buildInitialState(): AppState {
     dailyStats: [],
     layoutElements: [],
     equipmentChanges: [],
+    waitlist: [],
     hydrated: false,
   };
 }
@@ -110,6 +115,8 @@ type Action =
   | { type: 'FREE_UMBRELLA'; umbrellaId: string }
   | { type: 'CANCEL_BOOKING'; bookingId: string }
   | { type: 'GRANT_VOUCHER'; customerId: string; amount: number }
+  | { type: 'JOIN_WAITLIST'; entry: WaitlistEntry }
+  | { type: 'LEAVE_WAITLIST'; entryId: string }
   | { type: 'UPSERT_CUSTOMER'; customer: Customer }
   | { type: 'DELETE_CUSTOMER'; customerId: string }
   | { type: 'UPSERT_ARTICLE'; article: Article }
@@ -163,7 +170,9 @@ type Action =
   | { type: 'SYNC_CONTO'; conto: Conto }
   | { type: 'SYNC_DAILYSTAT'; dailyStat: DailyStat }
   | { type: 'SYNC_EQUIPMENT_CHANGE'; change: EquipmentChange }
-  | { type: 'SYNC_REMOVE_EQUIPMENT_CHANGE'; changeId: string };
+  | { type: 'SYNC_REMOVE_EQUIPMENT_CHANGE'; changeId: string }
+  | { type: 'SYNC_WAITLIST_ENTRY'; entry: WaitlistEntry }
+  | { type: 'SYNC_REMOVE_WAITLIST_ENTRY'; entryId: string };
 
 // Adds a revenue/presence delta to a given day's daily-stat entry (creating it if this is the
 // first money-moving event of that day) -- shared by every action that changes real money
@@ -316,6 +325,12 @@ function reducer(state: AppState, action: Action): AppState {
       );
       return { ...state, customers };
     }
+
+    case 'JOIN_WAITLIST':
+      return { ...state, waitlist: [...state.waitlist, action.entry] };
+
+    case 'LEAVE_WAITLIST':
+      return { ...state, waitlist: state.waitlist.filter((w) => w.id !== action.entryId) };
 
     case 'UPSERT_CUSTOMER': {
       const exists = state.customers.some((c) => c.id === action.customer.id);
@@ -620,6 +635,17 @@ function reducer(state: AppState, action: Action): AppState {
         equipmentChanges: state.equipmentChanges.filter((c) => c.id !== action.changeId),
       };
 
+    case 'SYNC_WAITLIST_ENTRY': {
+      const exists = state.waitlist.some((w) => w.id === action.entry.id);
+      const waitlist = exists
+        ? state.waitlist.map((w) => (w.id === action.entry.id ? action.entry : w))
+        : [...state.waitlist, action.entry];
+      return { ...state, waitlist };
+    }
+
+    case 'SYNC_REMOVE_WAITLIST_ENTRY':
+      return { ...state, waitlist: state.waitlist.filter((w) => w.id !== action.entryId) };
+
     // Layout decorations are device-local for now (see the dedicated persistence effect below)
     // rather than synced through Supabase like everything else -- see NOTES in that effect.
     case 'SET_LAYOUT_ELEMENTS':
@@ -655,6 +681,8 @@ interface StoreContextValue extends AppState {
   freeUmbrella: (umbrellaId: string) => void;
   cancelBooking: (bookingId: string) => void;
   grantVoucher: (customerId: string, amount: number) => void;
+  joinWaitlist: (entry: Omit<WaitlistEntry, 'id' | 'createdAt'>) => void;
+  leaveWaitlist: (entryId: string) => void;
   upsertCustomer: (customer: Customer) => void;
   deleteCustomer: (customerId: string) => void;
   upsertArticle: (article: Article) => void;
@@ -746,7 +774,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
                 : 'Logged-in user has no beach_operators membership'
             );
           }
-          const [u, c, b, a, pl, co, ds, ec] = await Promise.all([
+          const [u, c, b, a, pl, co, ds, ec, wl] = await Promise.all([
             supabase.from('umbrellas').select('*').eq('beach_id', resolvedBeachId),
             supabase.from('customers').select('*').eq('beach_id', resolvedBeachId),
             supabase.from('bookings').select('*').eq('beach_id', resolvedBeachId),
@@ -755,8 +783,9 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
             supabase.from('conti').select('*').eq('beach_id', resolvedBeachId),
             supabase.from('daily_stats').select('*').eq('beach_id', resolvedBeachId),
             supabase.from('equipment_changes').select('*').eq('beach_id', resolvedBeachId),
+            supabase.from('waitlist').select('*').eq('beach_id', resolvedBeachId),
           ]);
-          const failed = [u, c, b, a, pl, co, ds, ec].find((r) => r.error);
+          const failed = [u, c, b, a, pl, co, ds, ec, wl].find((r) => r.error);
           if (failed?.error) throw failed.error;
           if (cancelled) return;
           setBeachId(resolvedBeachId);
@@ -774,6 +803,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
               // effect below (layout decorations are device-local for now even in Supabase mode).
               layoutElements: [],
               equipmentChanges: (ec.data ?? []).map(rowToEquipmentChange),
+              waitlist: (wl.data ?? []).map(rowToWaitlist),
               hydrated: true,
             },
           });
@@ -899,6 +929,14 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
           if (payload.eventType === 'DELETE')
             dispatch({ type: 'SYNC_REMOVE_EQUIPMENT_CHANGE', changeId: payload.old.id });
           else dispatch({ type: 'SYNC_EQUIPMENT_CHANGE', change: rowToEquipmentChange(payload.new) });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'waitlist', filter: beachFilter },
+        (payload: any) => {
+          if (payload.eventType === 'DELETE') dispatch({ type: 'SYNC_REMOVE_WAITLIST_ENTRY', entryId: payload.old.id });
+          else dispatch({ type: 'SYNC_WAITLIST_ENTRY', entry: rowToWaitlist(payload.new) });
         }
       )
       .subscribe();
@@ -1065,6 +1103,21 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
         runSync(client.from('customers').update(customerToRow(updated, beachId)).eq('beach_id', beachId).eq('id', customerId));
       }
     }
+  }, []);
+
+  const joinWaitlist = useCallback((entry: Omit<WaitlistEntry, 'id' | 'createdAt'>) => {
+    const fullEntry: WaitlistEntry = { ...entry, id: `wl-${Date.now()}`, createdAt: isoDate(0) };
+    dispatch({ type: 'JOIN_WAITLIST', entry: fullEntry });
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('waitlist').insert(waitlistToRow(fullEntry, beachId)));
+  }, []);
+
+  const leaveWaitlist = useCallback((entryId: string) => {
+    dispatch({ type: 'LEAVE_WAITLIST', entryId });
+    const client = supabase;
+    const beachId = beachIdRef.current;
+    if (client && beachId) runSync(client.from('waitlist').delete().eq('beach_id', beachId).eq('id', entryId));
   }, []);
 
   const upsertCustomer = useCallback((customer: Customer) => {
@@ -1519,6 +1572,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       freeUmbrella,
       cancelBooking,
       grantVoucher,
+      joinWaitlist,
+      leaveWaitlist,
       upsertCustomer,
       deleteCustomer,
       upsertArticle,
@@ -1558,6 +1613,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       freeUmbrella,
       cancelBooking,
       grantVoucher,
+      joinWaitlist,
+      leaveWaitlist,
       upsertCustomer,
       deleteCustomer,
       upsertArticle,

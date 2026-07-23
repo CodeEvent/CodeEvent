@@ -66,6 +66,21 @@ export interface Booking {
   // calendar, so the same umbrella/date range can be booked again (see findUmbrellaConflict).
 }
 
+// A customer's request to be told when a specific umbrella/date range frees up, joined from the
+// customer map when they tap an umbrella that's unavailable for their chosen dates. There's no
+// "resolved"/"notified" flag: whether it currently matches is derived at render time from live
+// bookings (see NotificationCenter.tsx), so a match that gets booked by someone else before the
+// operator acts on it simply stops matching on its own, with no stale state to clean up.
+export interface WaitlistEntry {
+  id: string;
+  umbrellaId: string;
+  customerName: string;
+  customerPhone: string;
+  dateFrom: string;
+  dateTo: string;
+  createdAt: string;
+}
+
 // A guest-initiated change to their own booking's beds/chairs, made from "Gestisci la mia
 // prenotazione" -- kept as its own append-only log (rather than mutating the booking directly
 // for adds) so the operator has something concrete to act on:

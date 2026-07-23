@@ -4,7 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
-import { formatCurrency, isoDate } from '../utils/format';
+import { findUmbrellaConflict } from '../utils/booking';
+import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 import { SimulatedCheckoutModal } from './SimulatedCheckoutModal';
 import { Button, Card } from './UI';
 
@@ -17,12 +18,14 @@ export const NotificationCenter: React.FC = () => {
   const {
     bookings,
     equipmentChanges,
+    waitlist,
     getUmbrella,
     getBooking,
     getCustomer,
     confirmEquipmentAdd,
     resolveEquipmentChange,
     confirmCheckIn,
+    leaveWaitlist,
   } = useStore();
   const [open, setOpen] = useState(false);
   const [cardCheckoutChangeId, setCardCheckoutChangeId] = useState<string | null>(null);
@@ -33,10 +36,17 @@ export const NotificationCenter: React.FC = () => {
     () => bookings.filter((b) => b.dateFrom === today && !b.checkedInAt),
     [bookings, today]
   );
+  // No "notified"/"resolved" flag on a waitlist entry -- whether it currently matches is purely
+  // derived from live bookings, so an entry that gets booked by someone else before the operator
+  // acts on it just stops matching here on its own, with nothing stale left to clean up.
+  const waitlistMatches = useMemo(
+    () => waitlist.filter((w) => !findUmbrellaConflict(bookings, w.umbrellaId, w.dateFrom, w.dateTo)),
+    [waitlist, bookings]
+  );
   const cardCheckoutChange = cardCheckoutChangeId
     ? pendingChanges.find((c) => c.id === cardCheckoutChangeId)
     : undefined;
-  const badgeCount = pendingChanges.length + arrivalsNotCheckedIn.length;
+  const badgeCount = pendingChanges.length + arrivalsNotCheckedIn.length + waitlistMatches.length;
 
   // NotificationCenter is mounted as a sibling of the operator Tab.Navigator (see
   // OperatorApp.tsx's StaffTabs), not inside one of its screens, so useNavigation() here
@@ -137,6 +147,35 @@ export const NotificationCenter: React.FC = () => {
                       <Button
                         title="Conferma check-in"
                         onPress={() => confirmCheckIn(b.id)}
+                        style={{ flex: 1, paddingVertical: 6 }}
+                      />
+                    </View>
+                  </Card>
+                );
+              })}
+
+              {waitlistMatches.map((w) => {
+                const u = getUmbrella(w.umbrellaId);
+                return (
+                  <Card key={w.id} style={{ marginBottom: spacing.sm }}>
+                    <Text style={styles.itemTitle}>
+                      Lista d'attesa: Ombrellone N.{u?.number} è di nuovo libero
+                    </Text>
+                    <Text style={styles.itemDetail}>
+                      {w.customerName} · {w.customerPhone} · dal {formatDateShort(w.dateFrom)} al{' '}
+                      {formatDateShort(w.dateTo)}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs }}>
+                      <Button
+                        title="Vai alla Piantina"
+                        variant="secondary"
+                        onPress={() => goTo('Piantina', { umbrellaId: w.umbrellaId })}
+                        style={{ flex: 1, paddingVertical: 6 }}
+                      />
+                      <Button
+                        title="Rimuovi"
+                        variant="danger"
+                        onPress={() => leaveWaitlist(w.id)}
                         style={{ flex: 1, paddingVertical: 6 }}
                       />
                     </View>

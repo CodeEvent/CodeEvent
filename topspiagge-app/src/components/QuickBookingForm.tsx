@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useStore } from '../store/StoreContext';
@@ -10,12 +11,14 @@ import {
   findNearestUmbrellas,
   findUmbrellaConflict,
   MAX_ADULTS_PER_UMBRELLA,
+  MAX_EQUIPMENT_PER_UMBRELLA,
   umbrellasNeededFor,
 } from '../utils/booking';
 import { PREPAYMENT_RATE, REFUND_CUTOFF_DAYS, refundCutoffDate } from '../utils/cancellation';
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 import {
   baseUmbrellaPricePerDay,
+  bundleForUmbrella,
   computeDiscounts,
   isSameDayWalkIn,
   isStudentDiscountEligibleRow,
@@ -41,9 +44,13 @@ const PERIOD_PRESETS = [
   { label: '1 settimana', days: 7 },
 ];
 
+type Equipment = { beds: number; chairs: number };
+const DEFAULT_EQUIPMENT: Equipment = { beds: 2, chairs: 2 };
+
 export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialFromOffset = 0, onExtrasChange }) => {
   const { umbrellas, customers, bookings, createBooking, upsertCustomer, getActivePriceList, getUmbrella } =
     useStore();
+  const navigation = useNavigation<any>();
   const [startOffset, setStartOffset] = useState(initialFromOffset);
   const [days, setDays] = useState(1);
   const [awaitingEndDate, setAwaitingEndDate] = useState(false);
@@ -75,14 +82,43 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   // starting today (isToday but not a walk-in) never gets either discount.
   const isWalkInToday = isSameDayWalkIn(dateFrom, dateTo);
 
+  const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
+  const bedRate = priceList.prices['art-lettino'] ?? 6;
+  const chairRate = priceList.prices['art-sdraio'] ?? 4;
+  // Fila 1/2 default to their bundled equipment (so the discounted package price applies out
+  // of the box); every other row falls back to the generic 2 beds + 2 chairs default -- same
+  // convention as the customer self-booking flow.
+  const defaultEquipmentFor = (id: string): Equipment => {
+    const u = getUmbrella(id);
+    return (u && bundleForUmbrella(u)) || DEFAULT_EQUIPMENT;
+  };
+  const [equipment, setEquipment] = useState<Record<string, Equipment>>(() => ({
+    [umbrellaId]: defaultEquipmentFor(umbrellaId),
+  }));
+  const setBeds = (id: string, value: number) =>
+    setEquipment((eq) => ({ ...eq, [id]: { ...(eq[id] ?? defaultEquipmentFor(id)), beds: value } }));
+  const setChairs = (id: string, value: number) =>
+    setEquipment((eq) => ({ ...eq, [id]: { ...(eq[id] ?? defaultEquipmentFor(id)), chairs: value } }));
+
   const umbrellaDiscount = (id: string) => {
     const u = getUmbrella(id);
     return u ? computeDiscounts(dateFrom, dateTo, u, isStudent) : { lateBooking: 0, student: 0, total: 0 };
   };
-  const umbrellaTotal = (id: string) => {
+  // Fila 1/2's flat price already includes their bundle -- taking exactly that equipment charges
+  // the flat rate; choosing anything else falls back to à la carte pricing (see CustomerBookingScreen).
+  const perDayRate = (id: string) => {
     const u = getUmbrella(id);
-    const base = u ? baseUmbrellaPricePerDay(u) : priceList.prices['art-ombrellone'] ?? 18;
-    const gross = base * days;
+    if (!u) return dailyRate;
+    const eq = equipment[id] ?? defaultEquipmentFor(id);
+    const base = baseUmbrellaPricePerDay(u);
+    const bundle = bundleForUmbrella(u);
+    if (!bundle) return base + eq.beds * bedRate + eq.chairs * chairRate;
+    if (eq.beds === bundle.beds && eq.chairs === bundle.chairs) return base;
+    const bareRate = base - (bundle.beds * bedRate + bundle.chairs * chairRate);
+    return bareRate + eq.beds * bedRate + eq.chairs * chairRate;
+  };
+  const umbrellaTotal = (id: string) => {
+    const gross = perDayRate(id) * days;
     return Math.round(gross * (1 - umbrellaDiscount(id).total) * 100) / 100;
   };
   const umbrellaDeposit = (id: string) => Math.round(umbrellaTotal(id) * PREPAYMENT_RATE);
@@ -113,18 +149,38 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [umbrella, umbrellas, bookings, dateFrom, dateTo]);
 
+  const seedEquipment = (ids: string[]) => {
+    setEquipment((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => {
+        if (!next[id]) next[id] = defaultEquipmentFor(id);
+      });
+      return next;
+    });
+  };
+
   // Only adults count against an umbrella's occupancy cap, so extra umbrellas are
   // suggested based on adult headcount alone -- same mechanic as the customer app.
   const adjustExtras = (newAdults: number) => {
     setExtraUmbrellaIds((prev) => {
       const needed = Math.max(0, umbrellasNeededFor(newAdults) - 1);
       if (prev.length === needed) return prev;
-      if (prev.length > needed) return prev.slice(0, needed);
+      if (prev.length > needed) {
+        const removed = prev.slice(needed);
+        setEquipment((eq) => {
+          const next = { ...eq };
+          removed.forEach((id) => delete next[id]);
+          return next;
+        });
+        return prev.slice(0, needed);
+      }
       const excludeIds = new Set([umbrellaId, ...prev]);
       const additions = umbrella
         ? findNearestUmbrellas(umbrella, umbrellas, isFreeForPeriod, excludeIds, needed - prev.length)
         : [];
-      return [...prev, ...additions.map((u) => u.id)];
+      const addedIds = additions.map((u) => u.id);
+      seedEquipment(addedIds);
+      return [...prev, ...addedIds];
     });
   };
 
@@ -134,7 +190,18 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   };
 
   const toggleExtra = (id: string) => {
-    setExtraUmbrellaIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setExtraUmbrellaIds((prev) => {
+      if (prev.includes(id)) {
+        setEquipment((eq) => {
+          const next = { ...eq };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((x) => x !== id);
+      }
+      seedEquipment([id]);
+      return [...prev, id];
+    });
   };
 
   const allUmbrellaIds = [umbrellaId, ...extraUmbrellaIds];
@@ -200,6 +267,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => {
       const price = umbrellaTotal(uId);
       const dep = umbrellaDeposit(uId);
+      const eq = equipment[uId] ?? defaultEquipmentFor(uId);
       return {
         id: `bk-${uId}-${Date.now()}-${idx}`,
         umbrellaId: uId,
@@ -207,11 +275,16 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         dateFrom,
         dateTo,
         totalPrice: price,
+        // A same-day walk-in isn't paid at booking time -- the operator collects it right after
+        // in Conto (see the primary button below), so it starts fully outstanding ("da saldare")
+        // instead of being silently marked paid here.
         deposit: isToday ? 0 : dep,
-        paid: isToday ? price : dep,
+        paid: isToday ? 0 : dep,
         status,
         createdAt: isoDate(0),
         guests: guestSlots[idx],
+        beds: eq.beds,
+        chairs: eq.chairs,
         groupId,
         reference,
         isStudent,
@@ -219,6 +292,9 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     });
     createdBookings.forEach((b) => createBooking(b));
     onDone();
+    // Same-day walk-ins go straight to Conto to actually collect the payment just marked
+    // outstanding above, instead of the old flow that silently marked it paid here.
+    if (isToday) navigation.navigate('Conto', { umbrellaId });
   };
 
   return (
@@ -331,6 +407,45 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         </View>
       )}
 
+      <Text style={[styles.label, { marginTop: spacing.lg }]}>
+        {allUmbrellaIds.length > 1 ? 'Attrezzatura' : 'Attrezzatura ombrellone'}
+      </Text>
+      {allUmbrellaIds.map((id) => {
+        const u = getUmbrella(id);
+        if (!u) return null;
+        const eq = equipment[id] ?? defaultEquipmentFor(id);
+        const bundle = bundleForUmbrella(u);
+        const isBundlePrice = !!bundle && eq.beds === bundle.beds && eq.chairs === bundle.chairs;
+        return (
+          <View key={id} style={styles.equipmentCard}>
+            {allUmbrellaIds.length > 1 && (
+              <Text style={styles.extraRowText}>
+                Ombrellone N.{u.number} · {u.zone}
+              </Text>
+            )}
+            <Stepper
+              label="Lettini"
+              icon="bed-outline"
+              value={eq.beds}
+              max={MAX_EQUIPMENT_PER_UMBRELLA}
+              onChange={(v) => setBeds(id, v)}
+            />
+            <Stepper
+              label="Sdraio"
+              icon="sunny-outline"
+              value={eq.chairs}
+              max={MAX_EQUIPMENT_PER_UMBRELLA}
+              onChange={(v) => setChairs(id, v)}
+            />
+            {isBundlePrice ? (
+              <Text style={styles.muted}>{formatCurrency(baseUmbrellaPricePerDay(u))} al giorno · lettini e sdraio inclusi</Text>
+            ) : (
+              <Text style={styles.muted}>{formatCurrency(perDayRate(id))} al giorno per questo ombrellone</Text>
+            )}
+          </View>
+        );
+      })}
+
       {isWalkInToday && (
         <View style={styles.discountBox}>
           <Text style={styles.extraBoxTitle}>Sconti last minute</Text>
@@ -397,7 +512,8 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
       </View>
 
       <Button
-        title={isToday ? 'Check-in ora' : 'Conferma prenotazione'}
+        title={isToday ? 'Conferma e vai al Conto' : 'Conferma prenotazione'}
+        icon={isToday ? 'card-outline' : undefined}
         onPress={confirm}
         disabled={!canConfirm || anyConflict || !!customerConflict}
         style={{ marginTop: spacing.lg }}
@@ -449,6 +565,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   extraRowText: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  equipmentCard: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
   discountBox: {
     backgroundColor: colors.liberoBg,
     borderRadius: radius.md,
