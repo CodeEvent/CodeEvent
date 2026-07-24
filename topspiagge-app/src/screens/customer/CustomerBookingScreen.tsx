@@ -13,7 +13,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
-import { GAP, MIN_CELL, BeachCanvas, useUmbrellaPositions } from '../../components/BeachCanvas';
+import {
+  COLS_PER_SIDE,
+  GAP,
+  MIN_CELL,
+  WALKWAY_WIDTH,
+  BeachCanvas,
+  useUmbrellaPositions,
+} from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
 import { QRCode } from '../../components/QRCode';
 import { sidebarBackdrop, sidebarSheet, useSidebarMode } from '../../components/sidebarSheet';
@@ -108,6 +115,10 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       : initialDays ?? 1
   );
   const [awaitingEndDate, setAwaitingEndDate] = useState(false);
+  // "Vista completa" shrinks cells enough that the whole Nord+Sud grid fits on screen with
+  // no scrolling in either direction, purely to get oriented -- tapping still works, just
+  // less precisely, so the normal (legible, scrollable) sizing stays the default.
+  const [fullMapView, setFullMapView] = useState(false);
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(
     () => primaryEditBooking?.umbrellaId ?? null
   );
@@ -162,9 +173,17 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const labelWidth = isWide ? 84 : 60;
   // The map is 20 seats wide (10 Nord + walkway + 10 Sud) and rarely fits a phone or a
   // sidebar-narrowed column without shrinking cells past legibility, so the cell size is
-  // driven by available height only -- the canvas scrolls horizontally to reveal the rest.
+  // normally driven by available height only -- the canvas scrolls horizontally to reveal
+  // the rest. "Vista completa" (below) is the deliberate exception: it also factors in
+  // width so the guest can see the entire beach at a glance on demand.
   const mapAreaHeight = height - 320;
-  const cellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / ROWS) - GAP));
+  const normalCellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / ROWS) - GAP));
+  const totalCols = COLS_PER_SIDE * 2;
+  const mapAreaWidth = width - labelWidth - spacing.lg * 2;
+  const widthBasedCellSize = Math.floor((mapAreaWidth - WALKWAY_WIDTH - (totalCols - 1) * GAP) / totalCols);
+  const heightBasedCellSize = Math.floor(mapAreaHeight / ROWS) - GAP;
+  const fullCellSize = Math.max(14, Math.min(widthBasedCellSize, heightBasedCellSize));
+  const cellSize = fullMapView ? fullCellSize : normalCellSize;
 
   const positions = useUmbrellaPositions(umbrellas, cellSize);
   const freeCount = umbrellas.filter(isFreeForPeriod).length;
@@ -210,6 +229,8 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       pendingIds={pendingIds}
       onTap={handleTap}
       onChangeDates={() => setDateEditVisible(true)}
+      fullMapView={fullMapView}
+      onToggleFullMapView={() => setFullMapView((v) => !v)}
     />
   );
 
@@ -512,6 +533,8 @@ const MapStep: React.FC<{
   pendingIds: string[];
   onTap: (u: Umbrella) => void;
   onChangeDates: () => void;
+  fullMapView: boolean;
+  onToggleFullMapView: () => void;
 }> = ({
   umbrellas,
   positions,
@@ -525,6 +548,8 @@ const MapStep: React.FC<{
   pendingIds,
   onTap,
   onChangeDates,
+  fullMapView,
+  onToggleFullMapView,
 }) => (
   <>
     <View style={styles.mapHeader}>
@@ -534,10 +559,16 @@ const MapStep: React.FC<{
         </Text>
         <Text style={styles.mapSubtitle}>Scegli il tuo posto sulla spiaggia</Text>
       </View>
-      <Pressable onPress={onChangeDates} style={styles.changeDatesBtn}>
-        <Ionicons name="calendar-outline" size={13} color={colors.primaryDark} />
-        <Text style={styles.changeDatesText}>Cambia date</Text>
-      </Pressable>
+      <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+        <Pressable onPress={onToggleFullMapView} style={styles.changeDatesBtn}>
+          <Ionicons name={fullMapView ? 'contract-outline' : 'resize-outline'} size={13} color={colors.primaryDark} />
+          <Text style={styles.changeDatesText}>{fullMapView ? 'Vista compatta' : 'Vista completa'}</Text>
+        </Pressable>
+        <Pressable onPress={onChangeDates} style={styles.changeDatesBtn}>
+          <Ionicons name="calendar-outline" size={13} color={colors.primaryDark} />
+          <Text style={styles.changeDatesText}>Cambia date</Text>
+        </Pressable>
+      </View>
     </View>
 
     <View style={styles.legendRow}>
@@ -549,6 +580,15 @@ const MapStep: React.FC<{
         <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
         <Text style={styles.legendText}>Non disponibile</Text>
       </View>
+      {pendingIds.length > 0 && (
+        <View style={styles.legendItem}>
+          <View style={styles.legendDotSplit}>
+            <View style={{ flex: 1, backgroundColor: colors.occupato }} />
+            <View style={{ flex: 1, backgroundColor: colors.prenotato }} />
+          </View>
+          <Text style={styles.legendText}>La tua scelta</Text>
+        </View>
+      )}
       <Text style={styles.legendCounts}>
         Nord {freeCounts.nord} liberi · Sud {freeCounts.sud} liberi
       </Text>
@@ -578,6 +618,15 @@ const MapStep: React.FC<{
                 overflow: 'hidden',
                 backgroundColor: pending ? undefined : free ? colors.libero : colors.textMuted,
               },
+              pending && {
+                borderWidth: Math.max(2, Math.round(cellSize * 0.06)),
+                borderColor: colors.white,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.35,
+                shadowRadius: 4,
+                elevation: 6,
+              },
             ]}
           >
             {pending && (
@@ -589,6 +638,20 @@ const MapStep: React.FC<{
             <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
               {u.number}
             </Text>
+            {pending && cellSize >= 30 && (
+              <View
+                style={[
+                  styles.pendingCheckBadge,
+                  {
+                    width: Math.round(cellSize * 0.42),
+                    height: Math.round(cellSize * 0.42),
+                    borderRadius: Math.round(cellSize * 0.21),
+                  },
+                ]}
+              >
+                <Ionicons name="checkmark" size={Math.max(10, Math.round(cellSize * 0.26))} color={colors.white} />
+              </View>
+            )}
           </Pressable>
         );
       }}
@@ -644,6 +707,7 @@ const BookingFooter: React.FC<{
    * button with no idea what's missing. */
   disabledHint?: string | null;
   onCancel: () => void;
+  cancelLabel?: string;
 }> = ({
   total,
   deposit,
@@ -655,6 +719,7 @@ const BookingFooter: React.FC<{
   primaryDisabled,
   disabledHint,
   onCancel,
+  cancelLabel,
 }) => (
   <View style={styles.stickyFooter}>
     <View style={styles.totalRow}>
@@ -673,7 +738,7 @@ const BookingFooter: React.FC<{
       <Text style={styles.disabledHintText}>{disabledHint}</Text>
     )}
     <Button title={primaryLabel} icon={primaryIcon} onPress={onPrimary} disabled={primaryDisabled} style={{ marginTop: spacing.md }} />
-    <Button title="Annulla" variant="ghost" onPress={onCancel} style={{ marginTop: spacing.sm }} />
+    <Button title={cancelLabel ?? 'Annulla'} variant="ghost" onPress={onCancel} style={{ marginTop: spacing.sm }} />
   </View>
 );
 
@@ -716,6 +781,10 @@ const BookingForm: React.FC<{
   // package's discounted rate; there's just no equipment assumed before they've chosen any.
   const defaultEquipmentFor = (_id: string): Equipment => DEFAULT_EQUIPMENT;
   const editBookings = editContext?.bookings ?? [];
+  // Editing an existing booking's "cancel" exits the whole edit session, so it keeps saying
+  // "Annulla" -- but for a fresh booking it just returns to the map (see onClose above), so a
+  // more concrete label makes it clear the guest can freely change their umbrella pick.
+  const cancelLabel = editContext ? 'Annulla' : 'Cambia ombrellone';
   // Only carry over the rest of the group (extra umbrellas + their equipment) when the
   // customer hasn't changed their primary pick -- if they tap a different umbrella on
   // the map, that's a fresh single-umbrella selection instead of silently stacking on
@@ -1113,6 +1182,7 @@ const BookingForm: React.FC<{
           primaryDisabled={!canConfirm}
           disabledHint={missingRequirement}
           onCancel={onClose}
+          cancelLabel={cancelLabel}
         />
       </View>
     );
@@ -1176,6 +1246,7 @@ const BookingForm: React.FC<{
           onPrimary={() => onStageChange('payment')}
           primaryDisabled={!canConfirm}
           onCancel={onClose}
+          cancelLabel={cancelLabel}
         />
       </View>
     );
@@ -1239,6 +1310,7 @@ const BookingForm: React.FC<{
           onPrimary={startPayment}
           primaryDisabled={!canConfirm || paymentProcessing}
           onCancel={onClose}
+          cancelLabel={cancelLabel}
         />
       </View>
     );
@@ -1431,6 +1503,7 @@ const BookingForm: React.FC<{
         primaryDisabled={!canConfirm}
         disabledHint={missingRequirement}
         onCancel={onClose}
+        cancelLabel={cancelLabel}
       />
     </View>
   );
@@ -1647,6 +1720,14 @@ const styles = StyleSheet.create({
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.md },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
+  legendDotSplit: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 4,
+    overflow: 'hidden',
+    flexDirection: 'row',
+  },
   legendText: { fontSize: 11, color: colors.textMuted },
   legendCounts: { fontSize: 11, color: colors.textMuted, fontWeight: '700', marginLeft: 'auto' },
   cell: {
@@ -1661,6 +1742,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   cellNumber: { fontWeight: '800', fontSize: 16, color: colors.white },
+  pendingCheckBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: colors.primaryDark,
+    borderWidth: 2,
+    borderColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   wideRow: { flex: 1, flexDirection: 'row' },
   wideMapCol: { flex: 1 },
