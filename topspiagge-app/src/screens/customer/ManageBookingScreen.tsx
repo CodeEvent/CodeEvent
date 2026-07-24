@@ -21,12 +21,15 @@ const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 interface Props {
   onBack: () => void;
   onEdit: (bookings: Booking[], customer: Customer) => void;
+  /** Hidden when this screen lives in the "Prenotazioni" tab, where there's no "home" to
+   * go back to -- only shown when it's pushed as its own screen (kept for that case). */
+  showBackLink?: boolean;
 }
 
 // Customers identify themselves with the reference code from their confirmation PLUS one
 // of last name / email / phone -- a simple two-factor lookup so a reference number alone
 // (which could leak or be guessed) isn't enough to reach someone else's booking.
-export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
+export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit, showBackLink = true }) => {
   const {
     bookings,
     customers,
@@ -135,10 +138,12 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit }) => {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backLink}>
-          <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-          <Text style={styles.backLinkText}>Torna alla home</Text>
-        </Pressable>
+        {showBackLink && (
+          <Pressable onPress={onBack} style={styles.backLink}>
+            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+            <Text style={styles.backLinkText}>Torna alla home</Text>
+          </Pressable>
+        )}
         <Text style={styles.headerTitle}>Gestisci la tua prenotazione</Text>
         <Text style={styles.headerSubtitle}>
           Inserisci il numero di riferimento ricevuto alla conferma e uno dei tuoi dati

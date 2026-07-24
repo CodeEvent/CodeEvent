@@ -79,6 +79,14 @@ interface CustomerBookingScreenProps {
   onManage: () => void;
   initialStartOffset?: number;
   initialDays?: number;
+  /** True when the guest already chose dates in the search flow before landing here --
+   * skips straight to the map instead of asking for dates a second time. */
+  datesPreselected?: boolean;
+  initialAdults?: number;
+  initialChildren5to15?: number;
+  initialChildrenUnder5?: number;
+  initialBeds?: number;
+  initialChairs?: number;
 }
 
 export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
@@ -87,6 +95,12 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   onManage,
   initialStartOffset,
   initialDays,
+  datesPreselected,
+  initialAdults,
+  initialChildren5to15,
+  initialChildrenUnder5,
+  initialBeds,
+  initialChairs,
 }) => {
   const { umbrellas, bookings, joinWaitlist } = useStore();
   const alert = useAppAlert();
@@ -105,7 +119,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
     [bookings, editContext, editingBookingIds]
   );
 
-  const [step, setStep] = useState<Step>(editContext ? 'map' : 'dates');
+  const [step, setStep] = useState<Step>(editContext || datesPreselected ? 'map' : 'dates');
   const [startOffset, setStartOffset] = useState(() =>
     primaryEditBooking ? offsetFromToday(primaryEditBooking.dateFrom) : initialStartOffset ?? 0
   );
@@ -292,6 +306,11 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 stage={formStage}
                 onStageChange={setFormStage}
                 onExtrasChange={setPendingExtraIds}
+                initialAdults={initialAdults}
+                initialChildren5to15={initialChildren5to15}
+                initialChildrenUnder5={initialChildrenUnder5}
+                initialBeds={initialBeds}
+                initialChairs={initialChairs}
               />
             ) : (
               <View style={styles.sidebarEmpty}>
@@ -325,6 +344,11 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 stage={formStage}
                 onStageChange={setFormStage}
                 onExtrasChange={setPendingExtraIds}
+                initialAdults={initialAdults}
+                initialChildren5to15={initialChildren5to15}
+                initialChildrenUnder5={initialChildrenUnder5}
+                initialBeds={initialBeds}
+                initialChairs={initialChairs}
               />
             </Pressable>
           </Pressable>
@@ -759,6 +783,14 @@ const BookingForm: React.FC<{
    * highlight them as "pending" (not yet confirmed) instead of showing their real,
    * still-free status. */
   onExtrasChange?: (ids: string[]) => void;
+  /** Carried over from the guest-count/equipment picker in the search flow (see
+   * SearchHomeScreen) -- ignored once editing an existing booking, which seeds its own
+   * real values from editContext instead. */
+  initialAdults?: number;
+  initialChildren5to15?: number;
+  initialChildrenUnder5?: number;
+  initialBeds?: number;
+  initialChairs?: number;
 }> = ({
   umbrellaId,
   dateFrom,
@@ -773,13 +805,22 @@ const BookingForm: React.FC<{
   stage,
   onStageChange,
   onExtrasChange,
+  initialAdults,
+  initialChildren5to15,
+  initialChildrenUnder5,
+  initialBeds,
+  initialChairs,
 }) => {
   const { getUmbrella, customers, createBooking, upsertCustomer, getActivePriceList, cancelBooking } = useStore();
   const alert = useAppAlert();
-  // Every umbrella (bundle rows included) starts bare -- see DEFAULT_EQUIPMENT above. If the
-  // guest later picks exactly Fila 1/2's bundle quantity, perDayRate below still snaps to that
-  // package's discounted rate; there's just no equipment assumed before they've chosen any.
-  const defaultEquipmentFor = (_id: string): Equipment => DEFAULT_EQUIPMENT;
+  // Every umbrella (bundle rows included) starts from whatever the guest picked in the
+  // search flow's guest-count step (0/0 if they arrived some other way -- see DEFAULT_EQUIPMENT
+  // above). If the guest later picks exactly Fila 1/2's bundle quantity, perDayRate below still
+  // snaps to that package's discounted rate regardless of where the starting numbers came from.
+  const defaultEquipmentFor = (_id: string): Equipment => ({
+    beds: initialBeds ?? DEFAULT_EQUIPMENT.beds,
+    chairs: initialChairs ?? DEFAULT_EQUIPMENT.chairs,
+  });
   const editBookings = editContext?.bookings ?? [];
   // Editing an existing booking's "cancel" exits the whole edit session, so it keeps saying
   // "Annulla" -- but for a fresh booking it just returns to the map (see onClose above), so a
@@ -795,13 +836,17 @@ const BookingForm: React.FC<{
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [adults, setAdults] = useState(() =>
-    editBookings.length ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1 : 2
+    editBookings.length ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1 : initialAdults ?? 2
   );
   const [children5to15, setChildren5to15] = useState(() =>
-    editBookings.reduce((s, b) => s + (b.guests?.children5to15 ?? 0), 0)
+    editBookings.length
+      ? editBookings.reduce((s, b) => s + (b.guests?.children5to15 ?? 0), 0)
+      : initialChildren5to15 ?? 0
   );
   const [childrenUnder5, setChildrenUnder5] = useState(() =>
-    editBookings.reduce((s, b) => s + (b.guests?.childrenUnder5 ?? 0), 0)
+    editBookings.length
+      ? editBookings.reduce((s, b) => s + (b.guests?.childrenUnder5 ?? 0), 0)
+      : initialChildrenUnder5 ?? 0
   );
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [isStudent, setIsStudent] = useState(false);
