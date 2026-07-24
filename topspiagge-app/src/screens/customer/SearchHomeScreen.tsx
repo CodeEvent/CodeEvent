@@ -196,22 +196,26 @@ const HomeCard: React.FC<{
   </SafeAreaView>
 );
 
+// Reference booking-site listings lift their shadow on hover to signal interactivity; RN has
+// no hover, so the same depth cue triggers on press instead.
 const OperatorCard: React.FC<{ operator: DemoOperator; onPress: () => void }> = ({ operator, onPress }) => (
   <Pressable onPress={onPress}>
-    <Card style={styles.operatorCard}>
-      <View style={styles.operatorIcon}>
-        <Ionicons name="umbrella-outline" size={24} color={colors.primary} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.operatorName}>{operator.name}</Text>
-        <Text style={styles.operatorTown}>{operator.town}</Text>
-        <Text style={styles.operatorTagline} numberOfLines={2}>
-          {operator.tagline}
-        </Text>
-        <Text style={styles.operatorPrice}>{operator.priceFromLabel}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.border} />
-    </Card>
+    {({ pressed }) => (
+      <Card style={[styles.operatorCard, pressed && styles.operatorCardPressed]}>
+        <View style={styles.operatorIcon}>
+          <Ionicons name="umbrella-outline" size={24} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.operatorName}>{operator.name}</Text>
+          <Text style={styles.operatorTown}>{operator.town}</Text>
+          <Text style={styles.operatorTagline} numberOfLines={2}>
+            {operator.tagline}
+          </Text>
+          <Text style={styles.operatorPrice}>{operator.priceFromLabel}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.border} />
+      </Card>
+    )}
   </Pressable>
 );
 
@@ -488,6 +492,12 @@ const styles = StyleSheet.create({
   priceValue: { fontSize: 20, fontWeight: '800', color: colors.primaryDark },
   priceHint: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   operatorCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
+  operatorCardPressed: {
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
   operatorIcon: {
     width: 48,
     height: 48,

@@ -52,9 +52,13 @@ import { generateBookingReference } from '../../utils/reference';
 const WIDE_BREAKPOINT = 700;
 const SIDEBAR_WIDTH = 380;
 
-// details (guests/phone/policy) -> equipment ("Lettini e sdraio") -> confirm ("Conferma e
-// paga", read-only review) -> payment (card entry, Stripe-only -- see BookingForm's payment
-// stage).
+// New booking: details (contact info only -- guests/equipment were already chosen in the
+// search flow, see SearchHomeScreen) -> confirm ("Conferma e paga", read-only review) ->
+// payment (card entry, Stripe-only -- see BookingForm's payment stage). 'equipment' is never
+// visited for a new booking; it only exists for editing an existing one, where there's no
+// earlier search-flow stage that already collected this -- details (guests/phone/policy) ->
+// equipment ("Lettini e sdraio") -> confirmed directly, no separate review/payment stage
+// since nothing new is being charged.
 type BookingFormStage = 'details' | 'equipment' | 'confirm' | 'payment';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
@@ -150,16 +154,18 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const [dateEditVisible, setDateEditVisible] = useState(false);
   const [waitlistUmbrella, setWaitlistUmbrella] = useState<Umbrella | null>(null);
 
-  // Mirrors the booking-flow progress bar: Map (pick dates + spot) -> Dettagli
-  // (guests/phone/policy) -> Lettini e sdraio (equipment) -> Conferma e paga (review) ->
-  // Pagamento (card entry).
-  const stepIndexForStage: Record<BookingFormStage, number> = {
-    details: 1,
-    equipment: 2,
-    confirm: 3,
-    payment: 4,
-  };
+  // Mirrors the booking-flow progress bar. A new booking already collected guests/equipment
+  // in the search flow (see SearchHomeScreen), so its Dettagli stage goes straight to Conferma
+  // e paga -- no separate Lettini e sdraio stage to index. Editing an existing booking still
+  // uses the full 5-stage flow: Map -> Dettagli -> Lettini e sdraio (equipment) -> Conferma e
+  // paga -> Pagamento (though in practice it confirms straight from equipment, see BookingForm).
+  const stepIndexForStage: Record<BookingFormStage, number> = editContext
+    ? { details: 1, equipment: 2, confirm: 3, payment: 4 }
+    : { details: 1, equipment: 2, confirm: 2, payment: 3 };
   const currentStepIndex = !selectedUmbrellaId ? 0 : stepIndexForStage[formStage];
+  const stepLabels = editContext
+    ? ['Data e posto', 'Dettagli', 'Lettini e sdraio', 'Conferma e paga', 'Pagamento']
+    : ['Data e posto', 'Dettagli', 'Conferma e paga', 'Pagamento'];
 
   const isWide = width >= WIDE_BREAKPOINT;
 
@@ -271,7 +277,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       </View>
 
       <StepProgressBar
-        steps={['Data e posto', 'Dettagli', 'Lettini e sdraio', 'Conferma e paga', 'Pagamento']}
+        steps={stepLabels}
         currentIndex={currentStepIndex}
       />
 
@@ -924,6 +930,15 @@ const BookingForm: React.FC<{
     });
   };
 
+  // A new booking's adult count comes pre-set from the search flow (no stepper here anymore
+  // to trigger adjustExtras interactively -- see "Chi viaggia con te?" removal below), so if
+  // that count already needs more than one umbrella, seed the nearby-umbrella suggestions
+  // once up front instead of leaving them empty until the guest notices and taps one manually.
+  useEffect(() => {
+    if (!editContext) adjustExtras(adults);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const changeAdults = (v: number) => {
     setAdults(v);
     adjustExtras(v);
@@ -1241,9 +1256,9 @@ const BookingForm: React.FC<{
     return (
       <View style={styles.formOuter}>
         <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
-          <Pressable onPress={() => onStageChange('equipment')} style={styles.backLink}>
+          <Pressable onPress={() => onStageChange('details')} style={styles.backLink}>
             <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-            <Text style={styles.backLinkText}>Modifica lettini e sdraio</Text>
+            <Text style={styles.backLinkText}>Modifica i tuoi dati</Text>
           </Pressable>
 
           <Text style={styles.sheetTitle}>Conferma e paga</Text>
@@ -1370,25 +1385,32 @@ const BookingForm: React.FC<{
 
         <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
 
-        <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Chi viaggia con te?</Text>
-        <View style={styles.guestsBox}>
-          <Stepper label="Adulti" icon="person-outline" value={adults} min={1} onChange={changeAdults} />
-          <View style={styles.divider} />
-          <Stepper
-            label="Bambini 5–15 anni"
-            icon="school-outline"
-            value={children5to15}
-            onChange={setChildren5to15}
-          />
-          <View style={styles.divider} />
-          <Stepper
-            label="Bambini sotto i 5 anni"
-            icon="happy-outline"
-            value={childrenUnder5}
-            onChange={setChildrenUnder5}
-          />
-        </View>
-        <Text style={styles.muted}>Max {MAX_ADULTS_PER_UMBRELLA} adulti per ombrellone · bambini illimitati</Text>
+        {/* A new booking's guest counts were already chosen in the search flow (see
+            SearchHomeScreen) -- only editing an existing booking still needs to adjust them
+            here, since there's no earlier search stage for that case to have collected them. */}
+        {editContext && (
+          <>
+            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Chi viaggia con te?</Text>
+            <View style={styles.guestsBox}>
+              <Stepper label="Adulti" icon="person-outline" value={adults} min={1} onChange={changeAdults} />
+              <View style={styles.divider} />
+              <Stepper
+                label="Bambini 5–15 anni"
+                icon="school-outline"
+                value={children5to15}
+                onChange={setChildren5to15}
+              />
+              <View style={styles.divider} />
+              <Stepper
+                label="Bambini sotto i 5 anni"
+                icon="happy-outline"
+                value={childrenUnder5}
+                onChange={setChildrenUnder5}
+              />
+            </View>
+            <Text style={styles.muted}>Max {MAX_ADULTS_PER_UMBRELLA} adulti per ombrellone · bambini illimitati</Text>
+          </>
+        )}
 
         {umbrellasNeeded > 1 && (
           <View style={styles.extraBox}>
@@ -1542,9 +1564,9 @@ const BookingForm: React.FC<{
         deposit={deposit}
         voucherApplied={voucherApplied}
         umbrellaCount={allUmbrellaIds.length}
-        primaryLabel="Lettini e sdraio"
-        primaryIcon="bed-outline"
-        onPrimary={() => onStageChange('equipment')}
+        primaryLabel={editContext ? 'Lettini e sdraio' : 'Conferma e paga'}
+        primaryIcon={editContext ? 'bed-outline' : 'checkmark-circle-outline'}
+        onPrimary={() => onStageChange(editContext ? 'equipment' : 'confirm')}
         primaryDisabled={!canConfirm}
         disabledHint={missingRequirement}
         onCancel={onClose}
