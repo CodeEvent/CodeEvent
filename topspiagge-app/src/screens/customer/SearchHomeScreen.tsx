@@ -5,9 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
 import { Calendar } from '../../components/Calendar';
 import { Button, Card, Stepper } from '../../components/UI';
+import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { DEMO_OPERATORS, DEMO_TOWNS, DemoOperator } from '../../data/demoOperators';
-import { formatDateShort, isoDate } from '../../utils/format';
+import { formatCurrency, formatDateShort, isoDate } from '../../utils/format';
 
 const HERE_LABEL = 'Intorno alla posizione attuale';
 
@@ -21,7 +22,7 @@ export interface SearchSelection {
   chairs: number;
 }
 
-type SearchStep = 'home' | 'summary' | 'destination' | 'dates' | 'guests' | 'results';
+type SearchStep = 'home' | 'summary' | 'destination' | 'dates' | 'results';
 
 interface Props {
   onSelectOperator: (operator: DemoOperator, selection: SearchSelection) => void;
@@ -32,24 +33,17 @@ interface Props {
   onHomeStateChange?: (isHome: boolean) => void;
 }
 
-function guestSummaryText(sel: SearchSelection): string {
-  const parts: string[] = [`${sel.adults} adult${sel.adults === 1 ? 'o' : 'i'}`];
-  const kids = sel.children5to15 + sel.childrenUnder5;
-  parts.push(kids > 0 ? `${kids} bambin${kids === 1 ? 'o' : 'i'}` : 'nessun bambino');
-  parts.push(`${sel.beds} lettini`);
-  parts.push(`${sel.chairs} sdraio`);
-  return parts.join(' · ');
-}
-
 // Guest-facing "search a beach club" flow, styled after Booking.com's own search UX (home
-// search box -> destination/dates/guests picker -> results list) but in the app's normal
-// light theme rather than Booking.com's dark one, and tailored to umbrellas: guest counts
-// include Lettini/Sdraio alongside Adulti/Bambini, and results are beach clubs, not hotels.
+// screen with search box + nearby properties -> a single "book your stay" summary page with
+// destination/dates/guests/equipment -> results list) but in the app's normal light theme
+// rather than Booking.com's dark one, and tailored to umbrellas: guest counts include
+// Lettini/Sdraio alongside Adulti/Bambini, and results are beach clubs, not hotels.
 // Everything here is presentation over the static DEMO_OPERATORS list -- the local-fallback
 // store only ever models one beach's real inventory (Bagno Pietrasanta), so only that card
 // routes into the real map/wizard; the others show a "coming soon" message when tapped.
 export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStateChange }) => {
   const alert = useAppAlert();
+  const { getActivePriceList } = useStore();
   const [step, setStep] = useState<SearchStep>('home');
   React.useEffect(() => {
     onHomeStateChange?.(step === 'home');
@@ -70,6 +64,15 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
 
   const selection: SearchSelection = { startOffset, days, adults, children5to15, childrenUnder5, beds, chairs };
 
+  // Which exact umbrella the guest ends up with (and its row-based price) isn't known until
+  // the map step, so this is a "starting from" estimate using the standard bare-umbrella rate
+  // -- it exists purely to make the beds/chairs price impact visible before they even search.
+  const priceList = getActivePriceList();
+  const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
+  const bedRate = priceList.prices['art-lettino'] ?? 6;
+  const chairRate = priceList.prices['art-sdraio'] ?? 4;
+  const estimatedTotal = Math.round((dailyRate + beds * bedRate + chairs * chairRate) * days * 100) / 100;
+
   const handleSelectDate = (offset: number) => {
     if (awaitingEndDate && offset > startOffset) {
       setDays(offset - startOffset + 1);
@@ -85,6 +88,17 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
     if (destination === HERE_LABEL) return DEMO_OPERATORS;
     return DEMO_OPERATORS.filter((o) => o.town === destination);
   }, [destination]);
+
+  const handlePickOperator = (op: DemoOperator, sel: SearchSelection) => {
+    if (op.isBookable) {
+      onSelectOperator(op, sel);
+    } else {
+      alert(
+        'Prossimamente disponibile',
+        `${op.name} sarà prenotabile presto in questa demo. Prova intanto con Bagno Pietrasanta.`
+      );
+    }
+  };
 
   if (step === 'destination') {
     return (
@@ -112,25 +126,6 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
     );
   }
 
-  if (step === 'guests') {
-    return (
-      <GuestsPicker
-        adults={adults}
-        children5to15={children5to15}
-        childrenUnder5={childrenUnder5}
-        beds={beds}
-        chairs={chairs}
-        onChangeAdults={setAdults}
-        onChangeChildren5to15={setChildren5to15}
-        onChangeChildrenUnder5={setChildrenUnder5}
-        onChangeBeds={setBeds}
-        onChangeChairs={setChairs}
-        onBack={() => setStep('summary')}
-        onApply={() => setStep('summary')}
-      />
-    );
-  }
-
   if (step === 'results') {
     return (
       <ResultsList
@@ -139,16 +134,7 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
         dateTo={dateTo}
         operators={filteredOperators}
         onBack={() => setStep('summary')}
-        onSelect={(op) => {
-          if (op.isBookable) {
-            onSelectOperator(op, selection);
-          } else {
-            alert(
-              'Prossimamente disponibile',
-              `${op.name} sarà prenotabile presto in questa demo. Prova intanto con Bagno Pietrasanta.`
-            );
-          }
-        }}
+        onSelect={(op) => handlePickOperator(op, selection)}
       />
     );
   }
@@ -159,20 +145,40 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
         destination={destination}
         dateFrom={dateFrom}
         dateTo={dateTo}
-        guestSummary={guestSummaryText(selection)}
+        days={days}
+        adults={adults}
+        children5to15={children5to15}
+        childrenUnder5={childrenUnder5}
+        beds={beds}
+        chairs={chairs}
+        estimatedTotal={estimatedTotal}
+        onChangeAdults={setAdults}
+        onChangeChildren5to15={setChildren5to15}
+        onChangeChildrenUnder5={setChildrenUnder5}
+        onChangeBeds={setBeds}
+        onChangeChairs={setChairs}
         onBack={() => setStep('home')}
         onOpenDestination={() => setStep('destination')}
         onOpenDates={() => setStep('dates')}
-        onOpenGuests={() => setStep('guests')}
         onSearch={() => setStep('results')}
       />
     );
   }
 
-  return <HomeCard onOpenSearch={() => setStep('summary')} />;
+  return (
+    <HomeCard
+      operators={DEMO_OPERATORS}
+      onOpenSearch={() => setStep('summary')}
+      onSelectOperator={(op) => handlePickOperator(op, selection)}
+    />
+  );
 };
 
-const HomeCard: React.FC<{ onOpenSearch: () => void }> = ({ onOpenSearch }) => (
+const HomeCard: React.FC<{
+  operators: DemoOperator[];
+  onOpenSearch: () => void;
+  onSelectOperator: (operator: DemoOperator) => void;
+}> = ({ operators, onOpenSearch, onSelectOperator }) => (
   <SafeAreaView style={styles.safe} edges={['top']}>
     <ScrollView contentContainerStyle={styles.homeBody}>
       <Text style={styles.homeTitle}>Prenota la tua spiaggia</Text>
@@ -181,8 +187,32 @@ const HomeCard: React.FC<{ onOpenSearch: () => void }> = ({ onOpenSearch }) => (
         <Ionicons name="search" size={18} color={colors.textMuted} />
         <Text style={styles.searchBoxText}>{HERE_LABEL}</Text>
       </Pressable>
+
+      <Text style={styles.sectionTitle}>Stabilimenti nella tua zona</Text>
+      {operators.map((op) => (
+        <OperatorCard key={op.id} operator={op} onPress={() => onSelectOperator(op)} />
+      ))}
     </ScrollView>
   </SafeAreaView>
+);
+
+const OperatorCard: React.FC<{ operator: DemoOperator; onPress: () => void }> = ({ operator, onPress }) => (
+  <Pressable onPress={onPress}>
+    <Card style={styles.operatorCard}>
+      <View style={styles.operatorIcon}>
+        <Ionicons name="umbrella-outline" size={24} color={colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.operatorName}>{operator.name}</Text>
+        <Text style={styles.operatorTown}>{operator.town}</Text>
+        <Text style={styles.operatorTagline} numberOfLines={2}>
+          {operator.tagline}
+        </Text>
+        <Text style={styles.operatorPrice}>{operator.priceFromLabel}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.border} />
+    </Card>
+  </Pressable>
 );
 
 const SummaryRow: React.FC<{
@@ -199,17 +229,52 @@ const SummaryRow: React.FC<{
   </Pressable>
 );
 
+// Mirrors Booking.com's "Book a place to stay" structure (destination, dates, guests, stacked
+// on one page) but folds the guest/equipment picker inline instead of behind one more tap --
+// per feedback, this page reads top to bottom as: location, date range, adults, then
+// lettini/sdraio -- with a live price estimate so the beds/chairs cost impact is visible
+// before the guest even searches.
 const SearchSummary: React.FC<{
   destination: string;
   dateFrom: string;
   dateTo: string;
-  guestSummary: string;
+  days: number;
+  adults: number;
+  children5to15: number;
+  childrenUnder5: number;
+  beds: number;
+  chairs: number;
+  estimatedTotal: number;
+  onChangeAdults: (v: number) => void;
+  onChangeChildren5to15: (v: number) => void;
+  onChangeChildrenUnder5: (v: number) => void;
+  onChangeBeds: (v: number) => void;
+  onChangeChairs: (v: number) => void;
   onBack: () => void;
   onOpenDestination: () => void;
   onOpenDates: () => void;
-  onOpenGuests: () => void;
   onSearch: () => void;
-}> = ({ destination, dateFrom, dateTo, guestSummary, onBack, onOpenDestination, onOpenDates, onOpenGuests, onSearch }) => (
+}> = ({
+  destination,
+  dateFrom,
+  dateTo,
+  days,
+  adults,
+  children5to15,
+  childrenUnder5,
+  beds,
+  chairs,
+  estimatedTotal,
+  onChangeAdults,
+  onChangeChildren5to15,
+  onChangeChildrenUnder5,
+  onChangeBeds,
+  onChangeChairs,
+  onBack,
+  onOpenDestination,
+  onOpenDates,
+  onSearch,
+}) => (
   <SafeAreaView style={styles.safe} edges={['top']}>
     <View style={styles.header}>
       <Pressable onPress={onBack} hitSlop={8}>
@@ -222,9 +287,32 @@ const SearchSummary: React.FC<{
         <SummaryRow icon="location-outline" text={destination} onPress={onOpenDestination} />
         <View style={styles.divider} />
         <SummaryRow icon="calendar-outline" text={`${formatDateShort(dateFrom)} → ${formatDateShort(dateTo)}`} onPress={onOpenDates} />
-        <View style={styles.divider} />
-        <SummaryRow icon="people-outline" text={guestSummary} onPress={onOpenGuests} />
       </Card>
+
+      <View style={{ height: spacing.lg }} />
+      <Card>
+        <Stepper label="Adulti" icon="person-outline" value={adults} min={1} onChange={onChangeAdults} />
+        <View style={styles.divider} />
+        <Stepper label="Bambini 5-15 anni" icon="school-outline" value={children5to15} min={0} onChange={onChangeChildren5to15} />
+        <View style={styles.divider} />
+        <Stepper label="Bambini sotto i 5 anni" icon="happy-outline" value={childrenUnder5} min={0} onChange={onChangeChildrenUnder5} />
+      </Card>
+
+      <View style={{ height: spacing.lg }} />
+      <Card>
+        <Stepper label="Lettini" icon="bed-outline" value={beds} min={0} max={4} onChange={onChangeBeds} />
+        <View style={styles.divider} />
+        <Stepper label="Sdraio" icon="sunny-outline" value={chairs} min={0} max={4} onChange={onChangeChairs} />
+      </Card>
+
+      <View style={styles.priceRow}>
+        <Text style={styles.priceLabel}>
+          Totale stimato ({days} {days === 1 ? 'giorno' : 'giorni'})
+        </Text>
+        <Text style={styles.priceValue}>{formatCurrency(estimatedTotal)}</Text>
+      </View>
+      <Text style={styles.priceHint}>Il prezzo esatto dipende dall'ombrellone che sceglierai sulla mappa</Text>
+
       <Button title="Cerca" icon="search" onPress={onSearch} style={{ marginTop: spacing.lg }} />
     </ScrollView>
   </SafeAreaView>
@@ -308,61 +396,6 @@ const DatesPicker: React.FC<{
   </SafeAreaView>
 );
 
-const GuestsPicker: React.FC<{
-  adults: number;
-  children5to15: number;
-  childrenUnder5: number;
-  beds: number;
-  chairs: number;
-  onChangeAdults: (v: number) => void;
-  onChangeChildren5to15: (v: number) => void;
-  onChangeChildrenUnder5: (v: number) => void;
-  onChangeBeds: (v: number) => void;
-  onChangeChairs: (v: number) => void;
-  onBack: () => void;
-  onApply: () => void;
-}> = ({
-  adults,
-  children5to15,
-  childrenUnder5,
-  beds,
-  chairs,
-  onChangeAdults,
-  onChangeChildren5to15,
-  onChangeChildrenUnder5,
-  onChangeBeds,
-  onChangeChairs,
-  onBack,
-  onApply,
-}) => (
-  <SafeAreaView style={styles.safe} edges={['top']}>
-    <View style={styles.header}>
-      <Pressable onPress={onBack} hitSlop={8}>
-        <Ionicons name="chevron-back" size={22} color={colors.text} />
-      </Pressable>
-    </View>
-    <ScrollView contentContainerStyle={styles.body}>
-      <Text style={styles.pageTitle}>Ombrellone e ospiti</Text>
-      <Card>
-        <Stepper label="Lettini" icon="bed-outline" value={beds} min={0} max={4} onChange={onChangeBeds} />
-        <View style={styles.divider} />
-        <Stepper label="Sdraio" icon="sunny-outline" value={chairs} min={0} max={4} onChange={onChangeChairs} />
-      </Card>
-      <View style={{ height: spacing.lg }} />
-      <Card>
-        <Stepper label="Adulti" icon="person-outline" value={adults} min={1} onChange={onChangeAdults} />
-        <View style={styles.divider} />
-        <Stepper label="Bambini 5-15 anni" icon="school-outline" value={children5to15} min={0} onChange={onChangeChildren5to15} />
-        <View style={styles.divider} />
-        <Stepper label="Bambini sotto i 5 anni" icon="happy-outline" value={childrenUnder5} min={0} onChange={onChangeChildrenUnder5} />
-      </Card>
-    </ScrollView>
-    <View style={styles.footer}>
-      <Button title="Applica" onPress={onApply} />
-    </View>
-  </SafeAreaView>
-);
-
 const ResultsList: React.FC<{
   destination: string;
   dateFrom: string;
@@ -383,22 +416,7 @@ const ResultsList: React.FC<{
         {destination} · {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
       </Text>
       {operators.map((op) => (
-        <Pressable key={op.id} onPress={() => onSelect(op)}>
-          <Card style={styles.operatorCard}>
-            <View style={styles.operatorIcon}>
-              <Ionicons name="umbrella-outline" size={24} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.operatorName}>{op.name}</Text>
-              <Text style={styles.operatorTown}>{op.town}</Text>
-              <Text style={styles.operatorTagline} numberOfLines={2}>
-                {op.tagline}
-              </Text>
-              <Text style={styles.operatorPrice}>{op.priceFromLabel}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.border} />
-          </Card>
-        </Pressable>
+        <OperatorCard key={op.id} operator={op} onPress={() => onSelect(op)} />
       ))}
     </ScrollView>
   </SafeAreaView>
@@ -425,6 +443,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   searchBoxText: { fontSize: 14, fontWeight: '600', color: colors.textMuted },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: colors.text, marginTop: spacing.xxl, marginBottom: spacing.xs },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs },
   body: { padding: spacing.lg, paddingTop: spacing.xs, flexGrow: 1 },
   pageTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: spacing.xs },
@@ -456,6 +475,18 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 14, fontWeight: '600', color: colors.text },
   footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, gap: spacing.sm },
   footerSummary: { textAlign: 'center', fontSize: 13, fontWeight: '600', color: colors.textMuted, marginBottom: spacing.xs },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  priceLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+  priceValue: { fontSize: 20, fontWeight: '800', color: colors.primaryDark },
+  priceHint: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   operatorCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
   operatorIcon: {
     width: 48,
