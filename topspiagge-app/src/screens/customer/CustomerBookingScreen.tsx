@@ -597,7 +597,11 @@ const MapStep: React.FC<{
 );
 
 type Equipment = { beds: number; chairs: number };
-const DEFAULT_EQUIPMENT: Equipment = { beds: 2, chairs: 2 };
+// A brand-new booking starts with no beds/chairs at all, so "Totale soggiorno" reflects
+// just the bare umbrella price -- the guest then watches it climb as they pick lettini/sdraio
+// on the "Lettini e sdraio" step. Editing an existing booking is unaffected: it seeds from
+// the booking's actual saved equipment instead (see editBookings below).
+const DEFAULT_EQUIPMENT: Equipment = { beds: 0, chairs: 0 };
 
 const PeriodHero: React.FC<{ dateFrom: string; dateTo: string; days: number; onEditDates: () => void }> = ({
   dateFrom,
@@ -707,12 +711,10 @@ const BookingForm: React.FC<{
 }) => {
   const { getUmbrella, customers, createBooking, upsertCustomer, getActivePriceList, cancelBooking } = useStore();
   const alert = useAppAlert();
-  // Fila 1/2 default to their bundled equipment (so the discounted package price applies
-  // out of the box); every other row falls back to the generic 2 beds + 2 chairs default.
-  const defaultEquipmentFor = (id: string): Equipment => {
-    const u = getUmbrella(id);
-    return (u && bundleForUmbrella(u)) || DEFAULT_EQUIPMENT;
-  };
+  // Every umbrella (bundle rows included) starts bare -- see DEFAULT_EQUIPMENT above. If the
+  // guest later picks exactly Fila 1/2's bundle quantity, perDayRate below still snaps to that
+  // package's discounted rate; there's just no equipment assumed before they've chosen any.
+  const defaultEquipmentFor = (_id: string): Equipment => DEFAULT_EQUIPMENT;
   const editBookings = editContext?.bookings ?? [];
   // Only carry over the rest of the group (extra umbrellas + their equipment) when the
   // customer hasn't changed their primary pick -- if they tap a different umbrella on
@@ -1079,9 +1081,14 @@ const BookingForm: React.FC<{
                   <Text style={styles.muted}>{formatCurrency(perDayRate(id))} al giorno · lettini e sdraio inclusi</Text>
                 ) : (
                   <Text style={styles.muted}>
-                    {formatCurrency(perDayRate(id) - eq.beds * bedRate - eq.chairs * chairRate)} ombrellone +{' '}
-                    {formatCurrency(eq.beds * bedRate)} lettini + {formatCurrency(eq.chairs * chairRate)} sdraio, al
-                    giorno
+                    {[
+                      `${formatCurrency(perDayRate(id) - eq.beds * bedRate - eq.chairs * chairRate)} ombrellone`,
+                      eq.beds > 0 ? `${formatCurrency(eq.beds * bedRate)} lettini` : null,
+                      eq.chairs > 0 ? `${formatCurrency(eq.chairs * chairRate)} sdraio` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' + ')}
+                    , al giorno
                   </Text>
                 )}
                 {discount.total > 0 && (
