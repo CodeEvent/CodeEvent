@@ -236,7 +236,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       </View>
 
       <StepProgressBar
-        steps={['Mappa', 'Dettagli', 'Lettini e sdraio', 'Conferma e paga', 'Pagamento']}
+        steps={['Data e posto', 'Dettagli', 'Lettini e sdraio', 'Conferma e paga', 'Pagamento']}
         currentIndex={currentStepIndex}
       />
 
@@ -636,8 +636,22 @@ const BookingFooter: React.FC<{
   primaryIcon: keyof typeof Ionicons.glyphMap;
   onPrimary: () => void;
   primaryDisabled: boolean;
+  /** Shown only while primaryDisabled, so the guest isn't left staring at a greyed-out
+   * button with no idea what's missing. */
+  disabledHint?: string | null;
   onCancel: () => void;
-}> = ({ total, deposit, voucherApplied, umbrellaCount, primaryLabel, primaryIcon, onPrimary, primaryDisabled, onCancel }) => (
+}> = ({
+  total,
+  deposit,
+  voucherApplied,
+  umbrellaCount,
+  primaryLabel,
+  primaryIcon,
+  onPrimary,
+  primaryDisabled,
+  disabledHint,
+  onCancel,
+}) => (
   <View style={styles.stickyFooter}>
     <View style={styles.totalRow}>
       <Text style={styles.totalLabel}>
@@ -651,6 +665,9 @@ const BookingFooter: React.FC<{
       </Text>
     )}
     <Text style={styles.muted}>Da pagare ora (pagamento anticipato): {formatCurrency(deposit)}</Text>
+    {primaryDisabled && !!disabledHint && (
+      <Text style={styles.disabledHintText}>{disabledHint}</Text>
+    )}
     <Button title={primaryLabel} icon={primaryIcon} onPress={onPrimary} disabled={primaryDisabled} style={{ marginTop: spacing.md }} />
     <Button title="Annulla" variant="ghost" onPress={onCancel} style={{ marginTop: spacing.sm }} />
   </View>
@@ -901,6 +918,24 @@ const BookingForm: React.FC<{
     capacityOk &&
     policyAccepted;
 
+  // Pinpoints the single next thing missing so a disabled "continue" button never leaves the
+  // guest guessing -- conflict/customerConflict aren't listed here since those already get
+  // their own visible red banner (conflictBanner) right in the form. Editing an existing
+  // booking skips the identity checks (a matched customer is already known) but still needs
+  // the policy re-accepted, so that one check stays live for editContext too.
+  const missingRequirement =
+    !editContext && !matchedCustomer && normalizePhone(phone).length < 6
+      ? 'Inserisci il tuo numero di telefono per continuare'
+      : !editContext && isNewCustomer && newName.trim().length === 0
+      ? 'Inserisci il tuo nome e cognome per continuare'
+      : !editContext && isNewCustomer && !newEmail.includes('@')
+      ? 'Inserisci un indirizzo email valido per continuare'
+      : !capacityOk
+      ? `Per ${adults} adulti servono più ombrelloni: aggiungine tra quelli suggeriti qui sopra`
+      : !policyAccepted
+      ? 'Accetta la politica di pagamento e cancellazione per continuare'
+      : null;
+
   const confirm = () => {
     if (!canConfirm) return;
     let customerId = effectiveCustomerId;
@@ -1069,6 +1104,7 @@ const BookingForm: React.FC<{
           primaryIcon="checkmark-circle-outline"
           onPrimary={editContext ? confirm : () => onStageChange('confirm')}
           primaryDisabled={!canConfirm}
+          disabledHint={missingRequirement}
           onCancel={onClose}
         />
       </View>
@@ -1386,6 +1422,7 @@ const BookingForm: React.FC<{
         primaryIcon="bed-outline"
         onPrimary={() => onStageChange('equipment')}
         primaryDisabled={!canConfirm}
+        disabledHint={missingRequirement}
         onCancel={onClose}
       />
     </View>
@@ -1784,6 +1821,7 @@ const styles = StyleSheet.create({
   editingAsText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12, flexShrink: 1 },
   conflictBox: { backgroundColor: colors.occupatoBg, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
   conflictText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
+  disabledHintText: { color: colors.occupato, fontSize: 12, fontWeight: '600', marginTop: spacing.xs },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
