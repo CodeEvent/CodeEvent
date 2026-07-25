@@ -19,6 +19,7 @@ import {
   MIN_CELL,
   WALKWAY_WIDTH,
   BeachCanvas,
+  colOffset,
   useUmbrellaPositions,
   WalkwayBreak,
 } from '../../components/BeachCanvas';
@@ -60,6 +61,26 @@ const SECTION_WALKWAYS: WalkwayBreak[] = [
   { at: 5, width: 16 },
   { at: 15, width: 16 },
 ];
+
+// How tall a price-tier banner reserves above the first row of its band -- see buildPriceBands.
+const PRICE_BANNER_HEIGHT = 42;
+
+// Groups rows into price tiers (every row in a tier shares the exact same base price) so the
+// map can show one full-width "STANDARD - DA €X" banner per tier instead of repeating the
+// price on every row, mirroring a seat map's section banners.
+function buildPriceBands(umbrellas: Umbrella[]) {
+  const rowPrices = new Map<number, number>();
+  umbrellas.forEach((u) => rowPrices.set(u.row, baseUmbrellaPricePerDay(u)));
+  const sortedRows = Array.from(rowPrices.keys()).sort((a, b) => a - b);
+  const isNewBandRow = (row: number) => {
+    const price = rowPrices.get(row);
+    if (price === undefined) return false;
+    const idx = sortedRows.indexOf(row);
+    const prevRow = idx > 0 ? sortedRows[idx - 1] : null;
+    return prevRow === null || rowPrices.get(prevRow) !== price;
+  };
+  return { rowPrices, isNewBandRow };
+}
 
 // details (guests + lettini/sdraio, chosen right after the umbrella -- contact info isn't
 // asked here) -> confirm ("Conferma e paga": contact info, policy, read-only review) ->
@@ -198,7 +219,9 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const fullCellSize = Math.max(14, Math.min(widthBasedCellSize, heightBasedCellSize));
   const cellSize = fullMapView ? fullCellSize : normalCellSize;
 
-  const positions = useUmbrellaPositions(umbrellas, cellSize, GAP, cellSize, SECTION_WALKWAYS);
+  const priceBands = useMemo(() => buildPriceBands(umbrellas), [umbrellas]);
+  const rowBannerHeight = (row: number) => (priceBands.isNewBandRow(row) ? PRICE_BANNER_HEIGHT : 0);
+  const positions = useUmbrellaPositions(umbrellas, cellSize, GAP, cellSize, SECTION_WALKWAYS, rowBannerHeight);
   const freeCount = umbrellas.filter(isFreeForPeriod).length;
   const freeCounts = {
     nord: umbrellas.filter((u) => u.side === 'nord' && isFreeForPeriod(u)).length,
@@ -244,6 +267,8 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       onChangeDates={() => setDateEditVisible(true)}
       fullMapView={fullMapView}
       onToggleFullMapView={() => setFullMapView((v) => !v)}
+      rowBannerHeight={rowBannerHeight}
+      rowPrices={priceBands.rowPrices}
     />
   );
 
@@ -548,6 +573,8 @@ const MapStep: React.FC<{
   onChangeDates: () => void;
   fullMapView: boolean;
   onToggleFullMapView: () => void;
+  rowBannerHeight: (row: number) => number;
+  rowPrices: Map<number, number>;
 }> = ({
   umbrellas,
   positions,
@@ -563,34 +590,35 @@ const MapStep: React.FC<{
   onChangeDates,
   fullMapView,
   onToggleFullMapView,
+  rowBannerHeight,
+  rowPrices,
 }) => {
-  // Base price (no equipment) per row, used to group rows into price-tier bands -- mirrors a
-  // seat map's "STANDARD - FROM X" section banners, just applied to our row-based grid instead
-  // of individual seats. Every umbrella in a row shares the same price now, so this is really
-  // just baseUmbrellaPricePerDay looked up once per row.
-  const rowPrices = new Map<number, number>();
-  umbrellas.forEach((u) => rowPrices.set(u.row, baseUmbrellaPricePerDay(u)));
-  const sortedRows = Array.from(rowPrices.keys()).sort((a, b) => a - b);
-  const labelIconSize = Math.min(16, Math.max(12, cellSize / 4));
-  const labelFontSize = Math.min(13, Math.max(11, cellSize / 5));
+  // Where the Nord side ends and the Sud side begins, in the same units BeachCanvas positions
+  // cells in -- needed so each price banner's label can center within the side that's actually
+  // on screen, instead of one label centered across the full Nord+Sud width (which lands in
+  // the gap between the two and is invisible until the guest scrolls to exactly that spot).
+  const nordWidth = colOffset(COLS_PER_SIDE - 1, cellSize, GAP, SECTION_WALKWAYS) + cellSize;
+  const sudStart = nordWidth + WALKWAY_WIDTH + GAP;
 
   return (
   <>
     <View style={styles.mapHeader}>
-      <View>
-        <Text style={styles.mapPeriodText}>
-          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
-        </Text>
-        <Text style={styles.mapSubtitle}>Scegli il tuo posto sulla spiaggia</Text>
-      </View>
-      <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-        <Pressable onPress={onToggleFullMapView} style={styles.changeDatesBtn}>
+      <Text style={styles.mapPeriodText}>
+        {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+      </Text>
+      <Text style={styles.mapSubtitle}>Scegli il tuo posto sulla spiaggia</Text>
+      <View style={styles.mapActionsRow}>
+        <Pressable onPress={onToggleFullMapView} style={[styles.changeDatesBtn, styles.mapActionBtn]}>
           <Ionicons name={fullMapView ? 'contract-outline' : 'resize-outline'} size={13} color={colors.primaryDark} />
-          <Text style={styles.changeDatesText}>{fullMapView ? 'Vista compatta' : 'Vista completa'}</Text>
+          <Text style={styles.changeDatesText} numberOfLines={1}>
+            {fullMapView ? 'Vista compatta' : 'Vista completa'}
+          </Text>
         </Pressable>
-        <Pressable onPress={onChangeDates} style={styles.changeDatesBtn}>
+        <Pressable onPress={onChangeDates} style={[styles.changeDatesBtn, styles.mapActionBtn]}>
           <Ionicons name="calendar-outline" size={13} color={colors.primaryDark} />
-          <Text style={styles.changeDatesText}>Cambia date</Text>
+          <Text style={styles.changeDatesText} numberOfLines={1}>
+            Cambia date
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -618,8 +646,8 @@ const MapStep: React.FC<{
       </Text>
     </View>
     <Text style={styles.mapPriceHint}>
-      Il prezzo indicato per ogni gruppo di file è il prezzo base al giorno, senza attrezzatura: la scegli e si
-      aggiunge al passo successivo.
+      Il prezzo di ogni sezione è il prezzo base al giorno, senza attrezzatura: la scegli e si aggiunge al passo
+      successivo.
     </Text>
 
     <BeachCanvas
@@ -629,27 +657,24 @@ const MapStep: React.FC<{
       labelWidth={labelWidth}
       footerText={`${freeCount} ombrelloni liberi per il periodo scelto`}
       extraWalkways={SECTION_WALKWAYS}
-      renderZoneLabel={(rowIdx, zoneName) => {
-        const price = rowPrices.get(rowIdx);
-        const rowPos = sortedRows.indexOf(rowIdx);
-        const prevRow = rowPos > 0 ? sortedRows[rowPos - 1] : null;
-        const isNewBand = price !== undefined && (prevRow === null || rowPrices.get(prevRow) !== price);
+      rowBannerHeight={rowBannerHeight}
+      renderRowBanner={(row) => {
+        // One bar over the Nord side, one over the Sud side -- each sized and positioned
+        // exactly to its own side (not just centered across the combined Nord+Sud width),
+        // so the price is visible whichever side the guest has scrolled to.
+        const label = `Da ${formatCurrency(rowPrices.get(row) ?? 0)} al giorno`;
         return (
           <>
-            {isNewBand && (
-              <View style={styles.priceBandPill}>
-                <Text style={styles.priceBandPillTag} numberOfLines={1}>
-                  STANDARD
-                </Text>
-                <Text style={styles.priceBandPillText} numberOfLines={1}>
-                  da €{price}
-                </Text>
-              </View>
-            )}
-            <Ionicons name="umbrella" size={labelIconSize} color={colors.seaDark} />
-            <Text style={[styles.zoneLabelText, { fontSize: labelFontSize }]} numberOfLines={1}>
-              {zoneName}
-            </Text>
+            <View style={[styles.priceBanner, { left: 0, width: nordWidth }]}>
+              <Text style={styles.priceBannerText} numberOfLines={1}>
+                {label}
+              </Text>
+            </View>
+            <View style={[styles.priceBanner, { left: sudStart, right: 0 }]}>
+              <Text style={styles.priceBannerText} numberOfLines={1}>
+                {label}
+              </Text>
+            </View>
           </>
         );
       }}
@@ -1758,14 +1783,16 @@ const styles = StyleSheet.create({
   summaryDate: { color: colors.text, fontWeight: '700', fontSize: 14, textTransform: 'capitalize', marginTop: 2 },
 
   mapHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   mapPeriodText: { fontSize: 16, fontWeight: '800', color: colors.primaryDark },
   mapSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  // Both buttons share flex:1 so they're always identical in size and never overflow the
+  // screen, however narrow -- previously a fixed-content row could push the second button
+  // past the right edge on an iPhone-width viewport.
+  mapActionsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  mapActionBtn: { flex: 1, justifyContent: 'center' },
   changeDatesBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1773,9 +1800,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.prenotatoBg,
     borderRadius: radius.xl,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
-  changeDatesText: { color: colors.primaryDark, fontWeight: '700', fontSize: 11 },
+  changeDatesText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12 },
 
   legendRow: {
     flexDirection: 'row',
@@ -1803,20 +1830,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xs,
   },
-  zoneLabelText: { fontWeight: '700', color: colors.seaDark },
-  // One pill per price-tier band -- shown only on the first row of a run of rows that share
-  // the same base price, mirroring a seat map's "STANDARD - FROM X" section banner.
-  priceBandPill: {
+  // One bar per side (Nord/Sud), shown once above the first row of each price tier -- mirrors
+  // a seat map's "STANDARD - FROM X" section banner, sized to actually be legible (the old
+  // version squeezed this into the narrow row-label column and truncated). `left`/`right` (or
+  // `width`) are set per-instance by the caller to match that side's own on-screen bounds.
+  priceBanner: {
+    position: 'absolute',
+    top: 4,
+    bottom: 8,
+    marginHorizontal: spacing.sm,
     backgroundColor: colors.primaryDark,
-    borderRadius: radius.md,
-    paddingHorizontal: 5,
-    paddingVertical: 3,
-    marginBottom: 3,
-    maxWidth: '100%',
-    alignItems: 'center',
+    borderRadius: radius.lg,
+    justifyContent: 'center',
+    // Left-aligned (alignItems is the horizontal axis here, since this View's default
+    // flexDirection is 'column'), not centered: a side is ~500px of umbrellas but only a
+    // ~330px slice of it is ever on screen at once on a phone, so a label centered in the
+    // *whole* side often landed just past whatever slice the guest had scrolled to. Anchoring
+    // at the very start of each side's bar means it's visible the instant that side scrolls
+    // into view at all.
+    alignItems: 'flex-start',
   },
-  priceBandPillTag: { color: colors.white, fontWeight: '800', fontSize: 7, letterSpacing: 0.3 },
-  priceBandPillText: { color: colors.white, fontWeight: '800', fontSize: 10 },
+  priceBannerText: { color: colors.white, fontWeight: '800', fontSize: 12, letterSpacing: 0.3, paddingHorizontal: spacing.sm },
   cell: {
     position: 'absolute',
     alignItems: 'center',

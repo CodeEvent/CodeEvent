@@ -22,11 +22,33 @@ export interface WalkwayBreak {
 // The Nord/Sud split (col 10) is always a walkway; callers can add more (e.g. every 5 seats,
 // to echo a seat-map's aisle-per-section look) via the `extraWalkways` param threaded through
 // from BeachCanvas -- each one just adds its own width to every column at/after its `at`.
-function colOffset(col: number, cellSize: number, gap: number, extraWalkways: WalkwayBreak[] = []): number {
+export function colOffset(col: number, cellSize: number, gap: number, extraWalkways: WalkwayBreak[] = []): number {
   const base = col * (cellSize + gap);
   const mainWalkway = col >= COLS_PER_SIDE ? WALKWAY_WIDTH : 0;
   const extra = extraWalkways.reduce((sum, w) => sum + (col >= w.at ? w.width : 0), 0);
   return base + mainWalkway + extra;
+}
+
+// Cumulative top offset per row, reserving extra vertical space above any row that
+// `rowBannerHeight` gives a positive height to -- lets a caller (e.g. a price-tier banner)
+// insert a full-width block between groups of rows without the rest of BeachCanvas's position
+// math (cells, zone labels, canvas height) needing to know why some rows sit further down
+// than a plain `row * (rowHeight + gap)` would put them.
+export function computeRowOffsets(
+  rows: number[],
+  rowHeight: number,
+  gap: number,
+  rowBannerHeight?: (row: number) => number
+): Map<number, number> {
+  const sorted = Array.from(new Set(rows)).sort((a, b) => a - b);
+  const offsets = new Map<number, number>();
+  let y = 0;
+  for (const row of sorted) {
+    y += rowBannerHeight?.(row) ?? 0;
+    offsets.set(row, y);
+    y += rowHeight + gap;
+  }
+  return offsets;
 }
 
 export function useUmbrellaPositions(
@@ -34,19 +56,26 @@ export function useUmbrellaPositions(
   cellSize: number = CELL,
   gap: number = GAP,
   rowHeight: number = cellSize,
-  extraWalkways: WalkwayBreak[] = []
+  extraWalkways: WalkwayBreak[] = [],
+  rowBannerHeight?: (row: number) => number
 ) {
   return useMemo(() => {
+    const rowOffsets = computeRowOffsets(
+      umbrellas.map((u) => u.row),
+      rowHeight,
+      gap,
+      rowBannerHeight
+    );
     const positions = new Map<string, { x: number; y: number }>();
     umbrellas.forEach((u) => {
       positions.set(u.id, {
         x: colOffset(u.col, cellSize, gap, extraWalkways),
-        y: u.row * (rowHeight + gap),
+        y: rowOffsets.get(u.row) ?? u.row * (rowHeight + gap),
       });
     });
     return positions;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [umbrellas, cellSize, gap, rowHeight, JSON.stringify(extraWalkways)]);
+  }, [umbrellas, cellSize, gap, rowHeight, JSON.stringify(extraWalkways), rowBannerHeight]);
 }
 
 // `flip` mirrors the wave vertically so it can sit above the first row (sea fill on top,
@@ -77,6 +106,13 @@ interface BeachCanvasProps {
   // Extra aisles beyond the standard Nord/Sud split (col 10) -- must match whatever was passed
   // to useUmbrellaPositions so the walkway gaps line up with the cells' own x positions.
   extraWalkways?: WalkwayBreak[];
+  // Reserves extra vertical space above a row (e.g. for a price-tier banner) -- must match
+  // whatever was passed to useUmbrellaPositions so cells line up with their own row's label
+  // and banner. Returning 0 (or omitting both props) reproduces today's plain, even spacing.
+  rowBannerHeight?: (row: number) => number;
+  // Renders into the reserved space above a row when rowBannerHeight(row) > 0 -- spans the
+  // full scrollable seat width (like the NORD/SUD headers), not just the row-label column.
+  renderRowBanner?: (row: number) => React.ReactNode;
 }
 
 // Every row is one continuous line of umbrellas split by a walkway: seats on
@@ -93,6 +129,8 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
   rowHeight = cellSize,
   renderZoneLabel,
   extraWalkways = [],
+  rowBannerHeight,
+  renderRowBanner,
 }) => {
   const zones = useMemo(() => {
     const seen = new Map<number, string>();
@@ -100,10 +138,16 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
     return Array.from(seen.entries()).sort((a, b) => a[0] - b[0]);
   }, [umbrellas]);
 
+  const rowOffsets = useMemo(
+    () => computeRowOffsets(zones.map(([row]) => row), rowHeight, GAP, rowBannerHeight),
+    [zones, rowHeight, rowBannerHeight]
+  );
+
   const maxCol = Math.max(0, ...umbrellas.map((u) => u.col));
   const hasWalkway = maxCol >= COLS_PER_SIDE;
   const canvasWidth = colOffset(maxCol, cellSize, GAP, extraWalkways) + cellSize;
-  const canvasHeight = zones.length * (rowHeight + GAP);
+  const lastRow = zones.length ? zones[zones.length - 1][0] : 0;
+  const canvasHeight = zones.length ? (rowOffsets.get(lastRow) ?? 0) + rowHeight + GAP : 0;
   const labelIconSize = Math.min(16, Math.max(12, cellSize / 4));
   const labelFontSize = Math.min(13, Math.max(11, cellSize / 5));
 
@@ -134,7 +178,7 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
                 style={[
                   styles.zoneLabel,
                   {
-                    top: GROUP_HEADER_HEIGHT + rowIdx * (rowHeight + GAP),
+                    top: GROUP_HEADER_HEIGHT + (rowOffsets.get(rowIdx) ?? 0),
                     height: rowHeight,
                     width: labelWidth - 12,
                   },
@@ -196,6 +240,18 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
                   ))}
                 </View>
               ))}
+              {rowBannerHeight &&
+                renderRowBanner &&
+                zones.map(([rowIdx]) => {
+                  const bh = rowBannerHeight(rowIdx);
+                  if (bh <= 0) return null;
+                  const top = GROUP_HEADER_HEIGHT + (rowOffsets.get(rowIdx) ?? 0) - bh;
+                  return (
+                    <View key={`banner-${rowIdx}`} style={{ position: 'absolute', left: 0, top, width: canvasWidth, height: bh }}>
+                      {renderRowBanner(rowIdx)}
+                    </View>
+                  );
+                })}
               <View style={{ marginTop: GROUP_HEADER_HEIGHT }}>
                 {umbrellas.map((u) => renderCell(u, positions.get(u.id)!))}
               </View>
