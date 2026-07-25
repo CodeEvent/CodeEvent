@@ -553,7 +553,23 @@ const MapStep: React.FC<{
   onChangeDates,
   fullMapView,
   onToggleFullMapView,
-}) => (
+}) => {
+  // Cheapest base price (no equipment) per row, used to group rows into price-tier bands --
+  // mirrors a seat map's "STANDARD - FROM X" section banners, just applied to our row-based
+  // grid instead of individual seats.
+  const rowPrices = new Map<number, number>();
+  const rowHasBundle = new Map<number, boolean>();
+  umbrellas.forEach((u) => {
+    const p = baseUmbrellaPricePerDay(u);
+    const cur = rowPrices.get(u.row);
+    if (cur === undefined || p < cur) rowPrices.set(u.row, p);
+    if (bundleForUmbrella(u)) rowHasBundle.set(u.row, true);
+  });
+  const sortedRows = Array.from(rowPrices.keys()).sort((a, b) => a - b);
+  const labelIconSize = Math.min(16, Math.max(12, cellSize / 4));
+  const labelFontSize = Math.min(13, Math.max(11, cellSize / 5));
+
+  return (
   <>
     <View style={styles.mapHeader}>
       <View>
@@ -597,7 +613,7 @@ const MapStep: React.FC<{
       </Text>
     </View>
     <Text style={styles.mapPriceHint}>
-      Il prezzo sotto ogni ombrellone libero è il prezzo base al giorno, senza attrezzatura: la scegli e si
+      Il prezzo indicato per ogni gruppo di file è il prezzo base al giorno, senza attrezzatura: la scegli e si
       aggiunge al passo successivo.
     </Text>
 
@@ -607,6 +623,30 @@ const MapStep: React.FC<{
       cellSize={cellSize}
       labelWidth={labelWidth}
       footerText={`${freeCount} ombrelloni liberi per il periodo scelto`}
+      renderZoneLabel={(rowIdx, zoneName) => {
+        const price = rowPrices.get(rowIdx);
+        const rowPos = sortedRows.indexOf(rowIdx);
+        const prevRow = rowPos > 0 ? sortedRows[rowPos - 1] : null;
+        const isNewBand = price !== undefined && (prevRow === null || rowPrices.get(prevRow) !== price);
+        return (
+          <>
+            {isNewBand && (
+              <View style={styles.priceBandPill}>
+                <Text style={styles.priceBandPillTag} numberOfLines={1}>
+                  {rowHasBundle.get(rowIdx) ? 'PACCHETTO' : 'STANDARD'}
+                </Text>
+                <Text style={styles.priceBandPillText} numberOfLines={1}>
+                  da €{price}
+                </Text>
+              </View>
+            )}
+            <Ionicons name="umbrella" size={labelIconSize} color={colors.seaDark} />
+            <Text style={[styles.zoneLabelText, { fontSize: labelFontSize }]} numberOfLines={1}>
+              {zoneName}
+            </Text>
+          </>
+        );
+      }}
       renderCell={(u, position) => {
         const free = isFreeForPeriod(u);
         const pending = pendingIds.includes(u.id);
@@ -645,14 +685,6 @@ const MapStep: React.FC<{
             <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
               {u.number}
             </Text>
-            {free && !pending && cellSize >= 42 && (
-              <Text
-                style={[styles.cellPrice, { fontSize: Math.min(11, Math.max(9, cellSize / 7)) }]}
-                numberOfLines={1}
-              >
-                €{Math.round(baseUmbrellaPricePerDay(u))}
-              </Text>
-            )}
             {pending && cellSize >= 30 && (
               <View
                 style={[
@@ -672,7 +704,8 @@ const MapStep: React.FC<{
       }}
     />
   </>
-);
+  );
+};
 
 type Equipment = { beds: number; chairs: number };
 // A brand-new booking starts with no beds/chairs at all, so "Totale soggiorno" reflects
@@ -1761,6 +1794,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xs,
   },
+  zoneLabelText: { fontWeight: '700', color: colors.seaDark },
+  // One pill per price-tier band -- shown only on the first row of a run of rows that share
+  // the same base price, mirroring a seat map's "STANDARD - FROM X" section banner.
+  priceBandPill: {
+    backgroundColor: colors.primaryDark,
+    borderRadius: radius.md,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    marginBottom: 3,
+    maxWidth: '100%',
+    alignItems: 'center',
+  },
+  priceBandPillTag: { color: colors.white, fontWeight: '800', fontSize: 7, letterSpacing: 0.3 },
+  priceBandPillText: { color: colors.white, fontWeight: '800', fontSize: 10 },
   cell: {
     position: 'absolute',
     borderWidth: 3,
@@ -1773,7 +1820,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   cellNumber: { fontWeight: '800', fontSize: 16, color: colors.white },
-  cellPrice: { fontWeight: '700', color: colors.white, opacity: 0.85, marginTop: -1 },
   pendingCheckBadge: {
     position: 'absolute',
     top: -4,
