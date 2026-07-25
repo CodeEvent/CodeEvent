@@ -1,0 +1,17 @@
+# Local/Openship-ready compose file for the web half of Top Spiagge (see DEPLOY.md).
+#
+# This starts only the app container. It does not stand up Supabase itself -- point
+# EXPO_PUBLIC_SUPABASE_URL/EXPO_PUBLIC_SUPABASE_ANON_KEY at either your own self-hosted Supabase
+# stack (https://supabase.com/docs/guides/self-hosting/docker) or a hosted Supabase project, then
+# rebuild. Leaving both unset ships the fully-local/AsyncStorage fallback build (no shared data
+# between visitors -- fine for a demo, not for production).
+services:
+  web:
+    build:
+      context: .
+      args:
+        EXPO_PUBLIC_SUPABASE_URL: ${EXPO_PUBLIC_SUPABASE_URL:-}
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: ${EXPO_PUBLIC_SUPABASE_ANON_KEY:-}
+    ports:
+      - '8080:8080'
+    restart: unless-stopped
