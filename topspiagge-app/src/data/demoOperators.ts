@@ -3,12 +3,15 @@
 // beach's umbrellas/bookings), it just gives the discovery screens something real to
 // browse. Only `isBookable` operators route into the real map/wizard; the rest show a
 // "coming soon" message when tapped, so nothing here is presented as more real than it is.
+// There's deliberately no price field here: the only real pricing engine lives in
+// CustomerBookingScreen/utils/pricing.ts, and it can't quote a total before the guest has
+// picked dates, an umbrella, and lettini/sdraio -- a static "from X€" label on these cards
+// would just be a made-up number disconnected from that engine.
 export interface DemoOperator {
   id: string;
   name: string;
   town: string;
   tagline: string;
-  priceFromLabel: string;
   isBookable: boolean;
 }
 
@@ -18,7 +21,6 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     name: 'Bagno Pietrasanta',
     town: 'Marina di Pietrasanta',
     tagline: 'Ombrelloni in prima fila, noleggio lettini e sdraio, bar sulla spiaggia',
-    priceFromLabel: 'A partire da 18€/giorno',
     isBookable: true,
   },
   {
@@ -26,7 +28,6 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     name: 'Bagno Argentina',
     town: 'Forte dei Marmi',
     tagline: 'Stabilimento storico con ristorante vista mare',
-    priceFromLabel: 'A partire da 25€/giorno',
     isBookable: false,
   },
   {
@@ -34,7 +35,6 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     name: 'Bagno Roma',
     town: 'Marina di Pietrasanta',
     tagline: 'Ideale per famiglie, area giochi bambini',
-    priceFromLabel: 'A partire da 16€/giorno',
     isBookable: false,
   },
   {
@@ -42,7 +42,6 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     name: 'Bagno Le Dune',
     town: 'Viareggio',
     tagline: 'Spiaggia libera attrezzata, prezzi economici',
-    priceFromLabel: 'A partire da 14€/giorno',
     isBookable: false,
   },
   {
@@ -50,7 +49,6 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     name: 'Bagno Miramare',
     town: 'Forte dei Marmi',
     tagline: 'Servizio di lusso, cabine private e spa',
-    priceFromLabel: 'A partire da 32€/giorno',
     isBookable: false,
   },
 ];

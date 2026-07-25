@@ -52,14 +52,12 @@ import { generateBookingReference } from '../../utils/reference';
 const WIDE_BREAKPOINT = 700;
 const SIDEBAR_WIDTH = 380;
 
-// New booking: details (contact info only -- guests/equipment were already chosen in the
-// search flow, see SearchHomeScreen) -> confirm ("Conferma e paga", read-only review) ->
-// payment (card entry, Stripe-only -- see BookingForm's payment stage). 'equipment' is never
-// visited for a new booking; it only exists for editing an existing one, where there's no
-// earlier search-flow stage that already collected this -- details (guests/phone/policy) ->
-// equipment ("Lettini e sdraio") -> confirmed directly, no separate review/payment stage
-// since nothing new is being charged.
-type BookingFormStage = 'details' | 'equipment' | 'confirm' | 'payment';
+// details (guests + lettini/sdraio, chosen right after the umbrella -- contact info isn't
+// asked here) -> confirm ("Conferma e paga": contact info, policy, read-only review) ->
+// payment (card entry, Stripe-only -- see BookingForm's payment stage). Editing an existing
+// booking still confirms directly from 'details' (see BookingForm's footer), since there's no
+// new charge to review or collect -- it never visits 'confirm'/'payment'.
+type BookingFormStage = 'details' | 'confirm' | 'payment';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 
@@ -86,11 +84,6 @@ interface CustomerBookingScreenProps {
   /** True when the guest already chose dates in the search flow before landing here --
    * skips straight to the map instead of asking for dates a second time. */
   datesPreselected?: boolean;
-  initialAdults?: number;
-  initialChildren5to15?: number;
-  initialChildrenUnder5?: number;
-  initialBeds?: number;
-  initialChairs?: number;
 }
 
 export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
@@ -100,11 +93,6 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   initialStartOffset,
   initialDays,
   datesPreselected,
-  initialAdults,
-  initialChildren5to15,
-  initialChildrenUnder5,
-  initialBeds,
-  initialChairs,
 }) => {
   const { umbrellas, bookings, joinWaitlist } = useStore();
   const alert = useAppAlert();
@@ -154,18 +142,13 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const [dateEditVisible, setDateEditVisible] = useState(false);
   const [waitlistUmbrella, setWaitlistUmbrella] = useState<Umbrella | null>(null);
 
-  // Mirrors the booking-flow progress bar. A new booking already collected guests/equipment
-  // in the search flow (see SearchHomeScreen), so its Dettagli stage goes straight to Conferma
-  // e paga -- no separate Lettini e sdraio stage to index. Editing an existing booking still
-  // uses the full 5-stage flow: Map -> Dettagli -> Lettini e sdraio (equipment) -> Conferma e
-  // paga -> Pagamento (though in practice it confirms straight from equipment, see BookingForm).
-  const stepIndexForStage: Record<BookingFormStage, number> = editContext
-    ? { details: 1, equipment: 2, confirm: 3, payment: 4 }
-    : { details: 1, equipment: 2, confirm: 2, payment: 3 };
+  // Mirrors the booking-flow progress bar: Map (pick dates + spot) -> Dettagli (guests +
+  // lettini/sdraio) -> Conferma e paga (contact info, policy, review) -> Pagamento (card
+  // entry). Editing an existing booking uses the same shape but confirms straight from
+  // Dettagli (see BookingForm's footer) since there's no new charge to review.
+  const stepIndexForStage: Record<BookingFormStage, number> = { details: 1, confirm: 2, payment: 3 };
   const currentStepIndex = !selectedUmbrellaId ? 0 : stepIndexForStage[formStage];
-  const stepLabels = editContext
-    ? ['Data e posto', 'Dettagli', 'Lettini e sdraio', 'Conferma e paga', 'Pagamento']
-    : ['Data e posto', 'Dettagli', 'Conferma e paga', 'Pagamento'];
+  const stepLabels = ['Data e posto', 'Dettagli', 'Conferma e paga', 'Pagamento'];
 
   const isWide = width >= WIDE_BREAKPOINT;
 
@@ -312,11 +295,6 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 stage={formStage}
                 onStageChange={setFormStage}
                 onExtrasChange={setPendingExtraIds}
-                initialAdults={initialAdults}
-                initialChildren5to15={initialChildren5to15}
-                initialChildrenUnder5={initialChildrenUnder5}
-                initialBeds={initialBeds}
-                initialChairs={initialChairs}
               />
             ) : (
               <View style={styles.sidebarEmpty}>
@@ -350,11 +328,6 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 stage={formStage}
                 onStageChange={setFormStage}
                 onExtrasChange={setPendingExtraIds}
-                initialAdults={initialAdults}
-                initialChildren5to15={initialChildren5to15}
-                initialChildrenUnder5={initialChildrenUnder5}
-                initialBeds={initialBeds}
-                initialChairs={initialChairs}
               />
             </Pressable>
           </Pressable>
@@ -623,6 +596,10 @@ const MapStep: React.FC<{
         Nord {freeCounts.nord} liberi · Sud {freeCounts.sud} liberi
       </Text>
     </View>
+    <Text style={styles.mapPriceHint}>
+      Il prezzo sotto ogni ombrellone libero è il prezzo base al giorno, senza attrezzatura: la scegli e si
+      aggiunge al passo successivo.
+    </Text>
 
     <BeachCanvas
       umbrellas={umbrellas}
@@ -668,6 +645,14 @@ const MapStep: React.FC<{
             <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
               {u.number}
             </Text>
+            {free && !pending && cellSize >= 42 && (
+              <Text
+                style={[styles.cellPrice, { fontSize: Math.min(11, Math.max(9, cellSize / 7)) }]}
+                numberOfLines={1}
+              >
+                €{Math.round(baseUmbrellaPricePerDay(u))}
+              </Text>
+            )}
             {pending && cellSize >= 30 && (
               <View
                 style={[
@@ -789,14 +774,6 @@ const BookingForm: React.FC<{
    * highlight them as "pending" (not yet confirmed) instead of showing their real,
    * still-free status. */
   onExtrasChange?: (ids: string[]) => void;
-  /** Carried over from the guest-count/equipment picker in the search flow (see
-   * SearchHomeScreen) -- ignored once editing an existing booking, which seeds its own
-   * real values from editContext instead. */
-  initialAdults?: number;
-  initialChildren5to15?: number;
-  initialChildrenUnder5?: number;
-  initialBeds?: number;
-  initialChairs?: number;
 }> = ({
   umbrellaId,
   dateFrom,
@@ -811,22 +788,13 @@ const BookingForm: React.FC<{
   stage,
   onStageChange,
   onExtrasChange,
-  initialAdults,
-  initialChildren5to15,
-  initialChildrenUnder5,
-  initialBeds,
-  initialChairs,
 }) => {
   const { getUmbrella, customers, createBooking, upsertCustomer, getActivePriceList, cancelBooking } = useStore();
   const alert = useAppAlert();
-  // Every umbrella (bundle rows included) starts from whatever the guest picked in the
-  // search flow's guest-count step (0/0 if they arrived some other way -- see DEFAULT_EQUIPMENT
-  // above). If the guest later picks exactly Fila 1/2's bundle quantity, perDayRate below still
-  // snaps to that package's discounted rate regardless of where the starting numbers came from.
-  const defaultEquipmentFor = (_id: string): Equipment => ({
-    beds: initialBeds ?? DEFAULT_EQUIPMENT.beds,
-    chairs: initialChairs ?? DEFAULT_EQUIPMENT.chairs,
-  });
+  // Every umbrella (bundle rows included) starts bare -- see DEFAULT_EQUIPMENT above. If the
+  // guest later picks exactly Fila 1/2's bundle quantity, perDayRate below still snaps to that
+  // package's discounted rate; there's just no equipment assumed before they've chosen any.
+  const defaultEquipmentFor = (_id: string): Equipment => DEFAULT_EQUIPMENT;
   const editBookings = editContext?.bookings ?? [];
   // Editing an existing booking's "cancel" exits the whole edit session, so it keeps saying
   // "Annulla" -- but for a fresh booking it just returns to the map (see onClose above), so a
@@ -842,17 +810,13 @@ const BookingForm: React.FC<{
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [adults, setAdults] = useState(() =>
-    editBookings.length ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1 : initialAdults ?? 2
+    editBookings.length ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1 : 2
   );
   const [children5to15, setChildren5to15] = useState(() =>
-    editBookings.length
-      ? editBookings.reduce((s, b) => s + (b.guests?.children5to15 ?? 0), 0)
-      : initialChildren5to15 ?? 0
+    editBookings.reduce((s, b) => s + (b.guests?.children5to15 ?? 0), 0)
   );
   const [childrenUnder5, setChildrenUnder5] = useState(() =>
-    editBookings.length
-      ? editBookings.reduce((s, b) => s + (b.guests?.childrenUnder5 ?? 0), 0)
-      : initialChildrenUnder5 ?? 0
+    editBookings.reduce((s, b) => s + (b.guests?.childrenUnder5 ?? 0), 0)
   );
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [isStudent, setIsStudent] = useState(false);
@@ -929,15 +893,6 @@ const BookingForm: React.FC<{
       return [...prev, ...addedIds];
     });
   };
-
-  // A new booking's adult count comes pre-set from the search flow (no stepper here anymore
-  // to trigger adjustExtras interactively -- see "Chi viaggia con te?" removal below), so if
-  // that count already needs more than one umbrella, seed the nearby-umbrella suggestions
-  // once up front instead of leaving them empty until the guest notices and taps one manually.
-  useEffect(() => {
-    if (!editContext) adjustExtras(adults);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const changeAdults = (v: number) => {
     setAdults(v);
@@ -1040,20 +995,24 @@ const BookingForm: React.FC<{
   }, [bookingsForAvailability, effectiveCustomerId, umbrellaId, dateFrom, dateTo]);
   const customerConflictUmbrella = getUmbrella(customerConflict?.umbrellaId ?? '');
 
+  // Availability/capacity alone (no identity, no policy) -- these are the only things the
+  // 'details' stage's own primary button needs, since contact info and policy consent are
+  // collected later, in Conferma e paga (or, for an edit, right here -- see below).
+  const capacityAndAvailabilityOk = !conflict && !customerConflict && capacityOk;
+
   const canConfirm =
     (editContext ||
       !!matchedCustomer ||
       (isNewCustomer && newName.trim().length > 0 && newEmail.includes('@'))) &&
-    !conflict &&
-    !customerConflict &&
-    capacityOk &&
+    capacityAndAvailabilityOk &&
     policyAccepted;
 
   // Pinpoints the single next thing missing so a disabled "continue" button never leaves the
   // guest guessing -- conflict/customerConflict aren't listed here since those already get
   // their own visible red banner (conflictBanner) right in the form. Editing an existing
   // booking skips the identity checks (a matched customer is already known) but still needs
-  // the policy re-accepted, so that one check stays live for editContext too.
+  // the policy re-accepted, so that one check stays live for editContext too. Used by the
+  // Conferma e paga / Pagamento stages, where all of this is actually on screen.
   const missingRequirement =
     !editContext && !matchedCustomer && normalizePhone(phone).length < 6
       ? 'Inserisci il tuo numero di telefono per continuare'
@@ -1066,6 +1025,16 @@ const BookingForm: React.FC<{
       : !policyAccepted
       ? 'Accetta la politica di pagamento e cancellazione per continuare'
       : null;
+
+  // The 'details' stage only ever needs capacity/availability (new booking) or, for an edit,
+  // the same policy re-acceptance it's always required, since editing confirms straight from
+  // here -- contact info doesn't apply yet (or ever, for an edit) at this stage.
+  const detailsCanContinue = editContext ? canConfirm : capacityAndAvailabilityOk;
+  const detailsMissingRequirement = !capacityOk
+    ? `Per ${adults} adulti servono più ombrelloni: aggiungine tra quelli suggeriti qui sopra`
+    : editContext && !policyAccepted
+    ? 'Accetta la politica di pagamento e cancellazione per continuare'
+    : null;
 
   const confirm = () => {
     if (!canConfirm) return;
@@ -1161,96 +1130,9 @@ const BookingForm: React.FC<{
     </>
   );
 
-  if (stage === 'equipment') {
-    return (
-      <View style={styles.formOuter}>
-        <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
-          <Pressable onPress={() => onStageChange('details')} style={styles.backLink}>
-            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-            <Text style={styles.backLinkText}>Modifica ospiti e telefono</Text>
-          </Pressable>
-
-          <Text style={styles.sheetTitle}>Lettini e sdraio</Text>
-
-          <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
-
-          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>
-            {allUmbrellaIds.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
-          </Text>
-          {allUmbrellaIds.map((id) => {
-            const u = getUmbrella(id);
-            if (!u) return null;
-            const eq = equipment[id] ?? defaultEquipmentFor(id);
-            const bundle = bundleForUmbrella(u);
-            const isBundlePrice = !!bundle && eq.beds === bundle.beds && eq.chairs === bundle.chairs;
-            const discount = umbrellaDiscount(id);
-            return (
-              <View key={id} style={styles.equipmentCard}>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.equipmentTitle}>
-                    Ombrellone N.{u.number} · {u.zone}
-                  </Text>
-                  <Text style={styles.equipmentPrice}>{formatCurrency(umbrellaTotal(id))}</Text>
-                </View>
-                <Stepper
-                  label="Lettini"
-                  icon="bed-outline"
-                  value={eq.beds}
-                  max={MAX_EQUIPMENT_PER_UMBRELLA}
-                  onChange={(v) => setBeds(id, v)}
-                />
-                <Stepper
-                  label="Sdraio"
-                  icon="sunny-outline"
-                  value={eq.chairs}
-                  max={MAX_EQUIPMENT_PER_UMBRELLA}
-                  onChange={(v) => setChairs(id, v)}
-                />
-                {isBundlePrice ? (
-                  <Text style={styles.muted}>{formatCurrency(perDayRate(id))} al giorno · lettini e sdraio inclusi</Text>
-                ) : (
-                  <Text style={styles.muted}>
-                    {[
-                      `${formatCurrency(perDayRate(id) - eq.beds * bedRate - eq.chairs * chairRate)} ombrellone`,
-                      eq.beds > 0 ? `${formatCurrency(eq.beds * bedRate)} lettini` : null,
-                      eq.chairs > 0 ? `${formatCurrency(eq.chairs * chairRate)} sdraio` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' + ')}
-                    , al giorno
-                  </Text>
-                )}
-                {discount.total > 0 && (
-                  <Text style={[styles.muted, { color: colors.libero, fontWeight: '700' }]}>
-                    Sconto applicato: -{Math.round(discount.total * 100)}%
-                  </Text>
-                )}
-              </View>
-            );
-          })}
-
-          {conflictBanner}
-        </ScrollView>
-        <BookingFooter
-          total={grossTotal}
-          deposit={deposit}
-          voucherApplied={voucherApplied}
-          umbrellaCount={allUmbrellaIds.length}
-          primaryLabel={editContext ? 'Conferma modifica' : 'Conferma e paga'}
-          primaryIcon="checkmark-circle-outline"
-          onPrimary={editContext ? confirm : () => onStageChange('confirm')}
-          primaryDisabled={!canConfirm}
-          disabledHint={missingRequirement}
-          onCancel={onClose}
-          cancelLabel={cancelLabel}
-        />
-      </View>
-    );
-  }
-
   // Read-only review -- no more editing here, just a final check before moving to payment.
   // Editing a booking that's already paid (editContext) never reaches this stage or the next
-  // one; it confirms directly from the equipment stage above, since there's no new charge to
+  // one; it confirms directly from the details stage below, since there's no new charge to
   // review or collect.
   if (stage === 'confirm') {
     return (
@@ -1258,12 +1140,58 @@ const BookingForm: React.FC<{
         <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
           <Pressable onPress={() => onStageChange('details')} style={styles.backLink}>
             <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-            <Text style={styles.backLinkText}>Modifica i tuoi dati</Text>
+            <Text style={styles.backLinkText}>Modifica ospiti e attrezzatura</Text>
           </Pressable>
 
           <Text style={styles.sheetTitle}>Conferma e paga</Text>
 
           <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
+
+          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="+39 ..."
+            placeholderTextColor={colors.textMuted}
+            keyboardType="phone-pad"
+            value={phone}
+            onChangeText={setPhone}
+          />
+          {matchedCustomer && (
+            <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
+          )}
+          {matchedCustomer && !!matchedCustomer.voucherBalance && (
+            <Text style={styles.welcomeText}>
+              Hai un credito voucher di {formatCurrency(matchedCustomer.voucherBalance)}: verrà applicato a questa
+              prenotazione.
+            </Text>
+          )}
+          {isNewCustomer && (
+            <View style={{ marginTop: spacing.sm }}>
+              <Text style={styles.sectionLabel}>Nome e cognome</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Es. Marco Bianchi"
+                placeholderTextColor={colors.textMuted}
+                value={newName}
+                onChangeText={setNewName}
+              />
+            </View>
+          )}
+          {(isNewCustomer || (matchedCustomer && !matchedCustomer.email)) && (
+            <View style={{ marginTop: spacing.sm }}>
+              <Text style={styles.sectionLabel}>Email</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="es. mario.rossi@email.it"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={newEmail}
+                onChangeText={setNewEmail}
+              />
+              <Text style={styles.muted}>Ti invieremo qui la conferma della prenotazione.</Text>
+            </View>
+          )}
 
           <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Ospiti</Text>
           <Text style={styles.muted}>
@@ -1295,6 +1223,30 @@ const BookingForm: React.FC<{
           })}
 
           {conflictBanner}
+
+          <View style={styles.policyBox}>
+            <View style={styles.policyHeaderRow}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+              <Text style={styles.policyTitle}>Pagamento anticipato</Text>
+            </View>
+            <Text style={styles.policyText}>
+              L'importo totale della prenotazione ({formatCurrency(deposit)}) viene addebitato ora, al momento della
+              prenotazione.
+            </Text>
+            <Text style={[styles.policyText, { marginTop: spacing.sm }]}>
+              <Text style={styles.policyBold}>Rimborsabile tramite voucher:</Text> se annulli entro il{' '}
+              <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text> ({REFUND_CUTOFF_DAYS} giorni prima
+              dell'arrivo), riceverai un voucher da usare per una prossima prenotazione qui. Annullando dopo tale
+              data, o non presentandoti, l'importo pagato <Text style={styles.policyBold}>non è rimborsabile</Text>.
+            </Text>
+            <View style={{ marginTop: spacing.sm }}>
+              <Checkbox
+                checked={policyAccepted}
+                onToggle={() => setPolicyAccepted((v) => !v)}
+                label="Ho letto e accetto la politica di pagamento e cancellazione"
+              />
+            </View>
+          </View>
         </ScrollView>
         <BookingFooter
           total={grossTotal}
@@ -1305,6 +1257,7 @@ const BookingForm: React.FC<{
           primaryIcon="card-outline"
           onPrimary={() => onStageChange('payment')}
           primaryDisabled={!canConfirm}
+          disabledHint={missingRequirement}
           onCancel={onClose}
           cancelLabel={cancelLabel}
         />
@@ -1385,32 +1338,25 @@ const BookingForm: React.FC<{
 
         <PeriodHero dateFrom={dateFrom} dateTo={dateTo} days={days} onEditDates={onEditDates} />
 
-        {/* A new booking's guest counts were already chosen in the search flow (see
-            SearchHomeScreen) -- only editing an existing booking still needs to adjust them
-            here, since there's no earlier search stage for that case to have collected them. */}
-        {editContext && (
-          <>
-            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Chi viaggia con te?</Text>
-            <View style={styles.guestsBox}>
-              <Stepper label="Adulti" icon="person-outline" value={adults} min={1} onChange={changeAdults} />
-              <View style={styles.divider} />
-              <Stepper
-                label="Bambini 5–15 anni"
-                icon="school-outline"
-                value={children5to15}
-                onChange={setChildren5to15}
-              />
-              <View style={styles.divider} />
-              <Stepper
-                label="Bambini sotto i 5 anni"
-                icon="happy-outline"
-                value={childrenUnder5}
-                onChange={setChildrenUnder5}
-              />
-            </View>
-            <Text style={styles.muted}>Max {MAX_ADULTS_PER_UMBRELLA} adulti per ombrellone · bambini illimitati</Text>
-          </>
-        )}
+        <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Chi viaggia con te?</Text>
+        <View style={styles.guestsBox}>
+          <Stepper label="Adulti" icon="person-outline" value={adults} min={1} onChange={changeAdults} />
+          <View style={styles.divider} />
+          <Stepper
+            label="Bambini 5–15 anni"
+            icon="school-outline"
+            value={children5to15}
+            onChange={setChildren5to15}
+          />
+          <View style={styles.divider} />
+          <Stepper
+            label="Bambini sotto i 5 anni"
+            icon="happy-outline"
+            value={childrenUnder5}
+            onChange={setChildrenUnder5}
+          />
+        </View>
+        <Text style={styles.muted}>Max {MAX_ADULTS_PER_UMBRELLA} adulti per ombrellone · bambini illimitati</Text>
 
         {umbrellasNeeded > 1 && (
           <View style={styles.extraBox}>
@@ -1444,59 +1390,66 @@ const BookingForm: React.FC<{
           </View>
         )}
 
-        {editContext ? (
+        <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>
+          {allUmbrellaIds.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
+        </Text>
+        {allUmbrellaIds.map((id) => {
+          const u = getUmbrella(id);
+          if (!u) return null;
+          const eq = equipment[id] ?? defaultEquipmentFor(id);
+          const bundle = bundleForUmbrella(u);
+          const isBundlePrice = !!bundle && eq.beds === bundle.beds && eq.chairs === bundle.chairs;
+          const discount = umbrellaDiscount(id);
+          return (
+            <View key={id} style={styles.equipmentCard}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.equipmentTitle}>
+                  Ombrellone N.{u.number} · {u.zone}
+                </Text>
+                <Text style={styles.equipmentPrice}>{formatCurrency(umbrellaTotal(id))}</Text>
+              </View>
+              <Stepper
+                label="Lettini"
+                icon="bed-outline"
+                value={eq.beds}
+                max={MAX_EQUIPMENT_PER_UMBRELLA}
+                onChange={(v) => setBeds(id, v)}
+              />
+              <Stepper
+                label="Sdraio"
+                icon="sunny-outline"
+                value={eq.chairs}
+                max={MAX_EQUIPMENT_PER_UMBRELLA}
+                onChange={(v) => setChairs(id, v)}
+              />
+              {isBundlePrice ? (
+                <Text style={styles.muted}>{formatCurrency(perDayRate(id))} al giorno · lettini e sdraio inclusi</Text>
+              ) : (
+                <Text style={styles.muted}>
+                  {[
+                    `${formatCurrency(perDayRate(id) - eq.beds * bedRate - eq.chairs * chairRate)} ombrellone`,
+                    eq.beds > 0 ? `${formatCurrency(eq.beds * bedRate)} lettini` : null,
+                    eq.chairs > 0 ? `${formatCurrency(eq.chairs * chairRate)} sdraio` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' + ')}
+                  , al giorno
+                </Text>
+              )}
+              {discount.total > 0 && (
+                <Text style={[styles.muted, { color: colors.libero, fontWeight: '700' }]}>
+                  Sconto applicato: -{Math.round(discount.total * 100)}%
+                </Text>
+              )}
+            </View>
+          );
+        })}
+
+        {editContext && (
           <View style={styles.editingAsBox}>
             <Ionicons name="person-circle-outline" size={16} color={colors.primaryDark} />
             <Text style={styles.editingAsText}>Stai modificando la prenotazione di {editContext.customer.name}</Text>
           </View>
-        ) : (
-          <>
-            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Il tuo numero di telefono</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="+39 ..."
-              placeholderTextColor={colors.textMuted}
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={setPhone}
-            />
-            {matchedCustomer && (
-              <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
-            )}
-            {matchedCustomer && !editContext && !!matchedCustomer.voucherBalance && (
-              <Text style={styles.welcomeText}>
-                Hai un credito voucher di {formatCurrency(matchedCustomer.voucherBalance)}: verrà applicato a
-                questa prenotazione.
-              </Text>
-            )}
-            {isNewCustomer && (
-              <View style={{ marginTop: spacing.sm }}>
-                <Text style={styles.sectionLabel}>Nome e cognome</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Es. Marco Bianchi"
-                  placeholderTextColor={colors.textMuted}
-                  value={newName}
-                  onChangeText={setNewName}
-                />
-              </View>
-            )}
-            {(isNewCustomer || (matchedCustomer && !matchedCustomer.email)) && (
-              <View style={{ marginTop: spacing.sm }}>
-                <Text style={styles.sectionLabel}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="es. mario.rossi@email.it"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={newEmail}
-                  onChangeText={setNewEmail}
-                />
-                <Text style={styles.muted}>Ti invieremo qui la conferma della prenotazione.</Text>
-              </View>
-            )}
-          </>
         )}
 
         {conflictBanner}
@@ -1535,40 +1488,45 @@ const BookingForm: React.FC<{
           </View>
         )}
 
-        <View style={styles.policyBox}>
-          <View style={styles.policyHeaderRow}>
-            <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
-            <Text style={styles.policyTitle}>Pagamento anticipato</Text>
+        {/* For a new booking, payment policy consent happens in Conferma e paga instead --
+            editing an existing one never reaches that stage (it confirms straight from here,
+            see the footer below), so this is the only place it can accept the policy at all. */}
+        {editContext && (
+          <View style={styles.policyBox}>
+            <View style={styles.policyHeaderRow}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+              <Text style={styles.policyTitle}>Pagamento anticipato</Text>
+            </View>
+            <Text style={styles.policyText}>
+              L'importo totale della prenotazione ({formatCurrency(deposit)}) viene addebitato ora, al momento della
+              prenotazione.
+            </Text>
+            <Text style={[styles.policyText, { marginTop: spacing.sm }]}>
+              <Text style={styles.policyBold}>Rimborsabile tramite voucher:</Text> se annulli entro il{' '}
+              <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text> ({REFUND_CUTOFF_DAYS} giorni prima
+              dell'arrivo), riceverai un voucher da usare per una prossima prenotazione qui. Annullando dopo tale
+              data, o non presentandoti, l'importo pagato <Text style={styles.policyBold}>non è rimborsabile</Text>.
+            </Text>
+            <View style={{ marginTop: spacing.sm }}>
+              <Checkbox
+                checked={policyAccepted}
+                onToggle={() => setPolicyAccepted((v) => !v)}
+                label="Ho letto e accetto la politica di pagamento e cancellazione"
+              />
+            </View>
           </View>
-          <Text style={styles.policyText}>
-            L'importo totale della prenotazione ({formatCurrency(deposit)}) viene addebitato ora, al momento della
-            prenotazione.
-          </Text>
-          <Text style={[styles.policyText, { marginTop: spacing.sm }]}>
-            <Text style={styles.policyBold}>Rimborsabile tramite voucher:</Text> se annulli entro il{' '}
-            <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text> ({REFUND_CUTOFF_DAYS} giorni prima
-            dell'arrivo), riceverai un voucher da usare per una prossima prenotazione qui. Annullando dopo tale
-            data, o non presentandoti, l'importo pagato <Text style={styles.policyBold}>non è rimborsabile</Text>.
-          </Text>
-          <View style={{ marginTop: spacing.sm }}>
-            <Checkbox
-              checked={policyAccepted}
-              onToggle={() => setPolicyAccepted((v) => !v)}
-              label="Ho letto e accetto la politica di pagamento e cancellazione"
-            />
-          </View>
-        </View>
+        )}
       </ScrollView>
       <BookingFooter
         total={grossTotal}
         deposit={deposit}
         voucherApplied={voucherApplied}
         umbrellaCount={allUmbrellaIds.length}
-        primaryLabel={editContext ? 'Lettini e sdraio' : 'Conferma e paga'}
-        primaryIcon={editContext ? 'bed-outline' : 'checkmark-circle-outline'}
-        onPrimary={() => onStageChange(editContext ? 'equipment' : 'confirm')}
-        primaryDisabled={!canConfirm}
-        disabledHint={missingRequirement}
+        primaryLabel={editContext ? 'Conferma modifica' : 'Conferma e paga'}
+        primaryIcon="checkmark-circle-outline"
+        onPrimary={() => (editContext ? confirm() : onStageChange('confirm'))}
+        primaryDisabled={!detailsCanContinue}
+        disabledHint={detailsMissingRequirement}
         onCancel={onClose}
         cancelLabel={cancelLabel}
       />
@@ -1797,6 +1755,12 @@ const styles = StyleSheet.create({
   },
   legendText: { fontSize: 11, color: colors.textMuted },
   legendCounts: { fontSize: 11, color: colors.textMuted, fontWeight: '700', marginLeft: 'auto' },
+  mapPriceHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+  },
   cell: {
     position: 'absolute',
     borderWidth: 3,
@@ -1809,6 +1773,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   cellNumber: { fontWeight: '800', fontSize: 16, color: colors.white },
+  cellPrice: { fontWeight: '700', color: colors.white, opacity: 0.85, marginTop: -1 },
   pendingCheckBadge: {
     position: 'absolute',
     top: -4,
