@@ -203,31 +203,22 @@ export const Stepper: React.FC<{
   </View>
 );
 
-export const StepProgressBar: React.FC<{ steps: string[]; currentIndex: number }> = ({ steps, currentIndex }) => (
+// Plain numbered circles connected by a uniform line -- only the current step is filled; a
+// step already passed looks the same as one not yet reached, matching the reference design's
+// step indicator (which doesn't distinguish "done" from "upcoming", only "current").
+export const StepProgressBar: React.FC<{ totalSteps: number; currentIndex: number }> = ({
+  totalSteps,
+  currentIndex,
+}) => (
   <View style={styles.stepBarRow}>
-    {steps.map((label, i) => {
-      const done = i < currentIndex;
+    {Array.from({ length: totalSteps }).map((_, i) => {
       const current = i === currentIndex;
       return (
-        <React.Fragment key={label}>
-          <View style={styles.stepBarItem}>
-            <View style={[styles.stepBarDot, done && styles.stepBarDotDone, current && styles.stepBarDotCurrent]}>
-              {done ? (
-                <Ionicons name="checkmark" size={14} color={colors.white} />
-              ) : current ? (
-                <View style={styles.stepBarDotInner} />
-              ) : null}
-            </View>
-            <Text
-              style={[styles.stepBarLabel, (done || current) && styles.stepBarLabelActive]}
-              numberOfLines={1}
-            >
-              {label}
-            </Text>
+        <React.Fragment key={i}>
+          <View style={[styles.stepBarDot, current && styles.stepBarDotCurrent]}>
+            <Text style={[styles.stepBarDotText, current && styles.stepBarDotTextCurrent]}>{i + 1}</Text>
           </View>
-          {i < steps.length - 1 && (
-            <View style={[styles.stepBarLine, i < currentIndex && styles.stepBarLineDone]} />
-          )}
+          {i < totalSteps - 1 && <View style={styles.stepBarLine} />}
         </React.Fragment>
       );
     })}
@@ -349,23 +340,24 @@ const styles = StyleSheet.create({
   },
   stepperBtnDisabled: { backgroundColor: colors.bg },
   stepperValue: { fontWeight: '700', color: colors.text, fontSize: 15, minWidth: 20, textAlign: 'center' },
-  stepBarRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  stepBarItem: { alignItems: 'center', width: 64 },
+  stepBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
   stepBarDot: {
     width: 26,
     height: 26,
     borderRadius: 13,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepBarDotDone: { backgroundColor: colors.primary, borderColor: colors.primary },
-  stepBarDotCurrent: { borderColor: colors.primary },
-  stepBarDotInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
-  stepBarLabel: { fontSize: 10, color: colors.textMuted, marginTop: 4, fontWeight: '600' },
-  stepBarLabelActive: { color: colors.primaryDark, fontWeight: '800' },
-  stepBarLine: { flex: 1, height: 2, backgroundColor: colors.border, marginTop: 12 },
-  stepBarLineDone: { backgroundColor: colors.primary },
+  stepBarDotCurrent: { backgroundColor: colors.primary, borderColor: colors.primary },
+  stepBarDotText: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  stepBarDotTextCurrent: { color: colors.white },
+  stepBarLine: { flex: 1, height: 1.5, backgroundColor: colors.border, marginHorizontal: 6 },
 });

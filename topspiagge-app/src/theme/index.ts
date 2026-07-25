@@ -1,11 +1,13 @@
 // Palette adapted from the real SGS Beach / Top Spiagge desktop software:
 // sandy beach canvas + teal sea-wave for the spatial views (Piantina/Griglia),
-// a Bootstrap-admin blue/orange/red button language for everything else.
+// a Bootstrap-admin teal/orange/red button language for everything else -- the brand color
+// itself is teal/turquoise (matching the guest booking flow's reference design) rather than
+// the earlier blue, so it now reads as one consistent color with the sea/seaDark tokens.
 export const colors = {
   bg: '#F4F6F9',
   card: '#FFFFFF',
-  primary: '#2B9CDB',
-  primaryDark: '#1D7FB8',
+  primary: '#17A2AA',
+  primaryDark: '#0E7D83',
   accent: '#F5A623',
   accentDark: '#D98C0F',
   sand: '#F2D9A6',

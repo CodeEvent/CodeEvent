@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { colors, radius, spacing } from '../theme';
 import { Umbrella } from '../types';
 
@@ -92,6 +92,32 @@ export const WaveFooter: React.FC<{ flip?: boolean }> = ({ flip }) => (
   </Svg>
 );
 
+// Richer, illustrated sea band used only where a caller opts in (the customer booking map's
+// `richSeaBand` prop) -- a gradient sea, a foamy wave edge and a scattering of sandy dots, in
+// place of the plain single-tone `WaveFooter`. The operator Piantina map never passes this prop,
+// so it keeps its existing plain wave with no visual change.
+export const SeaBand: React.FC = () => (
+  <Svg width="100%" height={64} viewBox="0 0 400 64" preserveAspectRatio="none">
+    <Defs>
+      <LinearGradient id="seaBandGrad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0" stopColor={colors.seaDark} />
+        <Stop offset="1" stopColor={colors.sea} />
+      </LinearGradient>
+    </Defs>
+    <Path d="M0,0 L400,0 L400,34 C350,48 300,26 250,36 C200,47 150,28 100,38 C60,45 30,36 0,42 Z" fill="url(#seaBandGrad)" />
+    <Path
+      d="M0,42 C30,36 60,45 100,38 C150,28 200,47 250,36 C300,26 350,48 400,34 L400,50 C350,58 300,44 250,50 C200,57 150,45 100,51 C60,55 30,48 0,53 Z"
+      fill={colors.sand}
+      opacity={0.9}
+    />
+    <Circle cx="40" cy="58" r="2" fill={colors.sandDark} opacity={0.6} />
+    <Circle cx="120" cy="60" r="1.6" fill={colors.sandDark} opacity={0.5} />
+    <Circle cx="210" cy="57" r="2.2" fill={colors.sandDark} opacity={0.6} />
+    <Circle cx="290" cy="60" r="1.6" fill={colors.sandDark} opacity={0.5} />
+    <Circle cx="360" cy="58" r="2" fill={colors.sandDark} opacity={0.6} />
+  </Svg>
+);
+
 interface BeachCanvasProps {
   umbrellas: Umbrella[];
   positions: Map<string, { x: number; y: number }>;
@@ -113,6 +139,9 @@ interface BeachCanvasProps {
   // Renders into the reserved space above a row when rowBannerHeight(row) > 0 -- spans the
   // full scrollable seat width (like the NORD/SUD headers), not just the row-label column.
   renderRowBanner?: (row: number) => React.ReactNode;
+  // Swaps the plain single-tone WaveFooter for the taller, illustrated gradient SeaBand -- opt-in
+  // so the operator Piantina map (which doesn't pass this) keeps its existing look unchanged.
+  richSeaBand?: boolean;
 }
 
 // Every row is one continuous line of umbrellas split by a walkway: seats on
@@ -131,6 +160,7 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
   extraWalkways = [],
   rowBannerHeight,
   renderRowBanner,
+  richSeaBand = false,
 }) => {
   const zones = useMemo(() => {
     const seen = new Map<number, string>();
@@ -168,7 +198,7 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
       {/* Fila 1 is the front row, closest to the water (hasCabin/VIP-assignment logic
           treats row 0 as the premium sea-front tier) -- the wave sits above it, not
           below the last row, so the map reads shoreline-first the way the real beach does. */}
-      <WaveFooter flip />
+      {richSeaBand ? <SeaBand /> : <WaveFooter flip />}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.boardScroll}>
         <View style={styles.boardRow}>
           <View style={{ width: labelWidth, height: GROUP_HEADER_HEIGHT + canvasHeight }}>

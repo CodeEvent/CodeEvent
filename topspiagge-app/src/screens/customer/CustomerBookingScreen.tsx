@@ -178,7 +178,19 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   // Dettagli (see BookingForm's footer) since there's no new charge to review.
   const stepIndexForStage: Record<BookingFormStage, number> = { details: 1, confirm: 2, payment: 3 };
   const currentStepIndex = !selectedUmbrellaId ? 0 : stepIndexForStage[formStage];
-  const stepLabels = ['Data e posto', 'Dettagli', 'Conferma e paga', 'Pagamento'];
+  const TOTAL_STEPS = 4;
+  const currentStepTitle =
+    step === 'dates'
+      ? 'Scegli le date'
+      : !selectedUmbrellaId
+      ? 'Scegli il tuo posto'
+      : formStage === 'details'
+      ? editContext
+        ? 'Modifica ospiti e attrezzatura'
+        : 'Ospiti e attrezzatura'
+      : formStage === 'confirm'
+      ? 'Conferma e paga'
+      : 'Pagamento';
 
   const isWide = width >= WIDE_BREAKPOINT;
 
@@ -289,15 +301,15 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
           </Pressable>
         </View>
         <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit>
-          {editContext ? 'Modifica la tua prenotazione' : 'Prenota il tuo ombrellone'}
+          Bagno Pietrasanta
         </Text>
-        <Text style={styles.headerSubtitle}>Bagno Pietrasanta</Text>
+        <Text style={styles.headerSubtitle}>
+          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+        </Text>
+        <Text style={styles.headerStepTitle}>{currentStepTitle}</Text>
       </View>
 
-      <StepProgressBar
-        steps={stepLabels}
-        currentIndex={currentStepIndex}
-      />
+      <StepProgressBar totalSteps={TOTAL_STEPS} currentIndex={currentStepIndex} />
 
       {step === 'dates' ? (
         <DateStep
@@ -603,10 +615,6 @@ const MapStep: React.FC<{
   return (
   <>
     <View style={styles.mapHeader}>
-      <Text style={styles.mapPeriodText}>
-        {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
-      </Text>
-      <Text style={styles.mapSubtitle}>Scegli il tuo posto sulla spiaggia</Text>
       <View style={styles.mapActionsRow}>
         <Pressable onPress={onToggleFullMapView} style={[styles.changeDatesBtn, styles.mapActionBtn]}>
           <Ionicons name={fullMapView ? 'contract-outline' : 'resize-outline'} size={13} color={colors.primaryDark} />
@@ -657,6 +665,7 @@ const MapStep: React.FC<{
       labelWidth={labelWidth}
       footerText={`${freeCount} ombrelloni liberi per il periodo scelto`}
       extraWalkways={SECTION_WALKWAYS}
+      richSeaBand
       rowBannerHeight={rowBannerHeight}
       renderRowBanner={(row) => {
         // One bar over the Nord side, one over the Sud side -- each sized and positioned
@@ -716,11 +725,26 @@ const MapStep: React.FC<{
                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.prenotato }} />
               </View>
             )}
-            <Ionicons
-              name="umbrella"
-              size={Math.round(cellSize * (pending ? 0.46 : 0.62))}
-              color={pending ? colors.white : free ? colors.libero : colors.textMuted}
-            />
+            <View
+              style={{
+                width: cellSize * (pending ? 0.5 : 0.62),
+                height: cellSize * (pending ? 0.34 : 0.42),
+                borderRadius: cellSize * 0.14,
+                backgroundColor: pending ? colors.white : free ? colors.libero : colors.textMuted,
+              }}
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  top: cellSize * 0.045,
+                  left: cellSize * 0.07,
+                  right: cellSize * 0.07,
+                  height: cellSize * 0.1,
+                  borderRadius: cellSize * 0.05,
+                  backgroundColor: 'rgba(255,255,255,0.5)',
+                }}
+              />
+            </View>
             <Text
               style={[
                 styles.cellNumber,
@@ -814,23 +838,43 @@ const BookingFooter: React.FC<{
   cancelLabel,
 }) => (
   <View style={styles.stickyFooter}>
-    <View style={styles.totalRow}>
-      <Text style={styles.totalLabel}>
-        Totale soggiorno {umbrellaCount > 1 ? `(${umbrellaCount} ombrelloni)` : ''}
-      </Text>
-      <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
+    <View style={styles.footerSummaryRow}>
+      <View>
+        <Text style={styles.footerSummaryLabel}>
+          Totale {umbrellaCount > 1 ? `(${umbrellaCount} ombrelloni)` : ''}
+        </Text>
+        <Text style={styles.footerSummaryValue}>{formatCurrency(total)}</Text>
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={styles.footerSummaryLabel}>Da pagare ora</Text>
+        <Text style={styles.footerSummaryValue}>{formatCurrency(deposit)}</Text>
+      </View>
     </View>
     {!!voucherApplied && (
       <Text style={[styles.muted, { color: colors.libero }]}>
         Credito voucher applicato: -{formatCurrency(voucherApplied)}
       </Text>
     )}
-    <Text style={styles.muted}>Da pagare ora (pagamento anticipato): {formatCurrency(deposit)}</Text>
     {primaryDisabled && !!disabledHint && (
       <Text style={styles.disabledHintText}>{disabledHint}</Text>
     )}
-    <Button title={primaryLabel} icon={primaryIcon} onPress={onPrimary} disabled={primaryDisabled} style={{ marginTop: spacing.md }} />
-    <Button title={cancelLabel ?? 'Annulla'} variant="ghost" onPress={onCancel} style={{ marginTop: spacing.sm }} />
+    <View style={styles.footerActionRow}>
+      <Pressable onPress={onCancel} style={styles.footerBackBtn} hitSlop={8}>
+        <Text style={styles.footerBackText} numberOfLines={1}>
+          {cancelLabel ?? 'Annulla'}
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={onPrimary}
+        disabled={primaryDisabled}
+        style={[styles.footerCta, primaryDisabled && styles.footerCtaDisabled]}
+      >
+        <Text style={styles.footerCtaText} numberOfLines={1}>
+          {primaryLabel}
+        </Text>
+        <Ionicons name={primaryIcon} size={18} color={colors.white} />
+      </Pressable>
+    </View>
   </View>
 );
 
@@ -1440,14 +1484,18 @@ const BookingForm: React.FC<{
             {nearbySuggestions.map((u) => {
               const selected = extraUmbrellaIds.includes(u.id);
               return (
-                <Pressable key={u.id} onPress={() => toggleExtra(u.id)} style={styles.extraRow}>
+                <Pressable
+                  key={u.id}
+                  onPress={() => toggleExtra(u.id)}
+                  style={[styles.extraRow, selected && styles.extraRowSelected]}
+                >
                   <Ionicons
-                    name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={20}
-                    color={selected ? colors.libero : colors.border}
+                    name={selected ? 'checkmark-circle' : 'add-circle-outline'}
+                    size={18}
+                    color={selected ? colors.primary : colors.textMuted}
                   />
-                  <Text style={styles.extraRowText}>
-                    Ombrellone N.{u.number} · {u.zone}
+                  <Text style={[styles.extraRowText, selected && styles.extraRowTextSelected]}>
+                    {selected ? 'Aggiunto' : 'Aggiungi'} · Ombrellone N.{u.number} · {u.zone}
                   </Text>
                 </Pressable>
               );
@@ -1468,10 +1516,14 @@ const BookingForm: React.FC<{
           const discount = umbrellaDiscount(id);
           return (
             <View key={id} style={styles.equipmentCard}>
-              <View style={styles.rowBetween}>
-                <Text style={styles.equipmentTitle}>
-                  Ombrellone N.{u.number} · {u.zone}
-                </Text>
+              <View style={styles.equipmentCardHeader}>
+                <View style={styles.equipmentThumb}>
+                  <Ionicons name="sunny-outline" size={20} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.equipmentTitle}>Ombrellone N.{u.number}</Text>
+                  <Text style={styles.equipmentSubtitle}>{u.zone}</Text>
+                </View>
                 <Text style={styles.equipmentPrice}>{formatCurrency(umbrellaTotal(id))}</Text>
               </View>
               <Stepper
@@ -1735,6 +1787,7 @@ const styles = StyleSheet.create({
   backLinkText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   headerTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
   headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  headerStepTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginTop: spacing.sm },
   myBookingsBtn: {
     width: 32,
     height: 32,
@@ -1786,8 +1839,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  mapPeriodText: { fontSize: 16, fontWeight: '800', color: colors.primaryDark },
-  mapSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   // Both buttons share flex:1 so they're always identical in size and never overflow the
   // screen, however narrow -- previously a fixed-content row could push the second button
   // past the right edge on an iPhone-width viewport.
@@ -1946,13 +1997,25 @@ const styles = StyleSheet.create({
   editDatesBtnText: { color: colors.white, fontWeight: '700', fontSize: 11 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   equipmentCard: {
-    backgroundColor: colors.bg,
-    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.md,
     marginTop: spacing.sm,
   },
+  equipmentCardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
+  equipmentThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.liberoBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   equipmentTitle: { fontWeight: '700', color: colors.text, fontSize: 13 },
-  equipmentPrice: { fontWeight: '800', color: colors.primaryDark, fontSize: 13 },
+  equipmentSubtitle: { color: colors.textMuted, fontSize: 12, marginTop: 1 },
+  equipmentPrice: { fontWeight: '800', color: colors.primary, fontSize: 14 },
   simBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1992,9 +2055,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.xl,
+    backgroundColor: colors.card,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xs,
   },
-  extraRowText: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  extraRowSelected: { borderColor: colors.primary, backgroundColor: colors.liberoBg },
+  extraRowText: { color: colors.textMuted, fontWeight: '600', fontSize: 13, flexShrink: 1 },
+  extraRowTextSelected: { color: colors.primaryDark },
   groupTag: { color: colors.primaryDark, fontWeight: '700', fontSize: 11, marginTop: 2 },
   policyBox: {
     backgroundColor: colors.prenotatoBg,
@@ -2035,16 +2106,36 @@ const styles = StyleSheet.create({
   conflictBox: { backgroundColor: colors.occupatoBg, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
   conflictText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
   disabledHintText: { color: colors.occupato, fontSize: 12, fontWeight: '600', marginTop: spacing.xs },
-  totalRow: {
+  footerSummaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    alignItems: 'flex-end',
   },
-  totalLabel: { color: colors.textMuted, fontWeight: '600' },
-  totalValue: { color: colors.primaryDark, fontWeight: '800', fontSize: 20 },
+  footerSummaryLabel: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
+  footerSummaryValue: { color: colors.text, fontWeight: '800', fontSize: 18, marginTop: 2 },
+  footerActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  footerBackBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  footerBackText: { color: colors.textMuted, fontWeight: '700', fontSize: 14 },
+  footerCta: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary,
+    borderRadius: radius.xl,
+    paddingVertical: spacing.md,
+    marginLeft: spacing.md,
+  },
+  footerCtaDisabled: { backgroundColor: colors.border },
+  footerCtaText: { color: colors.white, fontWeight: '800', fontSize: 15 },
   confirmSheetOuter: {
     maxHeight: '88%',
     width: '100%',
