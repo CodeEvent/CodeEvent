@@ -891,28 +891,33 @@ const BookingFooter: React.FC<{
   cancelLabel,
 }) => (
   <View style={styles.stickyFooter}>
-    <View style={styles.footerSummaryRow}>
-      <View>
-        <Text style={styles.footerSummaryLabel}>
-          Totale {umbrellaCount > 1 ? `(${umbrellaCount} ombrelloni)` : ''}
+    <View style={styles.footerContent}>
+      <View style={styles.footerSummaryRow}>
+        <View>
+          <Text style={styles.footerSummaryLabel}>
+            Totale {umbrellaCount > 1 ? `(${umbrellaCount} ombrelloni)` : ''}
+          </Text>
+          <Text style={styles.footerSummaryValue}>{formatCurrency(total)}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.footerSummaryLabel}>Da pagare ora</Text>
+          <Text style={styles.footerSummaryValue}>{formatCurrency(deposit)}</Text>
+        </View>
+      </View>
+      {!!voucherApplied && (
+        <Text style={[styles.muted, { color: colors.libero }]}>
+          Credito voucher applicato: -{formatCurrency(voucherApplied)}
         </Text>
-        <Text style={styles.footerSummaryValue}>{formatCurrency(total)}</Text>
-      </View>
-      <View style={{ alignItems: 'flex-end' }}>
-        <Text style={styles.footerSummaryLabel}>Da pagare ora</Text>
-        <Text style={styles.footerSummaryValue}>{formatCurrency(deposit)}</Text>
-      </View>
+      )}
+      {primaryDisabled && !!disabledHint && (
+        <Text style={styles.disabledHintText}>{disabledHint}</Text>
+      )}
     </View>
-    {!!voucherApplied && (
-      <Text style={[styles.muted, { color: colors.libero }]}>
-        Credito voucher applicato: -{formatCurrency(voucherApplied)}
-      </Text>
-    )}
-    {primaryDisabled && !!disabledHint && (
-      <Text style={styles.disabledHintText}>{disabledHint}</Text>
-    )}
+    {/* Same edge-to-edge, square-cornered two-tone bar as the map step's own footer
+        (mapFooterRow/mapFooterLabel/mapFooterCta) -- one consistent button shape and size
+        across every step, matching the reference design's AVANTI footer. */}
     <View style={styles.footerActionRow}>
-      <Pressable onPress={onCancel} style={styles.footerBackBtn} hitSlop={8}>
+      <Pressable onPress={onCancel} style={styles.footerBackBtn}>
         <Text style={styles.footerBackText} numberOfLines={1}>
           {cancelLabel ?? 'Annulla'}
         </Text>
@@ -2020,9 +2025,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.card,
+  },
+  footerContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
   },
 
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
@@ -2191,16 +2198,17 @@ const styles = StyleSheet.create({
   },
   footerSummaryLabel: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
   footerSummaryValue: { color: colors.text, fontWeight: '800', fontSize: 18, marginTop: 2 },
-  footerActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
+  // Same edge-to-edge, square-cornered shape/size as the map step's mapFooterRow/mapFooterLabel/
+  // mapFooterCta -- one consistent footer button across every step of the wizard.
+  footerActionRow: { flexDirection: 'row' },
   footerBackBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    flex: 1,
+    backgroundColor: colors.card,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    justifyContent: 'center',
   },
-  footerBackText: { color: colors.textMuted, fontWeight: '700', fontSize: 14 },
+  footerBackText: { color: colors.text, fontWeight: '700', fontSize: 14 },
   footerCta: {
     flex: 1,
     flexDirection: 'row',
@@ -2208,9 +2216,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
     backgroundColor: colors.primary,
-    borderRadius: radius.xl,
     paddingVertical: spacing.md,
-    marginLeft: spacing.md,
   },
   footerCtaDisabled: { backgroundColor: colors.border },
   footerCtaText: { color: colors.white, fontWeight: '800', fontSize: 15 },
