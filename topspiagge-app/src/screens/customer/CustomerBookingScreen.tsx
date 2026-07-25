@@ -158,6 +158,11 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const [selectedUmbrellaId, setSelectedUmbrellaId] = useState<string | null>(
     () => primaryEditBooking?.umbrellaId ?? null
   );
+  // Tapping a seat only highlights it -- the booking form itself only opens once the guest taps
+  // "Avanti" on the map's own footer, matching a tap-to-select-then-advance flow instead of
+  // jumping straight into the form. Editing an existing booking skips this (there's nothing to
+  // "select", they're already picking up where their booking left off).
+  const [formOpen, setFormOpen] = useState(() => Boolean(editContext));
   // A new booking never touches the store until "Conferma e prenota" -- this local set
   // just highlights the umbrella(s) currently being composed in red/blue, and clears
   // itself the moment selectedUmbrellaId does (cancel, backdrop, Annulla, navigate away).
@@ -177,12 +182,13 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   // entry). Editing an existing booking uses the same shape but confirms straight from
   // Dettagli (see BookingForm's footer) since there's no new charge to review.
   const stepIndexForStage: Record<BookingFormStage, number> = { details: 1, confirm: 2, payment: 3 };
-  const currentStepIndex = !selectedUmbrellaId ? 0 : stepIndexForStage[formStage];
+  const isFormOpen = Boolean(selectedUmbrellaId && formOpen);
+  const currentStepIndex = !isFormOpen ? 0 : stepIndexForStage[formStage];
   const TOTAL_STEPS = 4;
   const currentStepTitle =
     step === 'dates'
       ? 'Scegli le date'
-      : !selectedUmbrellaId
+      : !isFormOpen
       ? 'Scegli il tuo posto'
       : formStage === 'details'
       ? editContext
@@ -234,18 +240,13 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const priceBands = useMemo(() => buildPriceBands(umbrellas), [umbrellas]);
   const rowBannerHeight = (row: number) => (priceBands.isNewBandRow(row) ? PRICE_BANNER_HEIGHT : 0);
   const positions = useUmbrellaPositions(umbrellas, cellSize, GAP, cellSize, SECTION_WALKWAYS, rowBannerHeight);
-  const freeCount = umbrellas.filter(isFreeForPeriod).length;
   const freeCounts = {
     nord: umbrellas.filter((u) => u.side === 'nord' && isFreeForPeriod(u)).length,
     sud: umbrellas.filter((u) => u.side === 'sud' && isFreeForPeriod(u)).length,
   };
 
   const handleTap = (u: Umbrella) => {
-    if (isFreeForPeriod(u)) {
-      setPendingExtraIds([]);
-      setSelectedUmbrellaId(u.id);
-      setFormStage('details');
-    } else {
+    if (!isFreeForPeriod(u)) {
       alert(
         'Non disponibile',
         `L'ombrellone N.${u.number} (${u.zone}) non è disponibile per il periodo scelto.`,
@@ -254,11 +255,36 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
           { text: "Iscriviti alla lista d'attesa", onPress: () => setWaitlistUmbrella(u) },
         ]
       );
+      return;
+    }
+    // Tapping the already-selected umbrella again deselects it, like a seat picker.
+    if (selectedUmbrellaId === u.id) {
+      setSelectedUmbrellaId(null);
+      setPendingExtraIds([]);
+      setFormOpen(false);
+      return;
+    }
+    setPendingExtraIds([]);
+    setSelectedUmbrellaId(u.id);
+    setFormStage('details');
+  };
+
+  const handleAdvanceFromMap = () => {
+    if (selectedUmbrellaId) setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    if (editContext) {
+      onExitToLanding();
+    } else {
+      setSelectedUmbrellaId(null);
+      setFormOpen(false);
     }
   };
 
   const handleConfirmed = (createdBookings: Booking[], isEdit: boolean) => {
     setSelectedUmbrellaId(null);
+    setFormOpen(false);
     setConfirmedGroup(createdBookings);
     setConfirmedIsEdit(isEdit);
   };
@@ -271,7 +297,6 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       labelWidth={labelWidth}
       dateFrom={dateFrom}
       dateTo={dateTo}
-      freeCount={freeCount}
       freeCounts={freeCounts}
       isFreeForPeriod={isFreeForPeriod}
       pendingIds={pendingIds}
@@ -281,25 +306,29 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       onToggleFullMapView={() => setFullMapView((v) => !v)}
       rowBannerHeight={rowBannerHeight}
       rowPrices={priceBands.rowPrices}
+      hasSelection={!!selectedUmbrellaId}
+      onAdvance={handleAdvanceFromMap}
     />
   );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <Pressable onPress={onExitToLanding} style={styles.backLink}>
-            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-            <Text style={styles.backLinkText}>Torna alla home</Text>
-          </Pressable>
-          <Pressable
-            onPress={onManage}
-            style={styles.myBookingsBtn}
-            accessibilityLabel="Gestisci la tua prenotazione"
-          >
-            <Ionicons name="person-circle-outline" size={18} color={colors.primary} />
-          </Pressable>
+      <View style={styles.topBar}>
+        <Pressable onPress={onExitToLanding} style={styles.topBarIconBtn} accessibilityLabel="Torna alla home">
+          <Ionicons name="chevron-back" size={20} color={colors.white} />
+        </Pressable>
+        <View style={styles.topBarBrand}>
+          <Ionicons name="umbrella" size={16} color={colors.white} />
+          <Text style={styles.topBarBrandText} numberOfLines={1}>
+            Top Spiagge
+          </Text>
         </View>
+        <Pressable onPress={onManage} style={styles.topBarIconBtn} accessibilityLabel="Gestisci la tua prenotazione">
+          <Ionicons name="person-circle-outline" size={20} color={colors.white} />
+        </Pressable>
+      </View>
+
+      <View style={styles.header}>
         <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit>
           Bagno Pietrasanta
         </Text>
@@ -326,23 +355,30 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
         <View style={styles.wideRow}>
           <View style={styles.wideMapCol}>{mapStepEl}</View>
           <View style={styles.sidebarCol}>
-            {selectedUmbrellaId ? (
+            {isFormOpen ? (
               <BookingForm
                 key={selectedUmbrellaId}
-                umbrellaId={selectedUmbrellaId}
+                umbrellaId={selectedUmbrellaId as string}
                 dateFrom={dateFrom}
                 dateTo={dateTo}
                 allUmbrellas={umbrellas}
                 isFreeForPeriod={isFreeForPeriod}
                 bookingsForAvailability={availabilityBookings}
                 editContext={editContext}
-                onClose={() => (editContext ? onExitToLanding() : setSelectedUmbrellaId(null))}
+                onClose={closeForm}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
                 stage={formStage}
                 onStageChange={setFormStage}
                 onExtrasChange={setPendingExtraIds}
               />
+            ) : selectedUmbrellaId ? (
+              <View style={styles.sidebarEmpty}>
+                <Ionicons name="checkmark-circle-outline" size={36} color={colors.primary} />
+                <Text style={styles.sidebarEmptyText}>
+                  Ombrellone selezionato -- tocca "Avanti" sotto la mappa per continuare
+                </Text>
+              </View>
             ) : (
               <View style={styles.sidebarEmpty}>
                 <Ionicons name="umbrella-outline" size={36} color={colors.border} />
@@ -355,21 +391,21 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
         mapStepEl
       )}
 
-      {!isWide && selectedUmbrellaId && (
-        <Modal visible transparent animationType="slide" onRequestClose={() => setSelectedUmbrellaId(null)}>
-          <Pressable style={styles.backdrop} onPress={() => setSelectedUmbrellaId(null)}>
+      {!isWide && isFormOpen && (
+        <Modal visible transparent animationType="slide" onRequestClose={closeForm}>
+          <Pressable style={styles.backdrop} onPress={closeForm}>
             <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
               <View style={styles.handle} />
               <BookingForm
                 key={selectedUmbrellaId}
-                umbrellaId={selectedUmbrellaId}
+                umbrellaId={selectedUmbrellaId as string}
                 dateFrom={dateFrom}
                 dateTo={dateTo}
                 allUmbrellas={umbrellas}
                 isFreeForPeriod={isFreeForPeriod}
                 bookingsForAvailability={availabilityBookings}
                 editContext={editContext}
-                onClose={() => (editContext ? onExitToLanding() : setSelectedUmbrellaId(null))}
+                onClose={closeForm}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
                 stage={formStage}
@@ -577,7 +613,6 @@ const MapStep: React.FC<{
   labelWidth: number;
   dateFrom: string;
   dateTo: string;
-  freeCount: number;
   freeCounts: { nord: number; sud: number };
   isFreeForPeriod: (u: Umbrella) => boolean;
   pendingIds: string[];
@@ -587,6 +622,8 @@ const MapStep: React.FC<{
   onToggleFullMapView: () => void;
   rowBannerHeight: (row: number) => number;
   rowPrices: Map<number, number>;
+  hasSelection: boolean;
+  onAdvance: () => void;
 }> = ({
   umbrellas,
   positions,
@@ -594,7 +631,6 @@ const MapStep: React.FC<{
   labelWidth,
   dateFrom,
   dateTo,
-  freeCount,
   freeCounts,
   isFreeForPeriod,
   pendingIds,
@@ -604,6 +640,8 @@ const MapStep: React.FC<{
   onToggleFullMapView,
   rowBannerHeight,
   rowPrices,
+  hasSelection,
+  onAdvance,
 }) => {
   // Where the Nord side ends and the Sud side begins, in the same units BeachCanvas positions
   // cells in -- needed so each price banner's label can center within the side that's actually
@@ -663,7 +701,6 @@ const MapStep: React.FC<{
       positions={positions}
       cellSize={cellSize}
       labelWidth={labelWidth}
-      footerText={`${freeCount} ombrelloni liberi per il periodo scelto`}
       extraWalkways={SECTION_WALKWAYS}
       richSeaBand
       rowBannerHeight={rowBannerHeight}
@@ -771,6 +808,22 @@ const MapStep: React.FC<{
         );
       }}
     />
+
+    <View style={styles.mapFooterRow}>
+      <View style={styles.mapFooterLabel}>
+        <Text style={styles.mapFooterLabelText} numberOfLines={1}>
+          Scegli il tuo posto
+        </Text>
+      </View>
+      <Pressable
+        onPress={onAdvance}
+        disabled={!hasSelection}
+        style={[styles.mapFooterCta, !hasSelection && styles.mapFooterCtaDisabled]}
+      >
+        <Text style={styles.mapFooterCtaText}>Avanti</Text>
+        <Ionicons name="arrow-forward" size={18} color={colors.white} />
+      </Pressable>
+    </View>
   </>
   );
 };
@@ -1776,26 +1829,26 @@ const ConfirmationModal: React.FC<{
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.card },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.sm },
-  headerTopRow: {
+  // Persistent branded bar across every step of the guest wizard, matching the reference app's
+  // solid-teal header -- distinct from `header` below, which is the white venue/date/step-title
+  // block underneath it.
+  topBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    justifyContent: 'space-between',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
   },
+  topBarIconBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  topBarBrand: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  topBarBrandText: { color: colors.white, fontWeight: '800', fontSize: 15 },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
   backLink: { flexDirection: 'row', alignItems: 'center' },
   backLinkText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   headerTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
   headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   headerStepTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginTop: spacing.sm },
-  myBookingsBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.prenotatoBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   dateStepBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   stepTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: spacing.md },
@@ -1902,6 +1955,31 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   priceBannerText: { color: colors.white, fontWeight: '800', fontSize: 12, letterSpacing: 0.3, paddingHorizontal: spacing.sm },
+  // Two-tone step-nav bar matching the reference design's "label left / solid AVANTI button
+  // right" footer -- shown on the map/selection step specifically, since tapping a seat here
+  // only highlights it (see handleTap) rather than opening the booking form immediately.
+  mapFooterRow: { flexDirection: 'row' },
+  mapFooterLabel: {
+    flex: 1,
+    backgroundColor: colors.card,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    justifyContent: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  mapFooterLabelText: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  mapFooterCta: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+  },
+  mapFooterCtaDisabled: { backgroundColor: colors.border },
+  mapFooterCtaText: { color: colors.white, fontWeight: '800', fontSize: 15 },
   cell: {
     position: 'absolute',
     alignItems: 'center',

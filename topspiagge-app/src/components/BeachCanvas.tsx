@@ -122,7 +122,9 @@ interface BeachCanvasProps {
   umbrellas: Umbrella[];
   positions: Map<string, { x: number; y: number }>;
   renderCell: (umbrella: Umbrella, position: { x: number; y: number }) => React.ReactNode;
-  footerText: string;
+  // Omit to hide the bottom info bar entirely -- the customer map skips it since the same
+  // free-count info already lives in its own legend row above the canvas.
+  footerText?: string;
   cellSize?: number;
   labelWidth?: number;
   rowHeight?: number;
@@ -290,9 +292,11 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
         </View>
       </ScrollView>
 
-      <View style={styles.footerBar}>
-        <Text style={styles.footerText}>{footerText}</Text>
-      </View>
+      {footerText && (
+        <View style={styles.footerBar}>
+          <Text style={styles.footerText}>{footerText}</Text>
+        </View>
+      )}
     </View>
   );
 };
