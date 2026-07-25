@@ -13,27 +13,40 @@ export const COLS_PER_SIDE = 10;
 export const WALKWAY_WIDTH = 28;
 const GROUP_HEADER_HEIGHT = 22;
 
-function colOffset(col: number, cellSize: number, gap: number): number {
+export interface WalkwayBreak {
+  /** Column index (0-based) where this aisle starts -- every column >= `at` shifts right by `width`. */
+  at: number;
+  width: number;
+}
+
+// The Nord/Sud split (col 10) is always a walkway; callers can add more (e.g. every 5 seats,
+// to echo a seat-map's aisle-per-section look) via the `extraWalkways` param threaded through
+// from BeachCanvas -- each one just adds its own width to every column at/after its `at`.
+function colOffset(col: number, cellSize: number, gap: number, extraWalkways: WalkwayBreak[] = []): number {
   const base = col * (cellSize + gap);
-  return col >= COLS_PER_SIDE ? base + WALKWAY_WIDTH : base;
+  const mainWalkway = col >= COLS_PER_SIDE ? WALKWAY_WIDTH : 0;
+  const extra = extraWalkways.reduce((sum, w) => sum + (col >= w.at ? w.width : 0), 0);
+  return base + mainWalkway + extra;
 }
 
 export function useUmbrellaPositions(
   umbrellas: Umbrella[],
   cellSize: number = CELL,
   gap: number = GAP,
-  rowHeight: number = cellSize
+  rowHeight: number = cellSize,
+  extraWalkways: WalkwayBreak[] = []
 ) {
   return useMemo(() => {
     const positions = new Map<string, { x: number; y: number }>();
     umbrellas.forEach((u) => {
       positions.set(u.id, {
-        x: colOffset(u.col, cellSize, gap),
+        x: colOffset(u.col, cellSize, gap, extraWalkways),
         y: u.row * (rowHeight + gap),
       });
     });
     return positions;
-  }, [umbrellas, cellSize, gap, rowHeight]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [umbrellas, cellSize, gap, rowHeight, JSON.stringify(extraWalkways)]);
 }
 
 // `flip` mirrors the wave vertically so it can sit above the first row (sea fill on top,
@@ -61,6 +74,9 @@ interface BeachCanvasProps {
   // Overrides the default icon+zone-name label -- used by the Disposizione layout editor to put
   // its rename/reorder controls in the same slot instead of plain static text.
   renderZoneLabel?: (row: number, zoneName: string) => React.ReactNode;
+  // Extra aisles beyond the standard Nord/Sud split (col 10) -- must match whatever was passed
+  // to useUmbrellaPositions so the walkway gaps line up with the cells' own x positions.
+  extraWalkways?: WalkwayBreak[];
 }
 
 // Every row is one continuous line of umbrellas split by a walkway: seats on
@@ -76,6 +92,7 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
   labelWidth = LABEL_WIDTH,
   rowHeight = cellSize,
   renderZoneLabel,
+  extraWalkways = [],
 }) => {
   const zones = useMemo(() => {
     const seen = new Map<number, string>();
@@ -85,14 +102,22 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
 
   const maxCol = Math.max(0, ...umbrellas.map((u) => u.col));
   const hasWalkway = maxCol >= COLS_PER_SIDE;
-  const canvasWidth = colOffset(maxCol, cellSize, GAP) + cellSize;
+  const canvasWidth = colOffset(maxCol, cellSize, GAP, extraWalkways) + cellSize;
   const canvasHeight = zones.length * (rowHeight + GAP);
   const labelIconSize = Math.min(16, Math.max(12, cellSize / 4));
   const labelFontSize = Math.min(13, Math.max(11, cellSize / 5));
 
-  const walkwayLeft = colOffset(COLS_PER_SIDE - 1, cellSize, GAP) + cellSize;
+  const walkwayLeft = colOffset(COLS_PER_SIDE - 1, cellSize, GAP, extraWalkways) + cellSize;
   const walkwayRenderWidth = GAP + WALKWAY_WIDTH;
   const walkwayFootprints = Math.max(2, Math.round(canvasHeight / 90));
+  // Extra aisles (e.g. every 5 seats, for a seat-map-style sectioned look) each get their own
+  // plain gap -- no NORD/SUD text, that label pair is reserved for the one real side split.
+  const extraWalkwayRects = extraWalkways
+    .filter((w) => maxCol >= w.at)
+    .map((w) => ({
+      left: colOffset(w.at - 1, cellSize, GAP, extraWalkways) + cellSize,
+      width: GAP + w.width,
+    }));
 
   return (
     <View style={styles.beach}>
@@ -158,6 +183,19 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
                   </View>
                 </>
               )}
+              {extraWalkwayRects.map((rect, i) => (
+                <View
+                  key={`extra-walkway-${i}`}
+                  style={[
+                    styles.walkway,
+                    { left: rect.left, top: GROUP_HEADER_HEIGHT, width: rect.width, height: canvasHeight },
+                  ]}
+                >
+                  {Array.from({ length: walkwayFootprints }).map((_, j) => (
+                    <Ionicons key={j} name="walk-outline" size={11} color={colors.seaDark} style={{ opacity: 0.24 }} />
+                  ))}
+                </View>
+              ))}
               <View style={{ marginTop: GROUP_HEADER_HEIGHT }}>
                 {umbrellas.map((u) => renderCell(u, positions.get(u.id)!))}
               </View>

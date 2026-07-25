@@ -20,6 +20,7 @@ import {
   WALKWAY_WIDTH,
   BeachCanvas,
   useUmbrellaPositions,
+  WalkwayBreak,
 } from '../../components/BeachCanvas';
 import { Calendar } from '../../components/Calendar';
 import { QRCode } from '../../components/QRCode';
@@ -41,7 +42,6 @@ import {
 import { PREPAYMENT_RATE, REFUND_CUTOFF_DAYS, refundCutoffDate } from '../../utils/cancellation';
 import { formatCurrency, formatDateLong, formatDateShort, isoDate, offsetFromToday } from '../../utils/format';
 import {
-  bundleForUmbrella,
   baseUmbrellaPricePerDay,
   computeDiscounts,
   isSameDayWalkIn,
@@ -51,6 +51,15 @@ import { generateBookingReference } from '../../utils/reference';
 
 const WIDE_BREAKPOINT = 700;
 const SIDEBAR_WIDTH = 380;
+
+// Splits each 10-wide side into 2 sections of 5 -- on top of the existing Nord/Sud split at
+// col 10 -- so the map reads as sections of 5 umbrellas with an aisle between, matching the
+// seat-map reference (only used here in the customer wizard; the operator's Piantina keeps
+// its plain single Nord/Sud walkway).
+const SECTION_WALKWAYS: WalkwayBreak[] = [
+  { at: 5, width: 16 },
+  { at: 15, width: 16 },
+];
 
 // details (guests + lettini/sdraio, chosen right after the umbrella -- contact info isn't
 // asked here) -> confirm ("Conferma e paga": contact info, policy, read-only review) ->
@@ -183,12 +192,13 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const normalCellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / ROWS) - GAP));
   const totalCols = COLS_PER_SIDE * 2;
   const mapAreaWidth = width - labelWidth - spacing.lg * 2;
-  const widthBasedCellSize = Math.floor((mapAreaWidth - WALKWAY_WIDTH - (totalCols - 1) * GAP) / totalCols);
+  const totalWalkwayWidth = WALKWAY_WIDTH + SECTION_WALKWAYS.reduce((sum, w) => sum + w.width, 0);
+  const widthBasedCellSize = Math.floor((mapAreaWidth - totalWalkwayWidth - (totalCols - 1) * GAP) / totalCols);
   const heightBasedCellSize = Math.floor(mapAreaHeight / ROWS) - GAP;
   const fullCellSize = Math.max(14, Math.min(widthBasedCellSize, heightBasedCellSize));
   const cellSize = fullMapView ? fullCellSize : normalCellSize;
 
-  const positions = useUmbrellaPositions(umbrellas, cellSize);
+  const positions = useUmbrellaPositions(umbrellas, cellSize, GAP, cellSize, SECTION_WALKWAYS);
   const freeCount = umbrellas.filter(isFreeForPeriod).length;
   const freeCounts = {
     nord: umbrellas.filter((u) => u.side === 'nord' && isFreeForPeriod(u)).length,
@@ -554,17 +564,12 @@ const MapStep: React.FC<{
   fullMapView,
   onToggleFullMapView,
 }) => {
-  // Cheapest base price (no equipment) per row, used to group rows into price-tier bands --
-  // mirrors a seat map's "STANDARD - FROM X" section banners, just applied to our row-based
-  // grid instead of individual seats.
+  // Base price (no equipment) per row, used to group rows into price-tier bands -- mirrors a
+  // seat map's "STANDARD - FROM X" section banners, just applied to our row-based grid instead
+  // of individual seats. Every umbrella in a row shares the same price now, so this is really
+  // just baseUmbrellaPricePerDay looked up once per row.
   const rowPrices = new Map<number, number>();
-  const rowHasBundle = new Map<number, boolean>();
-  umbrellas.forEach((u) => {
-    const p = baseUmbrellaPricePerDay(u);
-    const cur = rowPrices.get(u.row);
-    if (cur === undefined || p < cur) rowPrices.set(u.row, p);
-    if (bundleForUmbrella(u)) rowHasBundle.set(u.row, true);
-  });
+  umbrellas.forEach((u) => rowPrices.set(u.row, baseUmbrellaPricePerDay(u)));
   const sortedRows = Array.from(rowPrices.keys()).sort((a, b) => a - b);
   const labelIconSize = Math.min(16, Math.max(12, cellSize / 4));
   const labelFontSize = Math.min(13, Math.max(11, cellSize / 5));
@@ -623,6 +628,7 @@ const MapStep: React.FC<{
       cellSize={cellSize}
       labelWidth={labelWidth}
       footerText={`${freeCount} ombrelloni liberi per il periodo scelto`}
+      extraWalkways={SECTION_WALKWAYS}
       renderZoneLabel={(rowIdx, zoneName) => {
         const price = rowPrices.get(rowIdx);
         const rowPos = sortedRows.indexOf(rowIdx);
@@ -633,7 +639,7 @@ const MapStep: React.FC<{
             {isNewBand && (
               <View style={styles.priceBandPill}>
                 <Text style={styles.priceBandPillTag} numberOfLines={1}>
-                  {rowHasBundle.get(rowIdx) ? 'PACCHETTO' : 'STANDARD'}
+                  STANDARD
                 </Text>
                 <Text style={styles.priceBandPillText} numberOfLines={1}>
                   da €{price}
@@ -661,28 +667,41 @@ const MapStep: React.FC<{
                 top: position.y,
                 width: cellSize,
                 height: cellSize,
-                borderRadius: cellSize / 2,
-                overflow: 'hidden',
-                backgroundColor: pending ? undefined : free ? colors.libero : colors.textMuted,
-              },
-              pending && {
-                borderWidth: Math.max(2, Math.round(cellSize * 0.06)),
-                borderColor: colors.white,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.35,
-                shadowRadius: 4,
-                elevation: 6,
               },
             ]}
           >
             {pending && (
-              <View style={StyleSheet.absoluteFill}>
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    borderRadius: cellSize * 0.22,
+                    overflow: 'hidden',
+                    borderWidth: Math.max(2, Math.round(cellSize * 0.06)),
+                    borderColor: colors.white,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.35,
+                    shadowRadius: 4,
+                    elevation: 6,
+                  },
+                ]}
+              >
                 <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.occupato }} />
                 <View style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: cellSize / 2, backgroundColor: colors.prenotato }} />
               </View>
             )}
-            <Text style={[styles.cellNumber, { fontSize: Math.min(17, Math.max(12, cellSize / 4)) }]}>
+            <Ionicons
+              name="umbrella"
+              size={Math.round(cellSize * (pending ? 0.46 : 0.62))}
+              color={pending ? colors.white : free ? colors.libero : colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.cellNumber,
+                { fontSize: Math.min(13, Math.max(9, cellSize / 5)), color: pending ? colors.white : colors.text },
+              ]}
+            >
               {u.number}
             </Text>
             {pending && cellSize >= 30 && (
@@ -690,13 +709,13 @@ const MapStep: React.FC<{
                 style={[
                   styles.pendingCheckBadge,
                   {
-                    width: Math.round(cellSize * 0.42),
-                    height: Math.round(cellSize * 0.42),
-                    borderRadius: Math.round(cellSize * 0.21),
+                    width: Math.round(cellSize * 0.38),
+                    height: Math.round(cellSize * 0.38),
+                    borderRadius: Math.round(cellSize * 0.19),
                   },
                 ]}
               >
-                <Ionicons name="checkmark" size={Math.max(10, Math.round(cellSize * 0.26))} color={colors.white} />
+                <Ionicons name="checkmark" size={Math.max(9, Math.round(cellSize * 0.22))} color={colors.white} />
               </View>
             )}
           </Pressable>
@@ -956,20 +975,11 @@ const BookingForm: React.FC<{
   const capacity = allUmbrellaIds.length * MAX_ADULTS_PER_UMBRELLA;
   const capacityOk = capacity >= adults;
 
-  // Fila 1/2's flat price already includes their bundle -- taking exactly that equipment
-  // charges the flat rate. Choosing anything else falls back to à la carte: the bundle's
-  // own beds/chairs are backed out of the flat price at standard rates, then whatever
-  // equipment the customer actually picked is added back in at those same rates.
   const perDayRate = (id: string) => {
     const u = getUmbrella(id);
     if (!u) return dailyRate;
     const eq = equipment[id] ?? defaultEquipmentFor(id);
-    const base = baseUmbrellaPricePerDay(u);
-    const bundle = bundleForUmbrella(u);
-    if (!bundle) return base + eq.beds * bedRate + eq.chairs * chairRate;
-    if (eq.beds === bundle.beds && eq.chairs === bundle.chairs) return base;
-    const bareRate = base - (bundle.beds * bedRate + bundle.chairs * chairRate);
-    return bareRate + eq.beds * bedRate + eq.chairs * chairRate;
+    return baseUmbrellaPricePerDay(u) + eq.beds * bedRate + eq.chairs * chairRate;
   };
 
   const umbrellaDiscount = (id: string) => {
@@ -1430,8 +1440,6 @@ const BookingForm: React.FC<{
           const u = getUmbrella(id);
           if (!u) return null;
           const eq = equipment[id] ?? defaultEquipmentFor(id);
-          const bundle = bundleForUmbrella(u);
-          const isBundlePrice = !!bundle && eq.beds === bundle.beds && eq.chairs === bundle.chairs;
           const discount = umbrellaDiscount(id);
           return (
             <View key={id} style={styles.equipmentCard}>
@@ -1455,20 +1463,16 @@ const BookingForm: React.FC<{
                 max={MAX_EQUIPMENT_PER_UMBRELLA}
                 onChange={(v) => setChairs(id, v)}
               />
-              {isBundlePrice ? (
-                <Text style={styles.muted}>{formatCurrency(perDayRate(id))} al giorno · lettini e sdraio inclusi</Text>
-              ) : (
-                <Text style={styles.muted}>
-                  {[
-                    `${formatCurrency(perDayRate(id) - eq.beds * bedRate - eq.chairs * chairRate)} ombrellone`,
-                    eq.beds > 0 ? `${formatCurrency(eq.beds * bedRate)} lettini` : null,
-                    eq.chairs > 0 ? `${formatCurrency(eq.chairs * chairRate)} sdraio` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' + ')}
-                  , al giorno
-                </Text>
-              )}
+              <Text style={styles.muted}>
+                {[
+                  `${formatCurrency(perDayRate(id) - eq.beds * bedRate - eq.chairs * chairRate)} ombrellone`,
+                  eq.beds > 0 ? `${formatCurrency(eq.beds * bedRate)} lettini` : null,
+                  eq.chairs > 0 ? `${formatCurrency(eq.chairs * chairRate)} sdraio` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' + ')}
+                , al giorno
+              </Text>
               {discount.total > 0 && (
                 <Text style={[styles.muted, { color: colors.libero, fontWeight: '700' }]}>
                   Sconto applicato: -{Math.round(discount.total * 100)}%
@@ -1681,7 +1685,12 @@ const ConfirmationModal: React.FC<{
             </ScrollView>
           </View>
         ) : (
-          body
+          // Capped height + its own ScrollView -- without this, a booking with several
+          // umbrellas (taller card) could overflow past the top of the screen with no way
+          // to reach the rest short of resizing the browser window.
+          <View style={styles.confirmSheetOuter}>
+            <ScrollView contentContainerStyle={{ alignItems: 'center', paddingBottom: spacing.lg }}>{body}</ScrollView>
+          </View>
         )}
       </View>
     </Modal>
@@ -1810,14 +1819,8 @@ const styles = StyleSheet.create({
   priceBandPillText: { color: colors.white, fontWeight: '800', fontSize: 10 },
   cell: {
     position: 'absolute',
-    borderWidth: 3,
-    borderColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
   },
   cellNumber: { fontWeight: '800', fontSize: 16, color: colors.white },
   pendingCheckBadge: {
@@ -2008,6 +2011,10 @@ const styles = StyleSheet.create({
   },
   totalLabel: { color: colors.textMuted, fontWeight: '600' },
   totalValue: { color: colors.primaryDark, fontWeight: '800', fontSize: 20 },
+  confirmSheetOuter: {
+    maxHeight: '88%',
+    width: '100%',
+  },
   confirmCard: {
     margin: spacing.lg,
     backgroundColor: colors.card,

@@ -1,6 +1,5 @@
 import {
   baseUmbrellaPricePerDay,
-  bundleForUmbrella,
   computeDiscounts,
   equipmentPriceDelta,
   isSameDayWalkIn,
@@ -22,35 +21,25 @@ function makeUmbrella(row: number, number: number): Umbrella {
   };
 }
 
-describe('bundleForUmbrella', () => {
-  it('gives Fila 1 the 2 beds + 2 chairs bundle', () => {
-    expect(bundleForUmbrella(makeUmbrella(0, 1))).toEqual({ beds: 2, chairs: 2 });
-  });
-
-  it('gives Fila 2 the 1 bed + 1 chair bundle', () => {
-    expect(bundleForUmbrella(makeUmbrella(1, 1))).toEqual({ beds: 1, chairs: 1 });
-  });
-
-  it('has no bundle from Fila 3 onward', () => {
-    expect(bundleForUmbrella(makeUmbrella(2, 1))).toBeNull();
-  });
-});
-
 describe('baseUmbrellaPricePerDay', () => {
-  it('prices Fila 1 special columns (1-7, 14-20) at 30', () => {
-    expect(baseUmbrellaPricePerDay(makeUmbrella(0, 1))).toBe(30);
-    expect(baseUmbrellaPricePerDay(makeUmbrella(0, 20))).toBe(30);
+  it('prices Fila 1 at 22, flat across every column', () => {
+    expect(baseUmbrellaPricePerDay(makeUmbrella(0, 1))).toBe(22);
+    expect(baseUmbrellaPricePerDay(makeUmbrella(0, 20))).toBe(22);
   });
 
-  it('prices Fila 1 middle columns (8-13) at 35', () => {
-    expect(baseUmbrellaPricePerDay(makeUmbrella(0, 10))).toBe(35);
+  it('prices Fila 2-4 at 17', () => {
+    expect(baseUmbrellaPricePerDay(makeUmbrella(1, 1))).toBe(17); // Fila 2
+    expect(baseUmbrellaPricePerDay(makeUmbrella(3, 10))).toBe(17); // Fila 4
   });
 
-  it('degrades by 2/row from Fila 2, floored at 10', () => {
-    expect(baseUmbrellaPricePerDay(makeUmbrella(1, 1))).toBe(13); // Fila 2 special
-    expect(baseUmbrellaPricePerDay(makeUmbrella(1, 10))).toBe(18); // Fila 2 middle
-    expect(baseUmbrellaPricePerDay(makeUmbrella(2, 1))).toBe(11); // Fila 3 special
-    expect(baseUmbrellaPricePerDay(makeUmbrella(16, 1))).toBe(10); // Fila 17, floored
+  it('prices Fila 5-10 at 14', () => {
+    expect(baseUmbrellaPricePerDay(makeUmbrella(4, 1))).toBe(14); // Fila 5
+    expect(baseUmbrellaPricePerDay(makeUmbrella(9, 10))).toBe(14); // Fila 10
+  });
+
+  it('prices Fila 11-17 at 11', () => {
+    expect(baseUmbrellaPricePerDay(makeUmbrella(10, 1))).toBe(11); // Fila 11
+    expect(baseUmbrellaPricePerDay(makeUmbrella(16, 1))).toBe(11); // Fila 17
   });
 });
 

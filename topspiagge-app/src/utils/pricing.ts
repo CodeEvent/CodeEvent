@@ -2,37 +2,15 @@ import { ROWS } from '../data/seed';
 import { PriceList, Umbrella } from '../types';
 import { isoDate } from './format';
 
-export interface EquipmentBundle {
-  beds: number;
-  chairs: number;
-}
-
-// Umbrella numbers 1-7 and 14-20 in any row are the "special" columns -- cheaper than the
-// 8-13 band straddling the Nord/Sud walkway. Fila 1 states this split outright (€30 vs €35);
-// every row after that inherits the same column split, just at a lower starting price.
-function isSpecialColumn(umbrellaNumber: number): boolean {
-  return umbrellaNumber <= 7 || umbrellaNumber >= 14;
-}
-
-// Fila 1 and Fila 2 are the only rows sold as an equipment-inclusive package -- everywhere
-// else is bare umbrella + à la carte beds/chairs at the season's standard rates.
-export function bundleForUmbrella(umbrella: Umbrella): EquipmentBundle | null {
-  const fila = umbrella.row + 1;
-  if (fila === 1) return { beds: 2, chairs: 2 };
-  if (fila === 2) return { beds: 1, chairs: 1 };
-  return null;
-}
-
-// Fila 1 is a hardcoded base (€35 / €30). Every row after that follows one continuous
-// -€2/row degression starting from Fila 2's values (€18 / €13), floored at €10 -- which
-// lands exactly on Fila 13-17's flat €10, so the same formula covers both without a
-// separate special case.
+// Flat per-row pricing -- every umbrella in a row costs the same regardless of column, and
+// there's no equipment-inclusive package for any row anymore: beds/chairs are always priced
+// à la carte on top of this (see perDayRate in CustomerBookingScreen/QuickBookingForm).
 export function baseUmbrellaPricePerDay(umbrella: Umbrella): number {
   const fila = umbrella.row + 1;
-  const special = isSpecialColumn(umbrella.number);
-  if (fila === 1) return special ? 30 : 35;
-  const filaTwoBase = special ? 13 : 18;
-  return Math.max(10, filaTwoBase - 2 * (fila - 2));
+  if (fila === 1) return 22;
+  if (fila <= 4) return 17;
+  if (fila <= 10) return 14;
+  return 11;
 }
 
 // Both time-based discounts only ever apply to a same-day walk-in: booked and used

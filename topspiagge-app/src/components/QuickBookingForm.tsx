@@ -18,7 +18,6 @@ import { PREPAYMENT_RATE, REFUND_CUTOFF_DAYS, refundCutoffDate } from '../utils/
 import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
 import {
   baseUmbrellaPricePerDay,
-  bundleForUmbrella,
   computeDiscounts,
   isSameDayWalkIn,
   isStudentDiscountEligibleRow,
@@ -87,13 +86,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   const dailyRate = priceList.prices['art-ombrellone'] ?? 18;
   const bedRate = priceList.prices['art-lettino'] ?? 6;
   const chairRate = priceList.prices['art-sdraio'] ?? 4;
-  // Fila 1/2 default to their bundled equipment (so the discounted package price applies out
-  // of the box); every other row falls back to the generic 2 beds + 2 chairs default -- same
-  // convention as the customer self-booking flow.
-  const defaultEquipmentFor = (id: string): Equipment => {
-    const u = getUmbrella(id);
-    return (u && bundleForUmbrella(u)) || DEFAULT_EQUIPMENT;
-  };
+  const defaultEquipmentFor = (_id: string): Equipment => DEFAULT_EQUIPMENT;
   const [equipment, setEquipment] = useState<Record<string, Equipment>>(() => ({
     [umbrellaId]: defaultEquipmentFor(umbrellaId),
   }));
@@ -106,18 +99,11 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     const u = getUmbrella(id);
     return u ? computeDiscounts(dateFrom, dateTo, u, isStudent) : { lateBooking: 0, student: 0, total: 0 };
   };
-  // Fila 1/2's flat price already includes their bundle -- taking exactly that equipment charges
-  // the flat rate; choosing anything else falls back to à la carte pricing (see CustomerBookingScreen).
   const perDayRate = (id: string) => {
     const u = getUmbrella(id);
     if (!u) return dailyRate;
     const eq = equipment[id] ?? defaultEquipmentFor(id);
-    const base = baseUmbrellaPricePerDay(u);
-    const bundle = bundleForUmbrella(u);
-    if (!bundle) return base + eq.beds * bedRate + eq.chairs * chairRate;
-    if (eq.beds === bundle.beds && eq.chairs === bundle.chairs) return base;
-    const bareRate = base - (bundle.beds * bedRate + bundle.chairs * chairRate);
-    return bareRate + eq.beds * bedRate + eq.chairs * chairRate;
+    return baseUmbrellaPricePerDay(u) + eq.beds * bedRate + eq.chairs * chairRate;
   };
   const umbrellaTotal = (id: string) => {
     const gross = perDayRate(id) * days;
@@ -416,8 +402,6 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         const u = getUmbrella(id);
         if (!u) return null;
         const eq = equipment[id] ?? defaultEquipmentFor(id);
-        const bundle = bundleForUmbrella(u);
-        const isBundlePrice = !!bundle && eq.beds === bundle.beds && eq.chairs === bundle.chairs;
         return (
           <View key={id} style={styles.equipmentCard}>
             {allUmbrellaIds.length > 1 && (
@@ -439,11 +423,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
               max={MAX_EQUIPMENT_PER_UMBRELLA}
               onChange={(v) => setChairs(id, v)}
             />
-            {isBundlePrice ? (
-              <Text style={styles.muted}>{formatCurrency(baseUmbrellaPricePerDay(u))} al giorno · lettini e sdraio inclusi</Text>
-            ) : (
-              <Text style={styles.muted}>{formatCurrency(perDayRate(id))} al giorno per questo ombrellone</Text>
-            )}
+            <Text style={styles.muted}>{formatCurrency(perDayRate(id))} al giorno per questo ombrellone</Text>
           </View>
         );
       })}
