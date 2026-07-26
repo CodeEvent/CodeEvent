@@ -1423,7 +1423,7 @@ const BookingForm: React.FC<{
           deposit={deposit}
           voucherApplied={voucherApplied}
           umbrellaCount={allUmbrellaIds.length}
-          primaryLabel="Procedi al pagamento"
+          primaryLabel="Continua"
           primaryIcon="card-outline"
           onPrimary={() => onStageChange('payment')}
           primaryDisabled={!canConfirm}
@@ -1488,7 +1488,7 @@ const BookingForm: React.FC<{
           deposit={deposit}
           voucherApplied={voucherApplied}
           umbrellaCount={allUmbrellaIds.length}
-          primaryLabel={`Paga ${formatCurrency(deposit)} con carta`}
+          primaryLabel="Paga"
           primaryIcon="card-outline"
           onPrimary={startPayment}
           primaryDisabled={!canConfirm || paymentProcessing}
@@ -1694,7 +1694,7 @@ const BookingForm: React.FC<{
         deposit={deposit}
         voucherApplied={voucherApplied}
         umbrellaCount={allUmbrellaIds.length}
-        primaryLabel={editContext ? 'Conferma modifica' : 'Conferma e paga'}
+        primaryLabel={editContext ? 'Conferma' : 'Continua'}
         primaryIcon="checkmark-circle-outline"
         onPrimary={() => (editContext ? confirm() : onStageChange('confirm'))}
         primaryDisabled={!detailsCanContinue}
