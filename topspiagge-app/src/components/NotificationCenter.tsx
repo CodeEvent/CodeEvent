@@ -57,7 +57,12 @@ export const NotificationCenter: React.FC = () => {
 
   return (
     <>
-      <Pressable style={styles.bell} onPress={() => setOpen(true)}>
+      <Pressable
+        style={styles.bell}
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={badgeCount > 0 ? `Notifiche, ${badgeCount} da leggere` : 'Notifiche'}
+      >
         <Ionicons name="notifications-outline" size={22} color={colors.primaryDark} />
         {badgeCount > 0 && (
           <View style={styles.badge}>

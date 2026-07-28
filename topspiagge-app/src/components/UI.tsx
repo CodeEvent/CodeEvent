@@ -11,6 +11,11 @@ import {
 } from 'react-native';
 import { colors, radius, spacing, statusBg, statusColor, statusLabel } from '../theme';
 import { UmbrellaStatus } from '../types';
+
+// react-native-web's Pressable adds a `hovered` field to the style-callback state that
+// upstream RN's own PressableStateCallbackType doesn't declare (there's no such thing as
+// hover on native) -- this local type covers both without an `any`.
+type PressState = { pressed: boolean; hovered?: boolean };
 import {
   DisplayStatus,
   displayStatusBg,
@@ -91,9 +96,12 @@ export const Button: React.FC<{
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
-      style={({ pressed }) => [
+      accessibilityRole="button"
+      style={({ pressed, hovered }: PressState) => [
         styles.button,
-        { backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
+        styles.transition,
+        { backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.85 : hovered ? 0.92 : 1 },
+        !disabled && hovered && !pressed && styles.hoverLift,
         variant === 'ghost' && { borderWidth: 1, borderColor: colors.primary },
         style,
       ]}
@@ -120,9 +128,13 @@ export const Chip: React.FC<{
 }> = ({ label, selected, onPress, dotColor, icon }) => (
   <Pressable
     onPress={onPress}
-    style={[
+    accessibilityRole="button"
+    accessibilityState={{ selected: !!selected }}
+    style={({ hovered, pressed }: PressState) => [
       styles.chip,
+      styles.transition,
       { backgroundColor: selected ? colors.primary : colors.sand },
+      hovered && !pressed && !selected && styles.chipHover,
     ]}
   >
     {!!dotColor && <View style={[styles.chipDot, { backgroundColor: dotColor }]} />}
@@ -140,13 +152,23 @@ export const IconButton: React.FC<{
   onPress: () => void;
   variant?: 'edit' | 'delete' | 'neutral';
   size?: number;
-}> = ({ name, onPress, variant = 'neutral', size = 18 }) => {
+  /** Announced by screen readers -- this button never shows a visible text label, so without
+   * this it reads as an unlabeled "button" (or just the glyph name on some readers). */
+  accessibilityLabel?: string;
+}> = ({ name, onPress, variant = 'neutral', size = 18, accessibilityLabel }) => {
   const bg = variant === 'edit' ? colors.accent : variant === 'delete' ? colors.danger : colors.sand;
   const iconColor = variant === 'neutral' ? colors.text : colors.white;
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.iconButton, { backgroundColor: bg, opacity: pressed ? 0.8 : 1 }]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? (variant === 'edit' ? 'Modifica' : variant === 'delete' ? 'Elimina' : undefined)}
+      style={({ pressed, hovered }: PressState) => [
+        styles.iconButton,
+        styles.transition,
+        { backgroundColor: bg, opacity: pressed ? 0.8 : 1 },
+        hovered && !pressed && styles.hoverLift,
+      ]}
     >
       <Ionicons name={name} size={size} color={iconColor} />
     </Pressable>
@@ -168,7 +190,12 @@ export const Checkbox: React.FC<{
   onToggle: () => void;
   label: string;
 }> = ({ checked, onToggle, label }) => (
-  <Pressable onPress={onToggle} style={styles.checkboxRow}>
+  <Pressable
+    onPress={onToggle}
+    style={styles.checkboxRow}
+    accessibilityRole="checkbox"
+    accessibilityState={{ checked }}
+  >
     <View style={[styles.checkboxBox, checked && styles.checkboxBoxChecked]}>
       {checked && <Ionicons name="checkmark" size={14} color={colors.white} />}
     </View>
@@ -192,16 +219,20 @@ export const Stepper: React.FC<{
     <View style={styles.stepperControls}>
       <Pressable
         onPress={() => onChange(Math.max(min, value - 1))}
-        style={[styles.stepperBtn, value <= min && styles.stepperBtnDisabled]}
+        style={[styles.stepperBtn, styles.transition, value <= min && styles.stepperBtnDisabled]}
         disabled={value <= min}
+        accessibilityRole="button"
+        accessibilityLabel={`Diminuisci ${label}`}
       >
         <Ionicons name="remove" size={16} color={value <= min ? colors.border : colors.primary} />
       </Pressable>
       <Text style={styles.stepperValue}>{value}</Text>
       <Pressable
         onPress={() => onChange(Math.min(max, value + 1))}
-        style={[styles.stepperBtn, value >= max && styles.stepperBtnDisabled]}
+        style={[styles.stepperBtn, styles.transition, value >= max && styles.stepperBtnDisabled]}
         disabled={value >= max}
+        accessibilityRole="button"
+        accessibilityLabel={`Aumenta ${label}`}
       >
         <Ionicons name="add" size={16} color={value >= max ? colors.border : colors.primary} />
       </Pressable>
@@ -232,6 +263,24 @@ export const StepProgressBar: React.FC<{ totalSteps: number; currentIndex: numbe
 );
 
 const styles = StyleSheet.create({
+  // Web-only (RNW passes these straight through as CSS; native silently ignores unknown
+  // style keys) -- gives every hover/press state change a smooth snap instead of an instant
+  // cut, which is most of what makes a static-feeling web UI read as "alive."
+  transition: {
+    transitionProperty: 'background-color, opacity, box-shadow, transform',
+    transitionDuration: '150ms',
+  } as ViewStyle,
+  // A hovered-but-not-pressed control lifts very slightly with a softer shadow -- pressed
+  // still wins (no lift while actively tapped) and disabled controls never opt in at all.
+  hoverLift: {
+    transform: [{ translateY: -1 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  } as ViewStyle,
+  chipHover: { backgroundColor: colors.sandDark },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
