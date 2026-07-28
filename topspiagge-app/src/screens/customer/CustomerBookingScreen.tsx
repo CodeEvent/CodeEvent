@@ -33,6 +33,7 @@ import { Booking, Customer, Umbrella } from '../../types';
 import { ROWS } from '../../data/seed';
 import {
   distributeGuests,
+  findActiveHoldConflict,
   findCustomerConflict,
   findNearestUmbrellas,
   findUmbrellaConflict,
@@ -83,12 +84,14 @@ function buildPriceBands(umbrellas: Umbrella[]) {
 }
 
 // details (guests, lettini/sdraio, contact info and policy consent, all in one screen) ->
-// payment (card entry, Stripe-only -- see BookingForm's payment stage). Used to be a separate
-// "Conferma e paga" review stage between the two, but it only ever repeated the same guest
-// count and umbrella cards already visible above it -- merged away so booking a seat takes one
-// screen of input instead of two. Editing an existing booking still confirms directly from
-// 'details' (see BookingForm's footer), since there's no new charge to review or collect.
-type BookingFormStage = 'details' | 'payment';
+// summary (read-only recap: hold countdown, itemized cost breakdown, refund policy) ->
+// payment (card entry, Stripe-only -- see BookingForm's payment stage). 'details' used to be
+// followed by a "Conferma e paga" review stage that just repeated the same guest count and
+// umbrella cards already visible above it -- that one was merged away. 'summary' is different:
+// it's a new, genuinely read-only recap (hold timer + cost card) rather than a re-ask of
+// already-entered fields. Editing an existing booking still confirms directly from 'details'
+// (see BookingForm's footer), since there's no new charge or hold to review.
+type BookingFormStage = 'details' | 'summary' | 'payment';
 
 const normalizePhone = (phone: string) => phone.replace(/\s+/g, '');
 
@@ -125,7 +128,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   initialDays,
   datesPreselected,
 }) => {
-  const { umbrellas, bookings, joinWaitlist } = useStore();
+  const { umbrellas, bookings, holds, joinWaitlist, createHold, releaseHold } = useStore();
   const alert = useAppAlert();
   const { width, height } = useWindowDimensions();
 
@@ -177,15 +180,21 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const [confirmedIsEdit, setConfirmedIsEdit] = useState(false);
   const [dateEditVisible, setDateEditVisible] = useState(false);
   const [waitlistUmbrella, setWaitlistUmbrella] = useState<Umbrella | null>(null);
+  // This guest's own in-flight checkout hold(s) -- kept out of `isFreeForPeriod`'s conflict
+  // check (below) so the umbrella(s) they're actively booking still look selectable/theirs,
+  // while every other tab/session still sees them as unavailable for the same window.
+  const [ownHoldIds, setOwnHoldIds] = useState<string[]>([]);
+  const [holdExpiresAt, setHoldExpiresAt] = useState<number | null>(null);
 
   // Mirrors the booking-flow progress bar: Map (pick dates + spot) -> Dettagli (guests,
-  // lettini/sdraio, contact info and policy consent, all together) -> Pagamento (card entry).
-  // Editing an existing booking uses the same shape but confirms straight from Dettagli (see
-  // BookingForm's footer) since there's no new charge to review.
-  const stepIndexForStage: Record<BookingFormStage, number> = { details: 1, payment: 2 };
+  // lettini/sdraio, contact info and policy consent, all together) -> Riepilogo (read-only
+  // recap + hold countdown + cost breakdown) -> Pagamento (card entry). Editing an existing
+  // booking skips 'summary' entirely and confirms straight from Dettagli (see BookingForm's
+  // footer) since there's no new charge or hold to review.
+  const stepIndexForStage: Record<BookingFormStage, number> = { details: 1, summary: 2, payment: 3 };
   const isFormOpen = Boolean(selectedUmbrellaId && formOpen);
   const currentStepIndex = !isFormOpen ? 0 : stepIndexForStage[formStage];
-  const TOTAL_STEPS = 3;
+  const TOTAL_STEPS = 4;
   const currentStepTitle =
     step === 'dates'
       ? 'Scegli le date'
@@ -195,6 +204,8 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       ? editContext
         ? 'Modifica prenotazione'
         : 'Completa la prenotazione'
+      : formStage === 'summary'
+      ? 'Riepilogo'
       : 'Pagamento';
 
   const isWide = width >= WIDE_BREAKPOINT;
@@ -218,7 +229,48 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
     setAwaitingEndDate(false);
   };
 
-  const isFreeForPeriod = (u: Umbrella) => !findUmbrellaConflict(availabilityBookings, u.id, dateFrom, dateTo);
+  const ownHoldIdSet = useMemo(() => new Set(ownHoldIds), [ownHoldIds]);
+  const isFreeForPeriod = (u: Umbrella) =>
+    !findUmbrellaConflict(availabilityBookings, u.id, dateFrom, dateTo) &&
+    !findActiveHoldConflict(holds, u.id, dateFrom, dateTo, ownHoldIdSet);
+
+  // Creates a real, short-lived checkout hold the moment a NEW (non-edit) booking form opens,
+  // so nobody else can grab the same umbrella(s) while this guest is mid-checkout -- and
+  // releases it the instant the form closes, the selection changes, or the guest confirms
+  // (all of which change `isFormOpen`/`pendingIds` and re-run this effect's cleanup).
+  useEffect(() => {
+    if (editContext || !isFormOpen || pendingIds.length === 0) {
+      setOwnHoldIds([]);
+      setHoldExpiresAt(null);
+      return;
+    }
+    const created = createHold(pendingIds, dateFrom, dateTo);
+    setOwnHoldIds(created.map((h) => h.id));
+    setHoldExpiresAt(created[0]?.expiresAt ?? null);
+    return () => {
+      created.forEach((h) => releaseHold(h.id));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editContext, isFormOpen, pendingIds.join(','), dateFrom, dateTo]);
+
+  // Auto-expiry: when the hold above actually runs out (guest never finished checkout in
+  // time), kick them back to the map so the umbrella visibly frees up again rather than
+  // silently letting them keep filling in a form for a spot that's no longer reserved.
+  useEffect(() => {
+    if (editContext || !isFormOpen || !holdExpiresAt) return;
+    const msLeft = holdExpiresAt - Date.now();
+    if (msLeft <= 0) return;
+    const timeout = setTimeout(() => {
+      setSelectedUmbrellaId(null);
+      setPendingExtraIds([]);
+      setFormOpen(false);
+      alert(
+        'Tempo scaduto',
+        "Il tempo per completare la prenotazione è scaduto e l'ombrellone è tornato disponibile. Seleziona di nuovo il tuo posto."
+      );
+    }, msLeft);
+    return () => clearTimeout(timeout);
+  }, [editContext, isFormOpen, holdExpiresAt]);
 
   const labelWidth = isWide ? 84 : 60;
   // The map is 20 seats wide (10 Nord + walkway + 10 Sud) and rarely fits a phone or a
@@ -364,6 +416,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 isFreeForPeriod={isFreeForPeriod}
                 bookingsForAvailability={availabilityBookings}
                 editContext={editContext}
+                holdExpiresAt={holdExpiresAt}
                 onClose={closeForm}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
@@ -404,6 +457,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 isFreeForPeriod={isFreeForPeriod}
                 bookingsForAvailability={availabilityBookings}
                 editContext={editContext}
+                holdExpiresAt={holdExpiresAt}
                 onClose={closeForm}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
@@ -702,6 +756,7 @@ const MapStep: React.FC<{
       labelWidth={labelWidth}
       extraWalkways={SECTION_WALKWAYS}
       richSeaBand
+      dragToPan
       rowBannerHeight={rowBannerHeight}
       renderRowBanner={(row) => {
         // One bar over the Nord side, one over the Sud side -- each sized and positioned
@@ -943,6 +998,10 @@ const BookingForm: React.FC<{
   isFreeForPeriod: (u: Umbrella) => boolean;
   bookingsForAvailability: Booking[];
   editContext?: EditBookingContext | null;
+  /** Epoch ms when this guest's checkout hold on the selected umbrella(s) expires -- null
+   * while editing (no hold) or before a hold has been created yet. Drives the countdown shown
+   * on the 'summary' stage. */
+  holdExpiresAt: number | null;
   onClose: () => void;
   onConfirmed: (bookings: Booking[], isEdit: boolean) => void;
   onEditDates: () => void;
@@ -960,6 +1019,7 @@ const BookingForm: React.FC<{
   isFreeForPeriod,
   bookingsForAvailability,
   editContext,
+  holdExpiresAt,
   onClose,
   onConfirmed,
   onEditDates,
@@ -1000,6 +1060,20 @@ const BookingForm: React.FC<{
   const [isStudent, setIsStudent] = useState(false);
   const [cardNumber, setCardNumber] = useState('');
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+  // Ticks once a second purely to redraw the hold countdown on the 'summary' stage below --
+  // the hold's actual expiry/release is handled by the parent (CustomerBookingScreen), this
+  // is display-only.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!holdExpiresAt) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [holdExpiresAt]);
+  const holdSecondsLeft = holdExpiresAt ? Math.max(0, Math.ceil((holdExpiresAt - now) / 1000)) : null;
+  const holdCountdownLabel =
+    holdSecondsLeft !== null
+      ? `${Math.floor(holdSecondsLeft / 60)}:${String(holdSecondsLeft % 60).padStart(2, '0')}`
+      : null;
   const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>(() =>
     isOriginalPrimary ? editBookings.filter((b) => b.umbrellaId !== umbrellaId).map((b) => b.umbrellaId) : []
   );
@@ -1288,6 +1362,86 @@ const BookingForm: React.FC<{
     </>
   );
 
+  if (stage === 'summary') {
+    return (
+      <View style={styles.formOuter}>
+        <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
+          <Pressable onPress={() => onStageChange('details')} style={styles.backLink}>
+            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+            <Text style={styles.backLinkText}>Torna alla prenotazione</Text>
+          </Pressable>
+
+          <Text style={styles.sheetTitle}>Riepilogo</Text>
+
+          {holdCountdownLabel && (
+            <View style={styles.holdBanner}>
+              <Ionicons name="time-outline" size={22} color={colors.in_arrivo} />
+              <View style={styles.holdBannerTextBox}>
+                <Text style={styles.holdBannerTitle}>Ombrellone bloccato per te</Text>
+                <Text style={styles.holdBannerSubtitle}>Completa il pagamento prima che scada il tempo</Text>
+              </View>
+              <Text style={styles.holdBannerTime}>{holdCountdownLabel}</Text>
+            </View>
+          )}
+
+          {conflictBanner}
+
+          <View style={styles.costCard}>
+            {allUmbrellaIds.map((id) => {
+              const u = getUmbrella(id);
+              if (!u) return null;
+              return (
+                <View key={id} style={styles.costRow}>
+                  <Text style={styles.costRowLabel}>
+                    Ombrellone N.{u.number} · {u.zone}
+                  </Text>
+                  <Text style={styles.costRowValue}>{formatCurrency(umbrellaTotal(id))}</Text>
+                </View>
+              );
+            })}
+            {voucherApplied > 0 && (
+              <View style={styles.costRow}>
+                <Text style={styles.costRowLabel}>Credito voucher</Text>
+                <Text style={[styles.costRowValue, { color: colors.libero }]}>
+                  -{formatCurrency(voucherApplied)}
+                </Text>
+              </View>
+            )}
+            <View style={styles.costRowDivider} />
+            <View style={styles.costRow}>
+              <Text style={styles.costRowTotalLabel}>Totale</Text>
+              <Text style={styles.costRowTotalValue}>{formatCurrency(total)}</Text>
+            </View>
+          </View>
+
+          <View style={styles.policyBox}>
+            <View style={styles.policyHeaderRow}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+              <Text style={styles.policyTitle}>Pagamento anticipato</Text>
+            </View>
+            <Text style={styles.policyText}>
+              {formatCurrency(deposit)} verranno addebitati ora. Rimborsabile con voucher se annulli entro il{' '}
+              <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>; dopo tale data, o in caso di
+              no-show, l'importo <Text style={styles.policyBold}>non è rimborsabile</Text>.
+            </Text>
+          </View>
+        </ScrollView>
+        <BookingFooter
+          total={grossTotal}
+          deposit={deposit}
+          voucherApplied={voucherApplied}
+          umbrellaCount={allUmbrellaIds.length}
+          primaryLabel="Paga"
+          primaryIcon="card-outline"
+          onPrimary={() => onStageChange('payment')}
+          primaryDisabled={!canConfirm}
+          onCancel={onClose}
+          cancelLabel={cancelLabel}
+        />
+      </View>
+    );
+  }
+
   if (stage === 'payment') {
     const startPayment = () => {
       setPaymentProcessing(true);
@@ -1299,9 +1453,9 @@ const BookingForm: React.FC<{
     return (
       <View style={styles.formOuter}>
         <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
-          <Pressable onPress={() => onStageChange('details')} style={styles.backLink}>
+          <Pressable onPress={() => onStageChange('summary')} style={styles.backLink}>
             <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
-            <Text style={styles.backLinkText}>Torna alla prenotazione</Text>
+            <Text style={styles.backLinkText}>Torna al riepilogo</Text>
           </Pressable>
 
           <Text style={styles.sheetTitle}>Pagamento</Text>
@@ -1585,9 +1739,9 @@ const BookingForm: React.FC<{
         deposit={deposit}
         voucherApplied={voucherApplied}
         umbrellaCount={allUmbrellaIds.length}
-        primaryLabel={editContext ? 'Conferma' : 'Continua al pagamento'}
+        primaryLabel={editContext ? 'Conferma' : 'Continua'}
         primaryIcon="checkmark-circle-outline"
-        onPrimary={() => (editContext ? confirm() : onStageChange('payment'))}
+        onPrimary={() => (editContext ? confirm() : onStageChange('summary'))}
         primaryDisabled={!canConfirm}
         disabledHint={missingRequirement}
         onCancel={onClose}
@@ -2081,6 +2235,33 @@ const styles = StyleSheet.create({
   editingAsText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12, flexShrink: 1 },
   conflictBox: { backgroundColor: colors.occupatoBg, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
   conflictText: { color: colors.occupato, fontWeight: '600', fontSize: 13 },
+  holdBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.in_arrivoBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  holdBannerTextBox: { flex: 1 },
+  holdBannerTitle: { fontWeight: '700', color: colors.text, fontSize: 13 },
+  holdBannerSubtitle: { color: colors.textMuted, fontSize: 11, marginTop: 1 },
+  holdBannerTime: { fontWeight: '800', color: colors.in_arrivo, fontSize: 20, fontVariant: ['tabular-nums'] },
+  costCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  costRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  costRowLabel: { color: colors.text, fontSize: 13 },
+  costRowValue: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  costRowDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
+  costRowTotalLabel: { color: colors.text, fontSize: 15, fontWeight: '800' },
+  costRowTotalValue: { color: colors.primaryDark, fontSize: 15, fontWeight: '800' },
   disabledHintText: { color: colors.occupato, fontSize: 12, fontWeight: '600', marginTop: spacing.xs },
   footerSummaryRow: {
     flexDirection: 'row',

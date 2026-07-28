@@ -1,4 +1,4 @@
-import { Booking, GuestCount, Umbrella } from '../types';
+import { Booking, BookingHold, GuestCount, Umbrella } from '../types';
 import { toDateKey } from './format';
 
 // Only adults count against an umbrella's occupancy limit -- children are unlimited.
@@ -69,6 +69,29 @@ export function findUmbrellaConflict(
 ): Booking | undefined {
   return bookings.find(
     (b) => !b.released && !b.cancelled && b.umbrellaId === umbrellaId && dateFrom <= b.dateTo && dateTo >= b.dateFrom
+  );
+}
+
+// Separate from findUmbrellaConflict (rather than folding holds into it) so the ~10 existing
+// callers of that function are entirely unaffected -- only the two call sites that actually
+// need to respect a live checkout hold (the guest-facing map and the operator's quick-booking
+// form) opt in by also calling this one. `excludeHoldIds` lets the guest currently holding the
+// umbrella keep seeing it as theirs rather than "taken by someone else."
+export function findActiveHoldConflict(
+  holds: BookingHold[],
+  umbrellaId: string,
+  dateFrom: string,
+  dateTo: string,
+  excludeHoldIds: ReadonlySet<string> = new Set()
+): BookingHold | undefined {
+  const now = Date.now();
+  return holds.find(
+    (h) =>
+      !excludeHoldIds.has(h.id) &&
+      h.expiresAt > now &&
+      h.umbrellaId === umbrellaId &&
+      dateFrom <= h.dateTo &&
+      dateTo >= h.dateFrom
   );
 }
 

@@ -20,6 +20,7 @@ import {
 import {
   Article,
   Booking,
+  BookingHold,
   Conto,
   Customer,
   DailyStat,
@@ -83,6 +84,11 @@ interface AppState {
   layoutElements: LayoutElement[];
   equipmentChanges: EquipmentChange[];
   waitlist: WaitlistEntry[];
+  // Local-only: never read from or written to Supabase (see createHold/releaseHold below). It
+  // does ride along in the local-storage snapshot like the rest of state, but that's harmless --
+  // every read of this array already filters by expiresAt, so a hold that outlives a reload is
+  // either still validly blocking that same umbrella/range or simply ignored once it expires.
+  holds: BookingHold[];
   hydrated: boolean;
 }
 
@@ -102,6 +108,7 @@ function buildInitialState(): AppState {
     layoutElements: [],
     equipmentChanges: [],
     waitlist: [],
+    holds: [],
     hydrated: false,
   };
 }
@@ -118,6 +125,9 @@ type Action =
   | { type: 'GRANT_VOUCHER'; customerId: string; amount: number }
   | { type: 'JOIN_WAITLIST'; entry: WaitlistEntry }
   | { type: 'LEAVE_WAITLIST'; entryId: string }
+  | { type: 'CREATE_HOLD'; holds: BookingHold[] }
+  | { type: 'RELEASE_HOLD'; holdId: string }
+  | { type: 'SWEEP_EXPIRED_HOLDS' }
   | { type: 'UPSERT_CUSTOMER'; customer: Customer }
   | { type: 'DELETE_CUSTOMER'; customerId: string }
   | { type: 'UPSERT_ARTICLE'; article: Article }
@@ -373,6 +383,18 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'LEAVE_WAITLIST':
       return { ...state, waitlist: state.waitlist.filter((w) => w.id !== action.entryId) };
+
+    case 'CREATE_HOLD':
+      return { ...state, holds: [...state.holds, ...action.holds] };
+
+    case 'RELEASE_HOLD':
+      return { ...state, holds: state.holds.filter((h) => h.id !== action.holdId) };
+
+    case 'SWEEP_EXPIRED_HOLDS': {
+      const now = Date.now();
+      const holds = state.holds.filter((h) => h.expiresAt > now);
+      return holds.length === state.holds.length ? state : { ...state, holds };
+    }
 
     case 'UPSERT_CUSTOMER': {
       const exists = state.customers.some((c) => c.id === action.customer.id);
@@ -726,6 +748,8 @@ interface StoreContextValue extends AppState {
   grantVoucher: (customerId: string, amount: number) => void;
   joinWaitlist: (entry: Omit<WaitlistEntry, 'id' | 'createdAt'>) => void;
   leaveWaitlist: (entryId: string) => void;
+  createHold: (umbrellaIds: string[], dateFrom: string, dateTo: string, durationMs?: number) => BookingHold[];
+  releaseHold: (holdId: string) => void;
   upsertCustomer: (customer: Customer) => void;
   deleteCustomer: (customerId: string) => void;
   upsertArticle: (article: Article) => void;
@@ -847,6 +871,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
               layoutElements: [],
               equipmentChanges: (ec.data ?? []).map(rowToEquipmentChange),
               waitlist: (wl.data ?? []).map(rowToWaitlist),
+              // Local-only, same as layoutElements above -- no Supabase table for holds.
+              holds: [],
               hydrated: true,
             },
           });
@@ -1228,6 +1254,33 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     const client = supabase;
     const beachId = beachIdRef.current;
     if (client && beachId) runSync(client.from('waitlist').delete().eq('beach_id', beachId).eq('id', entryId));
+  }, []);
+
+  // Local-only, no Supabase round-trip -- a checkout hold only needs to be visible to this
+  // browser (every open tab, via the existing local-storage 'storage' sync) for the few minutes
+  // it takes to complete payment, not durably shared across devices.
+  const createHold = useCallback((umbrellaIds: string[], dateFrom: string, dateTo: string, durationMs = 5 * 60 * 1000) => {
+    const expiresAt = Date.now() + durationMs;
+    const holds: BookingHold[] = umbrellaIds.map((umbrellaId, i) => ({
+      id: `hold-${Date.now()}-${i}`,
+      umbrellaId,
+      dateFrom,
+      dateTo,
+      expiresAt,
+    }));
+    dispatch({ type: 'CREATE_HOLD', holds });
+    return holds;
+  }, []);
+
+  const releaseHold = useCallback((holdId: string) => {
+    dispatch({ type: 'RELEASE_HOLD', holdId });
+  }, []);
+
+  // Garbage-collects expired holds out of state every 30s so a long-idle session's `holds`
+  // array doesn't just grow forever with entries every read already ignores anyway.
+  useEffect(() => {
+    const interval = setInterval(() => dispatch({ type: 'SWEEP_EXPIRED_HOLDS' }), 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const upsertCustomer = useCallback((customer: Customer) => {
@@ -1685,6 +1738,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       grantVoucher,
       joinWaitlist,
       leaveWaitlist,
+      createHold,
+      releaseHold,
       upsertCustomer,
       deleteCustomer,
       upsertArticle,
@@ -1727,6 +1782,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
       grantVoucher,
       joinWaitlist,
       leaveWaitlist,
+      createHold,
+      releaseHold,
       upsertCustomer,
       deleteCustomer,
       upsertArticle,

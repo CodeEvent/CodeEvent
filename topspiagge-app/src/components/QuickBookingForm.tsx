@@ -7,6 +7,7 @@ import { colors, radius, spacing } from '../theme';
 import { Booking, Customer } from '../types';
 import {
   distributeGuests,
+  findActiveHoldConflict,
   findCustomerConflict,
   findNearestUmbrellas,
   findUmbrellaConflict,
@@ -49,7 +50,7 @@ type Equipment = { beds: number; chairs: number };
 const DEFAULT_EQUIPMENT: Equipment = { beds: 2, chairs: 0 };
 
 export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialFromOffset = 0, onExtrasChange }) => {
-  const { umbrellas, customers, bookings, createBooking, upsertCustomer, getActivePriceList, getUmbrella } =
+  const { umbrellas, customers, bookings, holds, createBooking, upsertCustomer, getActivePriceList, getUmbrella } =
     useStore();
   const navigation = useNavigation<any>();
   const [startOffset, setStartOffset] = useState(initialFromOffset);
@@ -111,7 +112,10 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   };
   const umbrellaDeposit = (id: string) => Math.round(umbrellaTotal(id) * PREPAYMENT_RATE);
 
-  const isFreeForPeriod = (u: { id: string }) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo);
+  // A guest mid-checkout on this same umbrella/date range holds it too -- the operator
+  // shouldn't be able to double-book it out from under them while their payment is in flight.
+  const isFreeForPeriod = (u: { id: string }) =>
+    !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo) && !findActiveHoldConflict(holds, u.id, dateFrom, dateTo);
 
   const umbrellasNeeded = umbrellasNeededFor(adults);
 
@@ -218,6 +222,10 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
     () => allUmbrellaIds.some((id) => findUmbrellaConflict(bookings, id, dateFrom, dateTo)),
     [bookings, allUmbrellaIds, dateFrom, dateTo]
   );
+  const anyHoldConflict = useMemo(
+    () => !anyConflict && allUmbrellaIds.some((id) => findActiveHoldConflict(holds, id, dateFrom, dateTo)),
+    [anyConflict, holds, allUmbrellaIds, dateFrom, dateTo]
+  );
 
   const customerConflict = useMemo(() => {
     if (creatingCustomer || !selectedCustomerId) return undefined;
@@ -228,7 +236,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
   const canConfirm = (creatingCustomer ? newName.trim().length > 0 : !!selectedCustomerId) && capacityOk;
 
   const confirm = () => {
-    if (anyConflict || customerConflict || !canConfirm) return;
+    if (anyConflict || anyHoldConflict || customerConflict || !canConfirm) return;
 
     let customerId = selectedCustomerId;
     if (creatingCustomer) {
@@ -477,7 +485,16 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         </View>
       )}
 
-      {!anyConflict && customerConflict && (
+      {anyHoldConflict && (
+        <View style={styles.conflictBox}>
+          <Text style={styles.conflictText}>
+            Uno degli ombrelloni selezionati è in fase di pagamento da un altro cliente in questo momento -- riprova
+            tra qualche minuto.
+          </Text>
+        </View>
+      )}
+
+      {!anyConflict && !anyHoldConflict && customerConflict && (
         <View style={styles.conflictBox}>
           <Text style={styles.conflictText}>
             Il cliente ha già l'Ombrellone {customerConflictUmbrella?.number} ({customerConflictUmbrella?.zone})
@@ -497,7 +514,7 @@ export const QuickBookingForm: React.FC<Props> = ({ umbrellaId, onDone, initialF
         title={isToday ? 'Conferma e vai al Conto' : 'Conferma prenotazione'}
         icon={isToday ? 'card-outline' : undefined}
         onPress={confirm}
-        disabled={!canConfirm || anyConflict || !!customerConflict}
+        disabled={!canConfirm || anyConflict || anyHoldConflict || !!customerConflict}
         style={{ marginTop: spacing.lg }}
       />
     </View>

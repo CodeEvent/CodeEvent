@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { colors, radius, spacing } from '../theme';
 import { Umbrella } from '../types';
@@ -144,6 +144,11 @@ interface BeachCanvasProps {
   // Swaps the plain single-tone WaveFooter for the taller, illustrated gradient SeaBand -- opt-in
   // so the operator Piantina map (which doesn't pass this) keeps its existing look unchanged.
   richSeaBand?: boolean;
+  // Lets the guest pan the map by pressing and dragging anywhere on it (both axes at once),
+  // like a real map app, instead of only via the scrollbar/two separate straight swipes --
+  // opt-in so the operator's Piantina/Disposizione (which have their own per-cell drag-and-drop
+  // gestures) are entirely unaffected.
+  dragToPan?: boolean;
 }
 
 // Every row is one continuous line of umbrellas split by a walkway: seats on
@@ -163,7 +168,52 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
   rowBannerHeight,
   renderRowBanner,
   richSeaBand = false,
+  dragToPan = false,
 }) => {
+  // Press-and-drag panning (opt-in via `dragToPan`): the canvas is translated directly via a
+  // CSS transform instead of living inside a scrollable container, so one continuous diagonal
+  // drag moves both axes together -- like a real map app -- rather than needing two separate
+  // straight scrollbar swipes. Implemented with raw browser pointer events (not RN's PanResponder
+  // gesture system): PanResponder's gesture tracking here turned out to self-terminate after a
+  // single move, most likely because programmatically calling a ScrollView's own `scrollTo` from
+  // inside its move handler fires a native `scroll` event that the gesture responder reads as
+  // "scrolling took over," ending the touch/mouse tracking. Plain window-level pointermove/up
+  // listeners have no such conflict since nothing here is an actual scroll container anymore.
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
+
+  useEffect(() => {
+    if (!dragToPan || typeof window === 'undefined' || !window.addEventListener) return;
+    const clamp = (v: number) => Math.min(0, v);
+    const handleMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      setPan({ x: clamp(d.baseX + (e.clientX - d.startX)), y: clamp(d.baseY + (e.clientY - d.startY)) });
+    };
+    const handleUp = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+  }, [dragToPan]);
+
+  // Cast to `any`: these are plain DOM pointer-event props (react-native-web forwards unknown
+  // "on*" props straight to the underlying host element) that RN's own View typings don't know
+  // about -- harmless no-ops on native, where `dragToPan` is never passed anyway.
+  const dragHandlers: any = dragToPan
+    ? {
+        onPointerDown: (e: PointerEvent) => {
+          dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: pan.x, baseY: pan.y };
+        },
+      }
+    : {};
+
   const zones = useMemo(() => {
     const seen = new Map<number, string>();
     umbrellas.forEach((u) => seen.set(u.row, u.zone));
@@ -195,102 +245,116 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
       width: GAP + w.width,
     }));
 
+  const zoneLabelsContent = (
+    <View style={{ width: labelWidth, height: GROUP_HEADER_HEIGHT + canvasHeight }}>
+      {zones.map(([rowIdx, zoneName]) => (
+        <View
+          key={rowIdx}
+          style={[
+            styles.zoneLabel,
+            {
+              top: GROUP_HEADER_HEIGHT + (rowOffsets.get(rowIdx) ?? 0),
+              height: rowHeight,
+              width: labelWidth - 12,
+            },
+          ]}
+        >
+          {renderZoneLabel ? (
+            renderZoneLabel(rowIdx, zoneName)
+          ) : (
+            <>
+              <Ionicons name="umbrella" size={labelIconSize} color={colors.seaDark} />
+              <Text style={[styles.zoneLabelText, { fontSize: labelFontSize }]} numberOfLines={1}>
+                {zoneName}
+              </Text>
+            </>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+
+  const canvasContent = (
+    <View style={{ width: canvasWidth, height: GROUP_HEADER_HEIGHT + canvasHeight }}>
+      {hasWalkway && (
+        <>
+          <Text style={[styles.groupHeaderText, { left: 0, width: walkwayLeft }]}>NORD</Text>
+          <Text
+            style={[
+              styles.groupHeaderText,
+              { left: walkwayLeft + walkwayRenderWidth, width: canvasWidth - walkwayLeft - walkwayRenderWidth },
+            ]}
+          >
+            SUD
+          </Text>
+          <View
+            style={[
+              styles.walkway,
+              {
+                left: walkwayLeft,
+                top: GROUP_HEADER_HEIGHT,
+                width: walkwayRenderWidth,
+                height: canvasHeight,
+              },
+            ]}
+          >
+            {Array.from({ length: walkwayFootprints }).map((_, i) => (
+              <Ionicons key={i} name="walk-outline" size={13} color={colors.seaDark} style={{ opacity: 0.32 }} />
+            ))}
+          </View>
+        </>
+      )}
+      {extraWalkwayRects.map((rect, i) => (
+        <View
+          key={`extra-walkway-${i}`}
+          style={[styles.walkway, { left: rect.left, top: GROUP_HEADER_HEIGHT, width: rect.width, height: canvasHeight }]}
+        >
+          {Array.from({ length: walkwayFootprints }).map((_, j) => (
+            <Ionicons key={j} name="walk-outline" size={11} color={colors.seaDark} style={{ opacity: 0.24 }} />
+          ))}
+        </View>
+      ))}
+      {rowBannerHeight &&
+        renderRowBanner &&
+        zones.map(([rowIdx]) => {
+          const bh = rowBannerHeight(rowIdx);
+          if (bh <= 0) return null;
+          const top = GROUP_HEADER_HEIGHT + (rowOffsets.get(rowIdx) ?? 0) - bh;
+          return (
+            <View key={`banner-${rowIdx}`} style={{ position: 'absolute', left: 0, top, width: canvasWidth, height: bh }}>
+              {renderRowBanner(rowIdx)}
+            </View>
+          );
+        })}
+      <View style={{ marginTop: GROUP_HEADER_HEIGHT }}>{umbrellas.map((u) => renderCell(u, positions.get(u.id)!))}</View>
+    </View>
+  );
+
   return (
     <View style={styles.beach}>
       {/* Fila 1 is the front row, closest to the water (hasCabin/VIP-assignment logic
           treats row 0 as the premium sea-front tier) -- the wave sits above it, not
           below the last row, so the map reads shoreline-first the way the real beach does. */}
       {richSeaBand ? <SeaBand /> : <WaveFooter flip />}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.boardScroll}>
-        <View style={styles.boardRow}>
-          <View style={{ width: labelWidth, height: GROUP_HEADER_HEIGHT + canvasHeight }}>
-            {zones.map(([rowIdx, zoneName]) => (
-              <View
-                key={rowIdx}
-                style={[
-                  styles.zoneLabel,
-                  {
-                    top: GROUP_HEADER_HEIGHT + (rowOffsets.get(rowIdx) ?? 0),
-                    height: rowHeight,
-                    width: labelWidth - 12,
-                  },
-                ]}
-              >
-                {renderZoneLabel ? (
-                  renderZoneLabel(rowIdx, zoneName)
-                ) : (
-                  <>
-                    <Ionicons name="umbrella" size={labelIconSize} color={colors.seaDark} />
-                    <Text style={[styles.zoneLabelText, { fontSize: labelFontSize }]} numberOfLines={1}>
-                      {zoneName}
-                    </Text>
-                  </>
-                )}
-              </View>
-            ))}
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator>
-            <View style={{ width: canvasWidth, height: GROUP_HEADER_HEIGHT + canvasHeight }}>
-              {hasWalkway && (
-                <>
-                  <Text style={[styles.groupHeaderText, { left: 0, width: walkwayLeft }]}>NORD</Text>
-                  <Text
-                    style={[
-                      styles.groupHeaderText,
-                      { left: walkwayLeft + walkwayRenderWidth, width: canvasWidth - walkwayLeft - walkwayRenderWidth },
-                    ]}
-                  >
-                    SUD
-                  </Text>
-                  <View
-                    style={[
-                      styles.walkway,
-                      {
-                        left: walkwayLeft,
-                        top: GROUP_HEADER_HEIGHT,
-                        width: walkwayRenderWidth,
-                        height: canvasHeight,
-                      },
-                    ]}
-                  >
-                    {Array.from({ length: walkwayFootprints }).map((_, i) => (
-                      <Ionicons key={i} name="walk-outline" size={13} color={colors.seaDark} style={{ opacity: 0.32 }} />
-                    ))}
-                  </View>
-                </>
-              )}
-              {extraWalkwayRects.map((rect, i) => (
-                <View
-                  key={`extra-walkway-${i}`}
-                  style={[
-                    styles.walkway,
-                    { left: rect.left, top: GROUP_HEADER_HEIGHT, width: rect.width, height: canvasHeight },
-                  ]}
-                >
-                  {Array.from({ length: walkwayFootprints }).map((_, j) => (
-                    <Ionicons key={j} name="walk-outline" size={11} color={colors.seaDark} style={{ opacity: 0.24 }} />
-                  ))}
-                </View>
-              ))}
-              {rowBannerHeight &&
-                renderRowBanner &&
-                zones.map(([rowIdx]) => {
-                  const bh = rowBannerHeight(rowIdx);
-                  if (bh <= 0) return null;
-                  const top = GROUP_HEADER_HEIGHT + (rowOffsets.get(rowIdx) ?? 0) - bh;
-                  return (
-                    <View key={`banner-${rowIdx}`} style={{ position: 'absolute', left: 0, top, width: canvasWidth, height: bh }}>
-                      {renderRowBanner(rowIdx)}
-                    </View>
-                  );
-                })}
-              <View style={{ marginTop: GROUP_HEADER_HEIGHT }}>
-                {umbrellas.map((u) => renderCell(u, positions.get(u.id)!))}
-              </View>
+      {dragToPan ? (
+        <View style={[styles.dragClip, styles.dragCursor]} {...dragHandlers}>
+          <View style={[styles.boardRow, styles.boardScroll, { transform: [{ translateY: pan.y }] }]}>
+            {zoneLabelsContent}
+            <View style={styles.dragClip}>
+              <View style={{ transform: [{ translateX: pan.x }] }}>{canvasContent}</View>
             </View>
-          </ScrollView>
+          </View>
         </View>
-      </ScrollView>
+      ) : (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.boardScroll}>
+          <View style={styles.boardRow}>
+            {zoneLabelsContent}
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              {canvasContent}
+            </ScrollView>
+          </View>
+        </ScrollView>
+      )}
 
       {footerText && (
         <View style={styles.footerBar}>
@@ -303,6 +367,10 @@ export const BeachCanvas: React.FC<BeachCanvasProps> = ({
 
 const styles = StyleSheet.create({
   beach: { flex: 1, backgroundColor: colors.sand },
+  // web-only affordance (silently ignored by native RN) hinting the map can be grabbed and
+  // dragged, matching a real map app rather than looking like a plain scroll area.
+  dragCursor: { cursor: 'grab' } as unknown as ViewStyle,
+  dragClip: { flex: 1, overflow: 'hidden' },
   boardScroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xl },
   boardRow: { flexDirection: 'row' },
   zoneLabel: {

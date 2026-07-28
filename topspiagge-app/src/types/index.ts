@@ -89,6 +89,20 @@ export interface WaitlistEntry {
   createdAt: string;
 }
 
+// A short-lived, guest-initiated lock on an umbrella/date range: created the moment a guest
+// starts checking out (so nobody else -- another guest, or an operator on Piantina -- can grab
+// the same spot while this one is mid-payment) and released the instant they either confirm the
+// booking, back out, or the hold simply expires. Purely local/ephemeral (no Supabase table): it
+// only needs to survive as long as the checkout itself, and the existing localStorage
+// cross-tab sync already makes it visible to every open tab in this browser.
+export interface BookingHold {
+  id: string;
+  umbrellaId: string;
+  dateFrom: string;
+  dateTo: string;
+  expiresAt: number; // epoch ms
+}
+
 // A guest-initiated change to their own booking's beds/chairs, made from "Gestisci la mia
 // prenotazione" -- kept as its own append-only log (rather than mutating the booking directly
 // for adds) so the operator has something concrete to act on:
