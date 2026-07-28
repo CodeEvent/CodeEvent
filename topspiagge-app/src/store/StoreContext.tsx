@@ -879,6 +879,30 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     safeSetItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
+  // Local-only cross-tab sync: without Supabase, "the operator dashboard notices what the guest
+  // just did" only actually happens if both are the same in-memory reducer -- which is true for
+  // this app's own bottom-tab navigation, but NOT true across two separate browser tabs (e.g. the
+  // guest flow open in one tab, the operator dashboard in another), since each tab boots its own
+  // isolated reducer from whatever was last written to storage. AsyncStorage's web backend is
+  // just window.localStorage under the hood, so the same-origin 'storage' event (which the
+  // *writing* tab never receives, only other tabs do) is exactly the signal needed to re-hydrate
+  // this tab when another one just saved -- e.g. a new equipment request appearing in the
+  // notification bell, or a booking becoming visible on Quadro, without a manual reload.
+  useEffect(() => {
+    if (isSupabaseConfigured || typeof window === 'undefined' || !window.addEventListener) return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY || !e.newValue) return;
+      try {
+        const parsed = JSON.parse(e.newValue);
+        dispatch({ type: 'HYDRATE', payload: { ...parsed, hydrated: true } });
+      } catch {
+        // corrupted payload from the other tab -- ignore, keep this tab's current state
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   // Layout decorations (walkways, bar, entry, shapes, ...) have no Supabase table yet, so they're
   // kept in their own small device-local cache -- independent of the big STORAGE_KEY blob above,
   // which is skipped entirely once Supabase is configured. Keyed by beach so switching beaches in

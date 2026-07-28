@@ -253,7 +253,7 @@ export const FilterSheetModal: React.FC<FilterSheetModalProps> = ({ visible, onC
   );
 };
 
-function countActiveFilters(filters: BookingFilters): number {
+export function countActiveFilters(filters: BookingFilters): number {
   let n = 0;
   if (filters.side !== 'tutti') n++;
   if (filters.status !== 'tutti') n++;

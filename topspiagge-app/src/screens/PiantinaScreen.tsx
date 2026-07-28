@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BeachCanvas, GAP, MIN_CELL, useUmbrellaPositions } from '../components/BeachCanvas';
-import { FilterSheetModal } from '../components/BookingFilterBar';
+import { countActiveFilters, FilterSheetModal } from '../components/BookingFilterBar';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
 import { colors, spacing } from '../theme';
@@ -203,6 +203,7 @@ export const PiantinaScreen: React.FC = () => {
   // out today, an outstanding balance today) don't generalize to an arbitrary future range, so
   // they're suppressed while this view is active.
   const range = effectiveDateRange(filters);
+  const activeFilterCount = countActiveFilters(filters);
   const periodFreeCounts = useMemo(() => {
     if (!range) return null;
     return {
@@ -234,9 +235,23 @@ export const PiantinaScreen: React.FC = () => {
             <Text style={styles.headerTitle}>Piantina Spiaggia</Text>
             <Text style={styles.headerSubtitle}>Trascina un ombrellone per spostare la prenotazione</Text>
           </View>
-          <Pressable onPress={() => setFiltersOpen((v) => !v)} style={styles.filterToggle}>
-            <Ionicons name="options-outline" size={14} color={colors.primaryDark} />
-            <Text style={styles.filterToggleText}>Filtri</Text>
+          <Pressable
+            onPress={() => setFiltersOpen((v) => !v)}
+            style={[styles.filterToggle, activeFilterCount > 0 && styles.filterToggleActive]}
+          >
+            <Ionicons
+              name="options-outline"
+              size={14}
+              color={activeFilterCount > 0 ? colors.white : colors.primaryDark}
+            />
+            <Text style={[styles.filterToggleText, activeFilterCount > 0 && styles.filterToggleTextActive]}>
+              Filtri
+            </Text>
+            {activeFilterCount > 0 && (
+              <View style={styles.filterCountBadge}>
+                <Text style={styles.filterCountBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
           </Pressable>
         </View>
         <View style={styles.legendRow}>
@@ -345,7 +360,20 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
   },
+  filterToggleActive: { backgroundColor: colors.primary },
   filterToggleText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12 },
+  filterToggleTextActive: { color: colors.white },
+  filterCountBadge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    marginLeft: 2,
+  },
+  filterCountBadgeText: { color: colors.primary, fontSize: 10, fontWeight: '800' },
   legendRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

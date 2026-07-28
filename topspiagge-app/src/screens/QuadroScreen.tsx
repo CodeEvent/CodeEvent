@@ -1,18 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { FilterSheetModal } from '../components/BookingFilterBar';
+import { FilterSheetModal, countActiveFilters } from '../components/BookingFilterBar';
 import { QuickBookingForm } from '../components/QuickBookingForm';
 import { sidebarBackdrop, sidebarSheet, useSidebarMode } from '../components/sidebarSheet';
 import { Button } from '../components/UI';
 import { useStore } from '../store/StoreContext';
 import { colors, radius, spacing } from '../theme';
 import { Booking } from '../types';
-import { BookingFilters, bookingMatchesFilters, DEFAULT_BOOKING_FILTERS } from '../utils/bookingFilters';
+import {
+  BookingFilters,
+  bookingMatchesFilters,
+  DEFAULT_BOOKING_FILTERS,
+  effectiveDateRange,
+} from '../utils/bookingFilters';
 import { baseDisplayStatusForBooking, bookingHasOutstandingBalance, displayStatusColor } from '../utils/displayStatus';
-import { formatCurrency, formatDateShort, isoDate } from '../utils/format';
+import { formatCurrency, formatDateShort, isoDate, offsetFromToday } from '../utils/format';
 
 const LABEL_WIDTH = 96;
 const DAY_WIDTH = 42;
@@ -62,6 +67,27 @@ export const QuadroScreen: React.FC = () => {
   const windowStartIso = days[0];
   const windowEndIso = days[days.length - 1];
 
+  // The "Quando" filter chips (Oggi/Prossimi 7 giorni/Questo mese/date custom) only ever hid
+  // bars within whatever week the Gantt already happened to be scrolled to -- they never moved
+  // the viewport itself, so picking e.g. "Questo mese" while looking at a future week (or
+  // "Oggi" while looking at next month) silently blanked the grid with no clue why, reading as
+  // "the filter doesn't work" rather than "wrong week." Jump the viewport to the filtered range
+  // only when none of it is visible yet; leave manual week navigation alone otherwise.
+  const filterRange = effectiveDateRange(filters);
+  useEffect(() => {
+    if (!filterRange) return;
+    const fromOffset = offsetFromToday(filterRange.from);
+    const toOffset = offsetFromToday(filterRange.to);
+    const visibleEnd = windowStart + WINDOW_SIZE - 1;
+    if (toOffset < windowStart || fromOffset > visibleEnd) {
+      setWindowStart(fromOffset);
+    }
+    // Only re-run when the filtered range itself changes, not on every manual week nav.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.rangeFrom, filters.rangeTo]);
+
+  const activeFilterCount = countActiveFilters(filters);
+
   const monthGroups = useMemo(() => {
     const groups: { label: string; startCol: number; span: number }[] = [];
     days.forEach((d, i) => {
@@ -107,11 +133,37 @@ export const QuadroScreen: React.FC = () => {
             <Text style={styles.headerTitle}>Il Quadro</Text>
             <Text style={styles.headerSubtitle}>Planning stagionale · tocca una cella libera per prenotare</Text>
           </View>
-          <Pressable onPress={() => setFiltersOpen((v) => !v)} style={styles.filterToggle}>
-            <Ionicons name="options-outline" size={14} color={colors.primaryDark} />
-            <Text style={styles.filterToggleText}>Filtri</Text>
+          <Pressable
+            onPress={() => setFiltersOpen((v) => !v)}
+            style={[styles.filterToggle, activeFilterCount > 0 && styles.filterToggleActive]}
+          >
+            <Ionicons
+              name="options-outline"
+              size={14}
+              color={activeFilterCount > 0 ? colors.white : colors.primaryDark}
+            />
+            <Text style={[styles.filterToggleText, activeFilterCount > 0 && styles.filterToggleTextActive]}>
+              Filtri
+            </Text>
+            {activeFilterCount > 0 && (
+              <View style={styles.filterCountBadge}>
+                <Text style={styles.filterCountBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
           </Pressable>
         </View>
+        {activeFilterCount > 0 && (
+          <View style={styles.activeFilterBanner}>
+            <Ionicons name="filter" size={12} color={colors.primaryDark} />
+            <Text style={styles.activeFilterBannerText}>
+              {activeFilterCount === 1 ? '1 filtro attivo' : `${activeFilterCount} filtri attivi`} · alcune
+              prenotazioni potrebbero essere nascoste
+            </Text>
+            <Pressable onPress={() => setFilters(DEFAULT_BOOKING_FILTERS)} hitSlop={6}>
+              <Text style={styles.activeFilterBannerClear}>Cancella</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       <View style={styles.navRow}>
@@ -331,7 +383,32 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
   },
+  filterToggleActive: { backgroundColor: colors.primary },
   filterToggleText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12 },
+  filterToggleTextActive: { color: colors.white },
+  filterCountBadge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    marginLeft: 2,
+  },
+  filterCountBadgeText: { color: colors.primary, fontSize: 10, fontWeight: '800' },
+  activeFilterBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.prenotatoBg,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    marginTop: spacing.xs,
+  },
+  activeFilterBannerText: { flex: 1, color: colors.primaryDark, fontSize: 11, fontWeight: '600' },
+  activeFilterBannerClear: { color: colors.primaryDark, fontSize: 11, fontWeight: '800', textDecorationLine: 'underline' },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
