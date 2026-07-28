@@ -56,6 +56,17 @@ export const displayStatusColor: Record<DisplayStatus, string> = {
   stagionale: colors.prenotato,
 };
 
+// Same hues as displayStatusColor but darkened until each reaches >=4.5:1 contrast against its
+// own displayStatusBg -- the raw dot colors above read fine as a small dot, but at 1.7-2.9:1
+// they fail as 12px badge text. Dots keep the vivid color; only text uses this map.
+export const displayStatusTextColor: Record<DisplayStatus, string> = {
+  libero: '#0E7050',
+  occupato: '#A32E20',
+  da_saldare: colors.black,
+  sgombera: '#9A5E0A',
+  stagionale: '#3548B4',
+};
+
 export const displayStatusBg: Record<DisplayStatus, string> = {
   libero: colors.liberoBg,
   occupato: colors.occupatoBg,

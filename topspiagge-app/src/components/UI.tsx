@@ -11,7 +11,13 @@ import {
 } from 'react-native';
 import { colors, radius, spacing, statusBg, statusColor, statusLabel } from '../theme';
 import { UmbrellaStatus } from '../types';
-import { DisplayStatus, displayStatusBg, displayStatusColor, displayStatusLabel } from '../utils/displayStatus';
+import {
+  DisplayStatus,
+  displayStatusBg,
+  displayStatusColor,
+  displayStatusLabel,
+  displayStatusTextColor,
+} from '../utils/displayStatus';
 
 export const Card: React.FC<{ children: React.ReactNode; style?: StyleProp<ViewStyle> }> = ({
   children,
@@ -49,7 +55,7 @@ export const StatusPill: React.FC<{ status: DisplayStatus; unpaid?: boolean }> =
         <View style={[styles.dot, { backgroundColor: displayStatusColor[status] }]} />
         {showsUnpaidSuffix && <View style={styles.unpaidRing} />}
       </View>
-      <Text style={[styles.badgeText, { color: displayStatusColor[status] }]}>
+      <Text style={[styles.badgeText, { color: displayStatusTextColor[status] }]}>
         {displayStatusLabel[status]}
         {showsUnpaidSuffix ? ' · Da saldare' : ''}
       </Text>
