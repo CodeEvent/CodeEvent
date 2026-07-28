@@ -1,0 +1,9 @@
+[project]
+name = "netalertx-attck-bridge"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

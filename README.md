@@ -100,6 +100,7 @@ drwxr-xr-x  [NETWORK]      Network-Security/      ARP poison · Snort IDS · Ope
 drwxr-xr-x  [CRYPTO]       Cryptography/          PKI · AES · RSA · hashing · GPG · IKEv2 VPN · COMP09106
 drwxr-xr-x  [SECURE-CODE]  Secure-Programming/    SEI CERT C++ · Rust Hangman · DCL50 STR50 MEM51
 drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeline · HIBP API
+drwxr-xr-x  [THREAT-INTEL] netalertx-attck-bridge/ NetAlertX events -> MITRE ATT&CK STIX Sightings
 ```
 
 | Mission | Objective | Stack |
@@ -111,6 +112,7 @@ drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeli
 | [🔑 Cryptography](https://github.com/CodeEvent/Cryptography) | PKI · AES-256 · RSA · SHA-3 · GPG · IKEv2 VPN — First-class | OpenSSL · GPG · strongSwan |
 | [🔒 Secure Programming](https://github.com/CodeEvent/Secure-Programming) | SEI CERT C++ remediation + Rust | C++17 · Rust |
 | [🐍 Python Security Tools](https://github.com/CodeEvent/Programming-for-Cyber-Security) | HTTP brute force · DNS pipeline | Python · Sockets |
+| [🧩 netalertx-attck-bridge](./netalertx-attck-bridge) | NetAlertX events mapped to MITRE ATT&CK STIX Sightings | Python · STIX 2.1 · REST |
 
 ---
 
