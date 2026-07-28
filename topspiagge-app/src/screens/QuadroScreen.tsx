@@ -39,7 +39,10 @@ export const QuadroScreen: React.FC = () => {
   // better than a small centered card once there's room for one.
   const sidebarMode = useSidebarMode();
   const [windowStart, setWindowStart] = useState(0);
-  const [filters, setFilters] = useState<BookingFilters>({ ...DEFAULT_BOOKING_FILTERS, side: 'nord' });
+  // Defaults to 'tutti' like every other screen (Piantina/Archivi) -- defaulting to a single
+  // side here meant a booking made on the other side was invisible with no on-screen indication
+  // a filter was even active, reading as "the booking never showed up" rather than "switch sides".
+  const [filters, setFilters] = useState<BookingFilters>(DEFAULT_BOOKING_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [newBookingSlot, setNewBookingSlot] = useState<{ umbrellaId: string; offset: number } | null>(
