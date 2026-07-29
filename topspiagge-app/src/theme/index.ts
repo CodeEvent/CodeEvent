@@ -18,6 +18,13 @@ export const colors = {
   textMuted: '#7C8798',
   border: '#E3E7EE',
 
+  // Guest-app-only accent (search hero, umbrella illustration, results cards) -- a soft
+  // peach/apricot, kept separate from `accent` above since that token doubles as the
+  // operator side's warning/sgombera semantic color and shouldn't shift meaning here.
+  peach: '#F6CC9C',
+  peachDark: '#E7AD6B',
+  peachBg: '#FCEBD4',
+
   danger: '#E63946',
   success: '#2FB380',
   info: '#29C5E6',
