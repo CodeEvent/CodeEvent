@@ -9,6 +9,7 @@ import { Button, Card, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { DEMO_OPERATORS, DEMO_TOWNS, DemoOperator } from '../../data/demoOperators';
+import { MAX_ADULTS_PER_UMBRELLA } from '../../utils/booking';
 import { formatCurrency, formatDateShort, isoDate } from '../../utils/format';
 
 // Flat top-down umbrella illustration (alternating peach/white wedges) inside a soft teal
@@ -49,6 +50,11 @@ const HERE_LABEL = 'Intorno alla posizione attuale';
 export interface SearchSelection {
   startOffset: number;
   days: number;
+  /** Guest count entered on the home search card -- seeds the real booking form's "Adulti"
+   * stepper (see CustomerBookingScreen's initialAdults) so choosing e.g. 6 here already shows
+   * the venue's max-4-adults-per-umbrella policy and multi-umbrella suggestions on the next
+   * screen, instead of silently resetting to 2 and asking again. */
+  guests: number;
 }
 
 type SearchStep = 'home' | 'destination' | 'dates' | 'results' | 'detail';
@@ -65,9 +71,10 @@ interface Props {
 // Guest-facing "search a beach club" flow, styled after Booking.com's own search UX (home
 // screen with search box + nearby properties -> a single "book your stay" summary page with
 // destination + dates -> results list) but in the app's normal light theme rather than
-// Booking.com's dark one, and results are beach clubs, not hotels. Guest count and
-// lettini/sdraio equipment are chosen later, after picking a specific umbrella on the map
-// (see CustomerBookingScreen) -- not here, since this flow only decides where and when.
+// Booking.com's dark one, and results are beach clubs, not hotels. The home card's "Persone"
+// count is a real value carried into the booking flow (seeds the real form's "Adulti" stepper)
+// -- lettini/sdraio equipment is still chosen later, after picking a specific umbrella on the
+// map (see CustomerBookingScreen), since that genuinely can't be known before then.
 // Everything here is presentation over the static DEMO_OPERATORS list -- the local-fallback
 // store only ever models one beach's real inventory (Bagno Pietrasanta), so only that card
 // routes into the real map/wizard; the others show a "coming soon" message when tapped.
@@ -96,7 +103,20 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
   const dateFrom = useMemo(() => isoDate(startOffset), [startOffset]);
   const dateTo = useMemo(() => isoDate(startOffset + days - 1), [startOffset, days]);
 
-  const selection: SearchSelection = { startOffset, days };
+  const selection: SearchSelection = { startOffset, days, guests: persone };
+
+  // Warns the guest the moment their count crosses above the venue's per-umbrella cap --
+  // only on that one crossing (4 -> 5), not on every further increment, so it informs without
+  // nagging on each subsequent tap of "+".
+  const handleChangePersone = (value: number) => {
+    if (value > MAX_ADULTS_PER_UMBRELLA && persone <= MAX_ADULTS_PER_UMBRELLA) {
+      alert(
+        'Più di un ombrellone necessario',
+        `Ogni ombrellone ospita al massimo ${MAX_ADULTS_PER_UMBRELLA} persone. Con ${value} persone ti serviranno più ombrelloni vicini tra loro: potrai aggiungerli quando scegli il posto sulla mappa.`
+      );
+    }
+    setPersone(value);
+  };
 
   const handleSelectDate = (offset: number) => {
     if (awaitingEndDate && offset > startOffset) {
@@ -190,7 +210,7 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
         setDayMode(mode);
         if (mode === 'single') setDays(1);
       }}
-      onChangePersone={setPersone}
+      onChangePersone={handleChangePersone}
       onOpenDestination={() => setStep('destination')}
       onOpenDates={() => setStep('dates')}
       onSearch={() => setStep('results')}

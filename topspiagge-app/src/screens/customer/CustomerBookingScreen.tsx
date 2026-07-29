@@ -115,6 +115,10 @@ interface CustomerBookingScreenProps {
   onManage: () => void;
   initialStartOffset?: number;
   initialDays?: number;
+  /** Guest count entered on the search home card -- seeds the booking form's "Adulti"
+   * stepper so a group of e.g. 6 already sees the max-4-per-umbrella policy and
+   * multi-umbrella suggestions on the details step, instead of resetting to the default 2. */
+  initialAdults?: number;
   /** True when the guest already chose dates in the search flow before landing here --
    * skips straight to the map instead of asking for dates a second time. */
   datesPreselected?: boolean;
@@ -126,6 +130,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   onManage,
   initialStartOffset,
   initialDays,
+  initialAdults,
   datesPreselected,
 }) => {
   const { umbrellas, bookings, holds, joinWaitlist, createHold, releaseHold } = useStore();
@@ -417,6 +422,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 bookingsForAvailability={availabilityBookings}
                 editContext={editContext}
                 holdExpiresAt={holdExpiresAt}
+                initialAdults={initialAdults}
                 onClose={closeForm}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
@@ -458,6 +464,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 bookingsForAvailability={availabilityBookings}
                 editContext={editContext}
                 holdExpiresAt={holdExpiresAt}
+                initialAdults={initialAdults}
                 onClose={closeForm}
                 onConfirmed={handleConfirmed}
                 onEditDates={() => setDateEditVisible(true)}
@@ -1002,6 +1009,10 @@ const BookingForm: React.FC<{
    * while editing (no hold) or before a hold has been created yet. Drives the countdown shown
    * on the 'summary' stage. */
   holdExpiresAt: number | null;
+  /** Guest count entered on the search home card, for a NEW (non-edit) booking only --
+   * seeds "Adulti" so a group over MAX_ADULTS_PER_UMBRELLA already sees the multi-umbrella
+   * suggestions on first render instead of the default 2. */
+  initialAdults?: number;
   onClose: () => void;
   onConfirmed: (bookings: Booking[], isEdit: boolean) => void;
   onEditDates: () => void;
@@ -1020,6 +1031,7 @@ const BookingForm: React.FC<{
   bookingsForAvailability,
   editContext,
   holdExpiresAt,
+  initialAdults,
   onClose,
   onConfirmed,
   onEditDates,
@@ -1048,7 +1060,11 @@ const BookingForm: React.FC<{
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [adults, setAdults] = useState(() =>
-    editBookings.length ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1 : 2
+    editBookings.length
+      ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1
+      : initialAdults && initialAdults > 0
+      ? initialAdults
+      : 2
   );
   const [children5to15, setChildren5to15] = useState(() =>
     editBookings.reduce((s, b) => s + (b.guests?.children5to15 ?? 0), 0)

@@ -45,6 +45,7 @@ export const CustomerApp: React.FC<Props> = ({ onStaffLogin }) => {
         }}
         initialStartOffset={initialSelection?.startOffset}
         initialDays={initialSelection?.days}
+        initialAdults={initialSelection?.guests}
         datesPreselected={!!initialSelection}
       />
     );
