@@ -1,0 +1,37 @@
+_format_version: "3.0"
+_transform: true
+
+# Declarative (DB-less) Kong config fronting the FastAPI backend.
+# Kong = highest-starred repo (Kong/kong, ~44k stars) offering "API
+# integration" as an API gateway. This is what customers/partners hit —
+# never the backend container directly.
+
+services:
+  - name: platform-backend
+    url: http://backend:8000
+    routes:
+      - name: platform-api
+        paths:
+          - /api
+        strip_path: true
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods: [GET, POST, PUT, DELETE, OPTIONS]
+          headers: [Authorization, Content-Type]
+          credentials: true
+
+      # Public endpoints (pricing, signup, login) get a generous shared
+      # rate limit so a signup burst doesn't trip per-consumer limits that
+      # don't exist yet for anonymous traffic.
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: local
+
+# Per-tier rate limits are applied to authenticated traffic via Kong
+# consumers once a user's JWT identifies their plan (wire up a
+# jwt/key-auth plugin + a small sync job that mirrors app.tiers.TIER_FEATURES
+# into consumer-level rate-limiting overrides as the next step here).

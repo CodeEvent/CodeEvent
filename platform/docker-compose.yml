@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform
+      POSTGRES_DB: platform
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # Not exposed to the host — all traffic in through Kong (below), which is
+  # the point of using an API gateway for our own API.
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://platform:platform@postgres:5432/platform
+      SIGHTINGS_SOURCE_PATH: /netalertx-attck-bridge-output/sightings.stix.json
+    depends_on:
+      - postgres
+    volumes:
+      - ../netalertx-attck-bridge/output:/netalertx-attck-bridge-output:ro
+
+  kong:
+    image: kong:3.7
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong.yml
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+    volumes:
+      - ./kong/kong.yml:/kong.yml:ro
+    ports:
+      - "8000:8000" # public API entry point -> routed to backend under /api
+      - "8001:8001" # Kong admin API (lock this down / disable in prod)
+    depends_on:
+      - backend
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - kong
+
+volumes:
+  postgres_data:
