@@ -168,7 +168,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
     () => primaryEditBooking?.umbrellaId ?? null
   );
   // Tapping a seat only highlights it -- the booking form itself only opens once the guest taps
-  // "Avanti" on the map's own footer, matching a tap-to-select-then-advance flow instead of
+  // "Conferma" on the map's own footer, matching a tap-to-select-then-advance flow instead of
   // jumping straight into the form. Editing an existing booking skips this (there's nothing to
   // "select", they're already picking up where their booking left off).
   const [formOpen, setFormOpen] = useState(() => Boolean(editContext));
@@ -191,15 +191,16 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const [ownHoldIds, setOwnHoldIds] = useState<string[]>([]);
   const [holdExpiresAt, setHoldExpiresAt] = useState<number | null>(null);
 
-  // Mirrors the booking-flow progress bar: Map (pick dates + spot) -> Dettagli (guests,
-  // lettini/sdraio, contact info and policy consent, all together) -> Riepilogo (read-only
-  // recap + hold countdown + cost breakdown) -> Pagamento (card entry). Editing an existing
-  // booking skips 'summary' entirely and confirms straight from Dettagli (see BookingForm's
-  // footer) since there's no new charge or hold to review.
-  const stepIndexForStage: Record<BookingFormStage, number> = { details: 1, summary: 2, payment: 3 };
+  // Only three steps, per the reference flow: (1) Mappa+Dettagli -- pick the spot and fill in
+  // guests/contact info on one dot, since picking a spot and confirming its details are really
+  // one "reservation" step; (2) Riepilogo (read-only recap + hold countdown + cost breakdown);
+  // (3) Pagamento (card entry). Editing an existing booking skips 'summary' entirely and
+  // confirms straight from Dettagli (see BookingForm's footer) since there's no new charge or
+  // hold to review.
+  const stepIndexForStage: Record<BookingFormStage, number> = { details: 0, summary: 1, payment: 2 };
   const isFormOpen = Boolean(selectedUmbrellaId && formOpen);
   const currentStepIndex = !isFormOpen ? 0 : stepIndexForStage[formStage];
-  const TOTAL_STEPS = 4;
+  const TOTAL_STEPS = 3;
   const currentStepTitle =
     step === 'dates'
       ? 'Scegli le date'
@@ -363,34 +364,35 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       rowBannerHeight={rowBannerHeight}
       rowPrices={priceBands.rowPrices}
       hasSelection={!!selectedUmbrellaId}
+      selectedUmbrella={umbrellas.find((u) => u.id === selectedUmbrellaId) ?? null}
+      guestsHint={initialAdults && initialAdults > 0 ? initialAdults : 2}
       onAdvance={handleAdvanceFromMap}
     />
   );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* One teal hero band carrying the venue identity in white text, matching the
-          search-home/beach-detail screens' header pattern, instead of a thin generic-brand
-          utility strip stacked over a separate plain-white venue block. */}
-      <View style={styles.heroBand}>
-        <View style={styles.heroTopRow}>
-          <Pressable onPress={onExitToLanding} style={styles.heroIconBtn} accessibilityLabel="Torna alla home">
-            <Ionicons name="chevron-back" size={20} color={colors.white} />
-          </Pressable>
-          <Pressable onPress={onManage} style={styles.heroIconBtn} accessibilityLabel="Gestisci la tua prenotazione">
-            <Ionicons name="person-circle-outline" size={20} color={colors.white} />
-          </Pressable>
-        </View>
-        <Text style={styles.heroTitle} numberOfLines={1} adjustsFontSizeToFit>
-          Bagno Pietrasanta
+      {/* Plain header (back chevron + venue name inline, dark text on the app's own
+          background) matching the "Reservation for [venue]" reference screens for this
+          booking flow specifically -- kept distinct from the teal hero band used by the
+          search-home/beach-detail/manage-booking screens, per the reference's own styling. */}
+      <View style={styles.plainHeader}>
+        <Pressable onPress={onExitToLanding} style={styles.plainHeaderBackBtn} accessibilityLabel="Torna alla home">
+          <Ionicons name="chevron-back" size={22} color={colors.text} />
+        </Pressable>
+        <Text style={styles.plainHeaderTitle} numberOfLines={1} adjustsFontSizeToFit>
+          Prenotazione per Bagno Pietrasanta
         </Text>
-        <Text style={styles.heroSubtitle}>
-          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
-        </Text>
+        <Pressable onPress={onManage} style={styles.plainHeaderBackBtn} accessibilityLabel="Gestisci la tua prenotazione">
+          <Ionicons name="person-circle-outline" size={20} color={colors.textMuted} />
+        </Pressable>
       </View>
 
       <View style={styles.stepTitleRow}>
         <Text style={styles.headerStepTitle}>{currentStepTitle}</Text>
+        <Text style={styles.headerDateText}>
+          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+        </Text>
       </View>
 
       <StepProgressBar totalSteps={TOTAL_STEPS} currentIndex={currentStepIndex} />
@@ -433,7 +435,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
               <View style={styles.sidebarEmpty}>
                 <Ionicons name="checkmark-circle-outline" size={36} color={colors.primary} />
                 <Text style={styles.sidebarEmptyText}>
-                  Ombrellone selezionato -- tocca "Avanti" sotto la mappa per continuare
+                  Ombrellone selezionato -- tocca "Conferma" sotto la mappa per continuare
                 </Text>
               </View>
             ) : (
@@ -682,6 +684,8 @@ const MapStep: React.FC<{
   rowBannerHeight: (row: number) => number;
   rowPrices: Map<number, number>;
   hasSelection: boolean;
+  selectedUmbrella: Umbrella | null;
+  guestsHint: number;
   onAdvance: () => void;
 }> = ({
   umbrellas,
@@ -700,6 +704,8 @@ const MapStep: React.FC<{
   rowBannerHeight,
   rowPrices,
   hasSelection,
+  selectedUmbrella,
+  guestsHint,
   onAdvance,
 }) => {
   // Where the Nord side ends and the Sud side begins, in the same units BeachCanvas positions
@@ -712,20 +718,13 @@ const MapStep: React.FC<{
   return (
   <>
     <View style={styles.mapHeader}>
-      <View style={styles.mapActionsRow}>
-        <Pressable onPress={onToggleFullMapView} style={[styles.changeDatesBtn, styles.mapActionBtn]}>
-          <Ionicons name={fullMapView ? 'contract-outline' : 'resize-outline'} size={13} color={colors.primaryDark} />
-          <Text style={styles.changeDatesText} numberOfLines={1}>
-            {fullMapView ? 'Vista compatta' : 'Vista completa'}
-          </Text>
-        </Pressable>
-        <Pressable onPress={onChangeDates} style={[styles.changeDatesBtn, styles.mapActionBtn]}>
-          <Ionicons name="calendar-outline" size={13} color={colors.primaryDark} />
-          <Text style={styles.changeDatesText} numberOfLines={1}>
-            Cambia date
-          </Text>
-        </Pressable>
-      </View>
+      <Pressable onPress={onChangeDates} style={styles.dateSelectPill}>
+        <Ionicons name="calendar-outline" size={14} color={colors.primaryDark} />
+        <Text style={styles.dateSelectPillText} numberOfLines={1}>
+          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+        </Text>
+        <Ionicons name="chevron-down" size={14} color={colors.primaryDark} />
+      </Pressable>
     </View>
 
     <View style={styles.legendRow}>
@@ -755,6 +754,14 @@ const MapStep: React.FC<{
       successivo.
     </Text>
 
+    <View style={styles.mapCanvasWrap}>
+    <Pressable
+      onPress={onToggleFullMapView}
+      style={styles.expandFab}
+      accessibilityLabel={fullMapView ? 'Vista compatta' : 'Vista completa'}
+    >
+      <Ionicons name={fullMapView ? 'contract-outline' : 'expand-outline'} size={18} color={colors.white} />
+    </Pressable>
     <BeachCanvas
       umbrellas={umbrellas}
       positions={positions}
@@ -868,21 +875,45 @@ const MapStep: React.FC<{
         );
       }}
     />
+    </View>
 
-    <View style={styles.mapFooterRow}>
-      <View style={styles.mapFooterLabel}>
-        <Text style={styles.mapFooterLabelText} numberOfLines={1}>
-          Scegli il tuo posto
+    <View style={styles.selectedSpotRow}>
+      <View style={styles.selectedSpotItem}>
+        <Ionicons name="pricetag-outline" size={16} color={colors.textMuted} />
+        <Text style={styles.selectedSpotText} numberOfLines={1}>
+          {selectedUmbrella ? `N. ${selectedUmbrella.number}` : 'Nessun posto'}
         </Text>
       </View>
-      <Pressable
-        onPress={onAdvance}
-        disabled={!hasSelection}
-        style={[styles.mapFooterCta, !hasSelection && styles.mapFooterCtaDisabled]}
-      >
-        <Text style={styles.mapFooterCtaText}>Avanti</Text>
-        <Ionicons name="arrow-forward" size={18} color={colors.white} />
-      </Pressable>
+      <View style={styles.selectedSpotItem}>
+        <Ionicons name="people-outline" size={16} color={colors.textMuted} />
+        <Text style={styles.selectedSpotText}>{guestsHint}</Text>
+      </View>
+      <View style={styles.selectedSpotItem}>
+        <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
+        <Text style={styles.selectedSpotText} numberOfLines={1}>
+          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+        </Text>
+      </View>
+      {selectedUmbrella && (
+        <Text style={styles.selectedSpotPrice} numberOfLines={1}>
+          {formatCurrency(rowPrices.get(selectedUmbrella.row) ?? 0)}
+        </Text>
+      )}
+    </View>
+
+    <Pressable
+      onPress={onAdvance}
+      disabled={!hasSelection}
+      style={[styles.mapConfirmBtn, !hasSelection && styles.mapConfirmBtnDisabled]}
+    >
+      <Text style={[styles.mapConfirmBtnText, !hasSelection && styles.mapConfirmBtnTextDisabled]}>Conferma</Text>
+    </Pressable>
+
+    <View style={styles.holdNoticeBox}>
+      <Ionicons name="time-outline" size={16} color={colors.peachDark} />
+      <Text style={styles.holdNoticeText}>
+        Dopo la selezione, il posto e la data restano bloccati per 5 minuti e non potranno essere cambiati.
+      </Text>
     </View>
   </>
   );
@@ -1894,24 +1925,39 @@ const ConfirmationModal: React.FC<{
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.card },
-  // Persistent branded bar across every step of the guest wizard, matching the reference app's
-  // solid-teal header -- matches the search-home/beach-detail screens' hero-band pattern
-  // (venue identity in white text on teal), instead of a generic-brand utility strip stacked
-  // over a separate plain-white venue block.
-  heroBand: {
-    backgroundColor: colors.primary,
+  // Plain cream header (back chevron + venue name inline) for the booking wizard specifically,
+  // matching the "Reservation for [venue]" reference screens -- kept distinct from the teal
+  // hero band used by the search-home/beach-detail/manage-booking screens, per the reference.
+  plainHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
   },
-  heroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heroIconBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { fontSize: 20, fontWeight: '800', color: colors.white, marginTop: spacing.sm },
-  heroSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
-  stepTitleRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
+  plainHeaderBackBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  plainHeaderTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+    marginHorizontal: spacing.sm,
+  },
+  stepTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+  },
   backLink: { flexDirection: 'row', alignItems: 'center' },
   backLinkText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   headerStepTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  headerDateText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
 
   dateStepBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   stepTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: spacing.md },
@@ -1955,21 +2001,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  // Both buttons share flex:1 so they're always identical in size and never overflow the
-  // screen, however narrow -- previously a fixed-content row could push the second button
-  // past the right edge on an iPhone-width viewport.
-  mapActionsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  mapActionBtn: { flex: 1, justifyContent: 'center' },
-  changeDatesBtn: {
+  // Bordered "Seleziona date" pill matching the reference's own date-select control -- an
+  // outlined chip rather than a filled button, since this screen's only other action (the
+  // floating expand button, see expandFab) is the filled one.
+  dateSelectPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.prenotatoBg,
+    alignSelf: 'flex-start',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.primary,
     borderRadius: radius.xl,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingVertical: 8,
+    marginTop: spacing.sm,
   },
-  changeDatesText: { color: colors.primaryDark, fontWeight: '700', fontSize: 12 },
+  dateSelectPillText: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
 
   legendRow: {
     flexDirection: 'row',
@@ -2018,31 +2065,64 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   priceBannerText: { color: colors.white, fontWeight: '800', fontSize: 12, letterSpacing: 0.3, paddingHorizontal: spacing.sm },
-  // Two-tone step-nav bar matching the reference design's "label left / solid AVANTI button
-  // right" footer -- shown on the map/selection step specifically, since tapping a seat here
-  // only highlights it (see handleTap) rather than opening the booking form immediately.
-  mapFooterRow: { flexDirection: 'row' },
-  mapFooterLabel: {
-    flex: 1,
-    backgroundColor: colors.card,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  mapFooterLabelText: { color: colors.text, fontWeight: '700', fontSize: 14 },
-  mapFooterCta: {
-    flex: 1,
-    flexDirection: 'row',
+  // Wraps BeachCanvas so the expand/fullscreen toggle can float over its top-right corner,
+  // matching the reference's floating map-expand icon (instead of a "Vista completa" pill
+  // competing for space in the header row above).
+  mapCanvasWrap: { position: 'relative' },
+  expandFab: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    zIndex: 5,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
+    backgroundColor: 'rgba(20,20,20,0.55)',
   },
-  mapFooterCtaDisabled: { backgroundColor: colors.border },
-  mapFooterCtaText: { color: colors.white, fontWeight: '800', fontSize: 15 },
+  // "Selected spot" summary row (ticket/people/calendar icons + price), matching the
+  // reference's pre-confirm recap -- shown above the Confirm button rather than a single
+  // label, since it's the guest's last check before locking the spot for 5 minutes.
+  selectedSpotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+    gap: spacing.md,
+  },
+  selectedSpotItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  selectedSpotText: { color: colors.text, fontWeight: '600', fontSize: 12 },
+  selectedSpotPrice: { color: colors.text, fontWeight: '800', fontSize: 14, marginLeft: 'auto' },
+  // Dark-navy "Confirm" button with mint-green text -- a one-off accent distinct from the
+  // shared teal primary button, matching this specific reference's own button styling.
+  mapConfirmBtn: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    borderRadius: radius.xl,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    backgroundColor: '#12283D',
+  },
+  mapConfirmBtnDisabled: { backgroundColor: colors.border },
+  mapConfirmBtnText: { color: '#8FF5CB', fontWeight: '800', fontSize: 15 },
+  mapConfirmBtnTextDisabled: { color: colors.textMuted },
+  holdNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    padding: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.peach,
+    backgroundColor: colors.peachBg,
+  },
+  holdNoticeText: { flex: 1, color: colors.peachDark, fontSize: 12, fontWeight: '600' },
   cell: {
     position: 'absolute',
     alignItems: 'center',
