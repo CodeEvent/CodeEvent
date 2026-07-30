@@ -140,7 +140,7 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit, showBackL
       <View style={styles.header}>
         {showBackLink && (
           <Pressable onPress={onBack} style={styles.backLink}>
-            <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+            <Ionicons name="chevron-back" size={14} color={colors.white} />
             <Text style={styles.backLinkText}>Torna alla home</Text>
           </Pressable>
         )}
@@ -401,11 +401,19 @@ const equipStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.card },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.sm },
+  // Teal hero band matching the search-home/beach-detail/booking-wizard screens' shared
+  // header pattern (identity/title in white text on teal), for one consistent look
+  // across every guest-facing screen instead of each picking its own plain header style.
+  header: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+  },
   backLink: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs },
-  backLinkText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
-  headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  backLinkText: { color: colors.white, fontSize: 12, fontWeight: '600' },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: colors.white },
+  headerSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
   body: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   label: { fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
   input: {

@@ -369,28 +369,27 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.topBar}>
-        <Pressable onPress={onExitToLanding} style={styles.topBarIconBtn} accessibilityLabel="Torna alla home">
-          <Ionicons name="chevron-back" size={20} color={colors.white} />
-        </Pressable>
-        <View style={styles.topBarBrand}>
-          <Ionicons name="umbrella" size={16} color={colors.white} />
-          <Text style={styles.topBarBrandText} numberOfLines={1}>
-            Top Spiagge
-          </Text>
+      {/* One teal hero band carrying the venue identity in white text, matching the
+          search-home/beach-detail screens' header pattern, instead of a thin generic-brand
+          utility strip stacked over a separate plain-white venue block. */}
+      <View style={styles.heroBand}>
+        <View style={styles.heroTopRow}>
+          <Pressable onPress={onExitToLanding} style={styles.heroIconBtn} accessibilityLabel="Torna alla home">
+            <Ionicons name="chevron-back" size={20} color={colors.white} />
+          </Pressable>
+          <Pressable onPress={onManage} style={styles.heroIconBtn} accessibilityLabel="Gestisci la tua prenotazione">
+            <Ionicons name="person-circle-outline" size={20} color={colors.white} />
+          </Pressable>
         </View>
-        <Pressable onPress={onManage} style={styles.topBarIconBtn} accessibilityLabel="Gestisci la tua prenotazione">
-          <Ionicons name="person-circle-outline" size={20} color={colors.white} />
-        </Pressable>
-      </View>
-
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit>
+        <Text style={styles.heroTitle} numberOfLines={1} adjustsFontSizeToFit>
           Bagno Pietrasanta
         </Text>
-        <Text style={styles.headerSubtitle}>
+        <Text style={styles.heroSubtitle}>
           {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
         </Text>
+      </View>
+
+      <View style={styles.stepTitleRow}>
         <Text style={styles.headerStepTitle}>{currentStepTitle}</Text>
       </View>
 
@@ -1896,25 +1895,23 @@ const ConfirmationModal: React.FC<{
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.card },
   // Persistent branded bar across every step of the guest wizard, matching the reference app's
-  // solid-teal header -- distinct from `header` below, which is the white venue/date/step-title
-  // block underneath it.
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  // solid-teal header -- matches the search-home/beach-detail screens' hero-band pattern
+  // (venue identity in white text on teal), instead of a generic-brand utility strip stacked
+  // over a separate plain-white venue block.
+  heroBand: {
     backgroundColor: colors.primary,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
-  topBarIconBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  topBarBrand: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  topBarBrandText: { color: colors.white, fontWeight: '800', fontSize: 15 },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heroIconBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  heroTitle: { fontSize: 20, fontWeight: '800', color: colors.white, marginTop: spacing.sm },
+  heroSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  stepTitleRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
   backLink: { flexDirection: 'row', alignItems: 'center' },
   backLinkText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
-  headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  headerStepTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginTop: spacing.sm },
+  headerStepTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
 
   dateStepBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   stepTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginTop: spacing.md },
