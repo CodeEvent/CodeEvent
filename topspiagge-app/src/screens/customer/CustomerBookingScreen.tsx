@@ -176,6 +176,10 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   // just highlights the umbrella(s) currently being composed in red/blue, and clears
   // itself the moment selectedUmbrellaId does (cancel, backdrop, Annulla, navigate away).
   const [pendingExtraIds, setPendingExtraIds] = useState<string[]>([]);
+  // Tracks which umbrella the "you'll need more umbrellas" reminder was already shown for, so
+  // re-tapping "Conferma" for the same selection doesn't nag again (picking a different
+  // umbrella resets it, since that's a fresh choice worth re-confirming).
+  const [multiUmbrellaNoticeShownFor, setMultiUmbrellaNoticeShownFor] = useState<string | null>(null);
   const pendingIds = useMemo(
     () => (selectedUmbrellaId ? [selectedUmbrellaId, ...pendingExtraIds] : []),
     [selectedUmbrellaId, pendingExtraIds]
@@ -326,8 +330,27 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
     setFormStage('details');
   };
 
+  // Known ahead of the map -- carried from the home search card's "Persone" stepper (falls
+  // back to 2 if the guest arrived without going through search first). Used both to label
+  // the "Selected spot" row and to warn the guest, right when they advance off the map, that
+  // their group needs more than one umbrella.
+  const guestsHint = initialAdults && initialAdults > 0 ? initialAdults : 2;
+
   const handleAdvanceFromMap = () => {
-    if (selectedUmbrellaId) setFormOpen(true);
+    if (!selectedUmbrellaId) return;
+    if (!editContext && multiUmbrellaNoticeShownFor !== selectedUmbrellaId) {
+      const needed = umbrellasNeededFor(guestsHint);
+      if (needed > 1) {
+        setMultiUmbrellaNoticeShownFor(selectedUmbrellaId);
+        const extraCount = needed - 1;
+        const extraText = extraCount === 1 ? 'un altro ombrellone' : `altri ${extraCount} ombrelloni`;
+        alert(
+          'Serviranno più ombrelloni',
+          `Per ${guestsHint} persone servono almeno ${needed} ombrelloni (max ${MAX_ADULTS_PER_UMBRELLA} persone ciascuno). Ti abbiamo già suggerito ${extraText} vicino al tuo: potrai controllarli nel prossimo passo.`
+        );
+      }
+    }
+    setFormOpen(true);
   };
 
   const closeForm = () => {
@@ -365,7 +388,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       rowPrices={priceBands.rowPrices}
       hasSelection={!!selectedUmbrellaId}
       selectedUmbrella={umbrellas.find((u) => u.id === selectedUmbrellaId) ?? null}
-      guestsHint={initialAdults && initialAdults > 0 ? initialAdults : 2}
+      guestsHint={guestsHint}
       onAdvance={handleAdvanceFromMap}
     />
   );
@@ -1086,16 +1109,37 @@ const BookingForm: React.FC<{
   // top of their original group.
   const isOriginalPrimary = editBookings.length > 0 && editBookings[0].umbrellaId === umbrellaId;
 
+  // Computed once up front (not just inside the `adults` initializer) so the extra-umbrella
+  // seeding below can use the exact same starting headcount -- otherwise a group of e.g. 8
+  // arriving with initialAdults already set would render with "Adulti: 8" but zero extra
+  // umbrellas pre-selected, leaving capacity at 4 and silently blocking "Continua" until the
+  // guest happened to notice the small red hint and manually add one from the suggestions.
+  const startingAdults = editBookings.length
+    ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1
+    : initialAdults && initialAdults > 0
+    ? initialAdults
+    : 2;
+  // Same reasoning as above, computed once for the extra-umbrella + equipment initializers
+  // below: a brand-new booking whose starting headcount already needs more than one umbrella
+  // gets the rest of the group nearby pre-selected immediately, instead of only ever gaining
+  // extras once the guest manually nudges the "Adulti" stepper (see changeAdults/adjustExtras).
+  const startingExtraIds =
+    !isOriginalPrimary && !editContext
+      ? (() => {
+          const needed = Math.max(0, umbrellasNeededFor(startingAdults) - 1);
+          if (needed === 0) return [];
+          const anchor = getUmbrella(umbrellaId);
+          if (!anchor) return [];
+          return findNearestUmbrellas(anchor, allUmbrellas, isFreeForPeriod, new Set([umbrellaId]), needed).map(
+            (u) => u.id
+          );
+        })()
+      : [];
+
   const [phone, setPhone] = useState('');
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [adults, setAdults] = useState(() =>
-    editBookings.length
-      ? editBookings.reduce((s, b) => s + (b.guests?.adults ?? 0), 0) || 1
-      : initialAdults && initialAdults > 0
-      ? initialAdults
-      : 2
-  );
+  const [adults, setAdults] = useState(() => startingAdults);
   const [children5to15, setChildren5to15] = useState(() =>
     editBookings.reduce((s, b) => s + (b.guests?.children5to15 ?? 0), 0)
   );
@@ -1121,7 +1165,9 @@ const BookingForm: React.FC<{
       ? `${Math.floor(holdSecondsLeft / 60)}:${String(holdSecondsLeft % 60).padStart(2, '0')}`
       : null;
   const [extraUmbrellaIds, setExtraUmbrellaIds] = useState<string[]>(() =>
-    isOriginalPrimary ? editBookings.filter((b) => b.umbrellaId !== umbrellaId).map((b) => b.umbrellaId) : []
+    isOriginalPrimary
+      ? editBookings.filter((b) => b.umbrellaId !== umbrellaId).map((b) => b.umbrellaId)
+      : startingExtraIds
   );
   const [equipment, setEquipment] = useState<Record<string, Equipment>>(() => {
     if (isOriginalPrimary && editBookings.length) {
@@ -1132,7 +1178,13 @@ const BookingForm: React.FC<{
       return map;
     }
     const matching = editBookings.find((b) => b.umbrellaId === umbrellaId);
-    return { [umbrellaId]: matching ? { beds: matching.beds ?? 0, chairs: matching.chairs ?? 0 } : defaultEquipmentFor(umbrellaId) };
+    const map: Record<string, Equipment> = {
+      [umbrellaId]: matching ? { beds: matching.beds ?? 0, chairs: matching.chairs ?? 0 } : defaultEquipmentFor(umbrellaId),
+    };
+    startingExtraIds.forEach((id) => {
+      map[id] = defaultEquipmentFor(id);
+    });
+    return map;
   });
 
   useEffect(() => {
