@@ -739,7 +739,14 @@ const MapStep: React.FC<{
   const sudStart = nordWidth + WALKWAY_WIDTH + GAP;
 
   return (
-  <>
+  // A real View (not a Fragment) so `flex: 1` can bound this step's height to whatever's left
+  // of the screen below the header/progress-bar -- without it, BeachCanvas's own `flex: 1`
+  // has no definite space to fill and instead renders at its full natural content height (all
+  // 17 rows), pushing "Conferma" and everything below it past the bottom of the viewport with
+  // no way to scroll there (the app disables native page scroll; BeachCanvas's drag-to-pan
+  // only pans *within* its own box, it doesn't reveal siblings after it). Bounding this step
+  // properly means the map now scrolls/pans within a fixed-size box and the footer stays put.
+  <View style={styles.mapStepOuter}>
     <View style={styles.mapHeader}>
       <Pressable onPress={onChangeDates} style={styles.dateSelectPill}>
         <Ionicons name="calendar-outline" size={14} color={colors.primaryDark} />
@@ -938,7 +945,7 @@ const MapStep: React.FC<{
         Dopo la selezione, il posto e la data restano bloccati per 5 minuti e non potranno essere cambiati.
       </Text>
     </View>
-  </>
+  </View>
   );
 };
 
@@ -2117,10 +2124,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   priceBannerText: { color: colors.white, fontWeight: '800', fontSize: 12, letterSpacing: 0.3, paddingHorizontal: spacing.sm },
+  // flex: 1 bounds the whole map step to the space left below the header/progress-bar (see the
+  // comment on MapStep's root View), so its own flex:1 child below (mapCanvasWrap) has a real,
+  // definite height to fill instead of expanding to its full natural content size.
+  mapStepOuter: { flex: 1 },
   // Wraps BeachCanvas so the expand/fullscreen toggle can float over its top-right corner,
   // matching the reference's floating map-expand icon (instead of a "Vista completa" pill
-  // competing for space in the header row above).
-  mapCanvasWrap: { position: 'relative' },
+  // competing for space in the header row above). flex: 1 fills whatever's left between the
+  // price hint above and the footer below, so BeachCanvas's own flex:1 (and its dragToPan
+  // panning) resolves against a real bounded box instead of rendering at full content height.
+  mapCanvasWrap: { position: 'relative', flex: 1 },
   expandFab: {
     position: 'absolute',
     top: spacing.sm,
