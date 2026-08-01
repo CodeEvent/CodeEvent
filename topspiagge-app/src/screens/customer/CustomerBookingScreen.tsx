@@ -301,10 +301,6 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const priceBands = useMemo(() => buildPriceBands(umbrellas), [umbrellas]);
   const rowBannerHeight = (row: number) => (priceBands.isNewBandRow(row) ? PRICE_BANNER_HEIGHT : 0);
   const positions = useUmbrellaPositions(umbrellas, cellSize, GAP, cellSize, SECTION_WALKWAYS, rowBannerHeight);
-  const freeCounts = {
-    nord: umbrellas.filter((u) => u.side === 'nord' && isFreeForPeriod(u)).length,
-    sud: umbrellas.filter((u) => u.side === 'sud' && isFreeForPeriod(u)).length,
-  };
 
   const handleTap = (u: Umbrella) => {
     if (!isFreeForPeriod(u)) {
@@ -377,7 +373,6 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       labelWidth={labelWidth}
       dateFrom={dateFrom}
       dateTo={dateTo}
-      freeCounts={freeCounts}
       isFreeForPeriod={isFreeForPeriod}
       pendingIds={pendingIds}
       onTap={handleTap}
@@ -697,7 +692,6 @@ const MapStep: React.FC<{
   labelWidth: number;
   dateFrom: string;
   dateTo: string;
-  freeCounts: { nord: number; sud: number };
   isFreeForPeriod: (u: Umbrella) => boolean;
   pendingIds: string[];
   onTap: (u: Umbrella) => void;
@@ -717,7 +711,6 @@ const MapStep: React.FC<{
   labelWidth,
   dateFrom,
   dateTo,
-  freeCounts,
   isFreeForPeriod,
   pendingIds,
   onTap,
@@ -756,33 +749,6 @@ const MapStep: React.FC<{
         <Ionicons name="chevron-down" size={14} color={colors.primaryDark} />
       </Pressable>
     </View>
-
-    <View style={styles.legendRow}>
-      <View style={styles.legendItem}>
-        <View style={[styles.legendDot, { backgroundColor: colors.libero }]} />
-        <Text style={styles.legendText}>Libero</Text>
-      </View>
-      <View style={styles.legendItem}>
-        <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
-        <Text style={styles.legendText}>Non disponibile</Text>
-      </View>
-      {pendingIds.length > 0 && (
-        <View style={styles.legendItem}>
-          <View style={styles.legendDotSplit}>
-            <View style={{ flex: 1, backgroundColor: colors.occupato }} />
-            <View style={{ flex: 1, backgroundColor: colors.prenotato }} />
-          </View>
-          <Text style={styles.legendText}>La tua scelta</Text>
-        </View>
-      )}
-      <Text style={styles.legendCounts}>
-        Nord {freeCounts.nord} liberi · Sud {freeCounts.sud} liberi
-      </Text>
-    </View>
-    <Text style={styles.mapPriceHint}>
-      Il prezzo di ogni sezione è il prezzo base al giorno, senza attrezzatura: la scegli e si aggiunge al passo
-      successivo.
-    </Text>
 
     <View style={styles.mapCanvasWrap}>
     <Pressable
@@ -938,13 +904,6 @@ const MapStep: React.FC<{
     >
       <Text style={[styles.mapConfirmBtnText, !hasSelection && styles.mapConfirmBtnTextDisabled]}>Conferma</Text>
     </Pressable>
-
-    <View style={styles.holdNoticeBox}>
-      <Ionicons name="time-outline" size={16} color={colors.peachDark} />
-      <Text style={styles.holdNoticeText}>
-        Dopo la selezione, il posto e la data restano bloccati per 5 minuti e non potranno essere cambiati.
-      </Text>
-    </View>
   </View>
   );
 };
@@ -2077,32 +2036,6 @@ const styles = StyleSheet.create({
   },
   dateSelectPillText: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
 
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.md },
-  legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
-  legendDotSplit: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 4,
-    overflow: 'hidden',
-    flexDirection: 'row',
-  },
-  legendText: { fontSize: 11, color: colors.textMuted },
-  legendCounts: { fontSize: 11, color: colors.textMuted, fontWeight: '700', marginLeft: 'auto' },
-  mapPriceHint: {
-    fontSize: 11,
-    color: colors.textMuted,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.xs,
-  },
   // One bar per side (Nord/Sud), shown once above the first row of each price tier -- mirrors
   // a seat map's "STANDARD - FROM X" section banner, sized to actually be legible (the old
   // version squeezed this into the narrow row-label column and truncated). `left`/`right` (or
@@ -2131,7 +2064,7 @@ const styles = StyleSheet.create({
   // Wraps BeachCanvas so the expand/fullscreen toggle can float over its top-right corner,
   // matching the reference's floating map-expand icon (instead of a "Vista completa" pill
   // competing for space in the header row above). flex: 1 fills whatever's left between the
-  // price hint above and the footer below, so BeachCanvas's own flex:1 (and its dragToPan
+  // date pill above and the footer below, so BeachCanvas's own flex:1 (and its dragToPan
   // panning) resolves against a real bounded box instead of rendering at full content height.
   mapCanvasWrap: { position: 'relative', flex: 1 },
   expandFab: {
@@ -2175,19 +2108,6 @@ const styles = StyleSheet.create({
   mapConfirmBtnDisabled: { backgroundColor: colors.border },
   mapConfirmBtnText: { color: '#8FF5CB', fontWeight: '800', fontSize: 15 },
   mapConfirmBtnTextDisabled: { color: colors.textMuted },
-  holdNoticeBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    padding: spacing.sm,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.peach,
-    backgroundColor: colors.peachBg,
-  },
-  holdNoticeText: { flex: 1, color: colors.peachDark, fontSize: 12, fontWeight: '600' },
   cell: {
     position: 'absolute',
     alignItems: 'center',
