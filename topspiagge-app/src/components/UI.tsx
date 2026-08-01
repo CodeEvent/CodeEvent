@@ -210,12 +210,18 @@ export const Stepper: React.FC<{
   max?: number;
   icon?: keyof typeof Ionicons.glyphMap;
   onChange: (value: number) => void;
-}> = ({ label, value, min = 0, max = Infinity, icon, onChange }) => (
+  /** Skips the icon+label row, keeping just the +/- controls -- for spots where the label would
+   * repeat text already shown alongside (e.g. a cart row whose article name is the left-hand
+   * label already). `label` is still required and used for the a11y increase/decrease hints. */
+  hideLabel?: boolean;
+}> = ({ label, value, min = 0, max = Infinity, icon, onChange, hideLabel }) => (
   <View style={styles.stepperRow}>
-    <View style={styles.stepperLabelRow}>
-      {icon && <Ionicons name={icon} size={16} color={colors.textMuted} style={{ marginRight: spacing.xs }} />}
-      <Text style={styles.stepperLabel}>{label}</Text>
-    </View>
+    {!hideLabel && (
+      <View style={styles.stepperLabelRow}>
+        {icon && <Ionicons name={icon} size={16} color={colors.textMuted} style={{ marginRight: spacing.xs }} />}
+        <Text style={styles.stepperLabel}>{label}</Text>
+      </View>
+    )}
     <View style={styles.stepperControls}>
       <Pressable
         onPress={() => onChange(Math.max(min, value - 1))}

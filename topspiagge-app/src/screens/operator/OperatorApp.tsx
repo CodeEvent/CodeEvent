@@ -110,7 +110,10 @@ const styles = StyleSheet.create({
   },
   scanBtn: {
     position: 'absolute',
-    top: spacing.xl,
+    // Sits below spacing.xl + a typical per-screen header row (title + a filter/legend
+    // pill), not overlapping it -- previously both this and the bell sat at spacing.xl,
+    // which visually collided with Piantina/Quadro's own "Filtri" toggle on phone widths.
+    top: spacing.xl + 32,
     right: spacing.lg + 52,
     zIndex: 50,
     width: 44,

@@ -214,11 +214,7 @@ export const ManageBookingScreen: React.FC<Props> = ({ onBack, onEdit, showBackL
                 <View style={{ flex: 1 }}>
                   <Text style={styles.verificationTitle}>Codice di verifica pagamento</Text>
                   <Text style={styles.verificationCode}>{verificationCodeFor(primary.reference)}</Text>
-                  <Text style={styles.verificationHint}>
-                    Il pagamento risulta completato: questo è il codice che ti abbiamo inviato via
-                    email/SMS. Comunicalo in reception per completare il check-in -- in alternativa
-                    porta con te la ricevuta di pagamento ricevuta via email o dell'estratto conto.
-                  </Text>
+                  <Text style={styles.verificationHint}>Comunicalo in reception per il check-in.</Text>
                 </View>
               </View>
             )}

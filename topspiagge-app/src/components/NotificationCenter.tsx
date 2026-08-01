@@ -182,7 +182,9 @@ export const NotificationCenter: React.FC = () => {
 const styles = StyleSheet.create({
   bell: {
     position: 'absolute',
-    top: spacing.xl,
+    // Matches scanBtn's top offset in OperatorApp.tsx -- both sit below a typical
+    // per-screen header row instead of overlapping it (see that file's comment).
+    top: spacing.xl + 32,
     right: spacing.lg,
     zIndex: 50,
     width: 44,

@@ -53,13 +53,13 @@ export const ArchiviScreen: React.FC = () => {
           </Pressable>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm }}>
-          <Chip label="Today's Dashboard" selected={tab === 'oggi'} onPress={() => setTab('oggi')} />
+          <Chip label="Oggi" selected={tab === 'oggi'} onPress={() => setTab('oggi')} />
           <Chip label="Prenotazioni" selected={tab === 'prenotazioni'} onPress={() => setTab('prenotazioni')} />
           <Chip label="Lista d'attesa" selected={tab === 'attesa'} onPress={() => setTab('attesa')} />
           <Chip label="Filtri" selected={tab === 'filtri'} onPress={() => setTab('filtri')} />
           <Chip label="Disposizione" selected={tab === 'disposizione'} onPress={() => setTab('disposizione')} />
           <Chip label="Listini" selected={tab === 'listini'} onPress={() => setTab('listini')} />
-          <Chip label="Clienti (CRM)" selected={tab === 'clienti'} onPress={() => setTab('clienti')} />
+          <Chip label="Clienti" selected={tab === 'clienti'} onPress={() => setTab('clienti')} />
           <Chip label="Articoli" selected={tab === 'articoli'} onPress={() => setTab('articoli')} />
           <Chip label="Team" selected={tab === 'team'} onPress={() => setTab('team')} />
         </View>
@@ -954,13 +954,6 @@ const DisposizioneTab: React.FC = () => {
         <LayoutDesignerScreen />
       ) : (
         <>
-      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
-        <Text style={styles.helperText}>
-          Trascina un ombrellone su un altro per scambiarne la posizione. Ogni fila ha 20
-          ombrelloni, 10 lato Nord e 10 lato Sud separati da un camminamento.
-        </Text>
-      </View>
-
       {umbrellas.length === 0 ? (
         <View style={{ paddingHorizontal: spacing.lg }}>
           <Card style={{ alignItems: 'center', padding: spacing.xl }}>
@@ -1702,10 +1695,7 @@ const TeamTab: React.FC = () => {
 
   return (
     <ScrollView contentContainerStyle={styles.scrollBody}>
-      <Text style={styles.helperText}>
-        Invita un collaboratore ad accedere all'area operatori di questo lido. Riceverà un'email
-        per impostare la propria password.
-      </Text>
+      <Text style={styles.helperText}>Invita un collaboratore via email.</Text>
       {!isSupabaseConfigured ? (
         <Card>
           <Text style={styles.itemTitle}>Non disponibile in modalità locale</Text>

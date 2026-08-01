@@ -67,6 +67,8 @@ export const ContoScreen: React.FC = () => {
   const alert = useAppAlert();
   const [customerQuery, setCustomerQuery] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   const [umbrellaId, setUmbrellaId] = useState<string | undefined>(route.params?.umbrellaId);
   const [items, setItems] = useState<ContoItem[]>([]);
@@ -271,26 +273,13 @@ export const ContoScreen: React.FC = () => {
             ))}
           </ScrollView>
 
-          <Text style={[styles.cardLabel, { marginTop: spacing.md }]}>Cerca cliente da modificare</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Cerca per nome..."
-            placeholderTextColor={colors.textMuted}
-            value={customerQuery}
-            onChangeText={setCustomerQuery}
+          <Button
+            title="Cerca cliente"
+            icon="search"
+            variant="secondary"
+            onPress={() => setCustomerSearchOpen(true)}
+            style={{ marginTop: spacing.md }}
           />
-          {matchingCustomers.map((c) => (
-            <Button
-              key={c.id}
-              title={`${c.name}${c.vip ? ' ⭐' : ''} · ${c.phone}`}
-              variant="secondary"
-              onPress={() => {
-                setEditingCustomer(c);
-                setCustomerQuery('');
-              }}
-              style={{ marginBottom: spacing.xs }}
-            />
-          ))}
 
           {umbrella && (
             <View style={styles.umbrellaInfo}>
@@ -389,52 +378,13 @@ export const ContoScreen: React.FC = () => {
           )}
         </Card>
 
-        <Card style={{ marginBottom: spacing.lg }}>
-          <Text style={styles.cardLabel}>Catalogo articoli</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>
-            {(Object.keys(CATEGORY_LABEL) as ArticleCategory[]).map((cat) => (
-              <Chip
-                key={cat}
-                label={CATEGORY_LABEL[cat]}
-                selected={categoryFilter === cat}
-                onPress={() => setCategoryFilter(cat)}
-              />
-            ))}
-          </ScrollView>
-          {filteredArticles.map((a) => {
-            const linkedToBooking = !!booking && EQUIPMENT_ARTICLE_IDS.has(a.id);
-            const inCartQty = items.find((i) => i.articleId === a.id)?.qty ?? 0;
-            const stockTracked = a.stock != null;
-            const stockLeft = stockTracked ? (a.stock as number) - inCartQty : undefined;
-            const outOfStock = stockTracked && (stockLeft as number) <= 0;
-            return (
-              <View key={a.id} style={styles.articleRow}>
-                <View style={styles.articleIconBox}>
-                  <Ionicons name={CATEGORY_ICON[a.category]} size={18} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.articleName}>{a.name}</Text>
-                  <Text style={styles.muted}>
-                    {formatCurrency(priceFor(a))} / {a.unit}
-                    {linkedToBooking ? ' · sull\'account della prenotazione' : ''}
-                  </Text>
-                  {stockTracked && (
-                    <Text style={[styles.muted, (stockLeft as number) <= 5 && styles.stockLow]}>
-                      Scorte: {stockLeft} {outOfStock ? '· esaurito' : ''}
-                    </Text>
-                  )}
-                </View>
-                <Button
-                  title="+ Aggiungi"
-                  variant="secondary"
-                  onPress={() => addItem(a)}
-                  disabled={outOfStock}
-                  style={{ paddingVertical: 6 }}
-                />
-              </View>
-            );
-          })}
-        </Card>
+        <Button
+          title="Aggiungi articolo"
+          icon="add-circle-outline"
+          variant="secondary"
+          onPress={() => setCatalogOpen(true)}
+          style={{ marginBottom: spacing.lg }}
+        />
 
         <Card style={{ marginBottom: spacing.lg }}>
           <Text style={styles.cardLabel}>Nel conto</Text>
@@ -447,11 +397,12 @@ export const ContoScreen: React.FC = () => {
             return (
               <View key={i.articleId} style={styles.itemRow}>
                 <Text style={{ flex: 1, color: colors.text }}>{article.name}</Text>
-                <View style={styles.qtyControls}>
-                  <Button title="−" variant="secondary" onPress={() => changeQty(i.articleId, -1)} style={styles.qtyBtn} />
-                  <Text style={styles.qtyText}>{i.qty}</Text>
-                  <Button title="+" variant="secondary" onPress={() => changeQty(i.articleId, 1)} style={styles.qtyBtn} />
-                </View>
+                <Stepper
+                  label={article.name}
+                  hideLabel
+                  value={i.qty}
+                  onChange={(v) => changeQty(i.articleId, v - i.qty)}
+                />
                 <Text style={styles.itemSubtotal}>{formatCurrency(i.qty * i.unitPrice)}</Text>
               </View>
             );
@@ -490,12 +441,13 @@ export const ContoScreen: React.FC = () => {
             ))}
           </View>
 
-          <Text style={[styles.cardLabel, { marginTop: spacing.lg }]}>Dividi conto (alla romana)</Text>
-          <View style={styles.row}>
-            <Button title="−" variant="secondary" onPress={() => setSplitCount((v) => Math.max(1, v - 1))} style={styles.qtyBtn} />
-            <Text style={styles.qtyText}>{splitCount} {splitCount === 1 ? 'persona' : 'persone'}</Text>
-            <Button title="+" variant="secondary" onPress={() => setSplitCount((v) => v + 1)} style={styles.qtyBtn} />
+          <View style={[styles.row, { marginTop: spacing.lg }]}>
+            <Text style={styles.cardLabel}>Dividi conto (alla romana)</Text>
+            <View style={{ marginLeft: 'auto' }}>
+              <Stepper label="persone" hideLabel min={1} value={splitCount} onChange={setSplitCount} />
+            </View>
           </View>
+          <Text style={styles.muted}>{splitCount} {splitCount === 1 ? 'persona' : 'persone'}</Text>
           {splitCount > 1 && (
             <Text style={styles.muted}>Quota a persona: {formatCurrency(perPerson)}</Text>
           )}
@@ -581,6 +533,102 @@ export const ContoScreen: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
+      <Modal
+        visible={customerSearchOpen}
+        transparent
+        animationType={sidebarMode ? 'fade' : 'slide'}
+        onRequestClose={() => setCustomerSearchOpen(false)}
+      >
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.customerModalBackdrop} onPress={() => setCustomerSearchOpen(false)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.customerModalSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.cardLabel}>Cerca cliente</Text>
+            <TextInput
+              style={[styles.input, { marginTop: spacing.sm }]}
+              placeholder="Cerca per nome..."
+              placeholderTextColor={colors.textMuted}
+              value={customerQuery}
+              onChangeText={setCustomerQuery}
+              autoFocus
+            />
+            <ScrollView style={{ marginTop: spacing.sm }}>
+              {matchingCustomers.map((c) => (
+                <Button
+                  key={c.id}
+                  title={`${c.name}${c.vip ? ' ⭐' : ''} · ${c.phone}`}
+                  variant="secondary"
+                  onPress={() => {
+                    setEditingCustomer(c);
+                    setCustomerQuery('');
+                    setCustomerSearchOpen(false);
+                  }}
+                  style={{ marginBottom: spacing.xs }}
+                />
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal
+        visible={catalogOpen}
+        transparent
+        animationType={sidebarMode ? 'fade' : 'slide'}
+        onRequestClose={() => setCatalogOpen(false)}
+      >
+        <Pressable style={sidebarMode ? sidebarBackdrop : styles.customerModalBackdrop} onPress={() => setCatalogOpen(false)}>
+          <Pressable style={sidebarMode ? sidebarSheet() : styles.customerModalSheet} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.cardLabel}>Catalogo articoli</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}
+            >
+              {(Object.keys(CATEGORY_LABEL) as ArticleCategory[]).map((cat) => (
+                <Chip
+                  key={cat}
+                  label={CATEGORY_LABEL[cat]}
+                  selected={categoryFilter === cat}
+                  onPress={() => setCategoryFilter(cat)}
+                />
+              ))}
+            </ScrollView>
+            <ScrollView>
+              {filteredArticles.map((a) => {
+                const linkedToBooking = !!booking && EQUIPMENT_ARTICLE_IDS.has(a.id);
+                const inCartQty = items.find((i) => i.articleId === a.id)?.qty ?? 0;
+                const stockTracked = a.stock != null;
+                const stockLeft = stockTracked ? (a.stock as number) - inCartQty : undefined;
+                const outOfStock = stockTracked && (stockLeft as number) <= 0;
+                return (
+                  <View key={a.id} style={styles.articleRow}>
+                    <View style={styles.articleIconBox}>
+                      <Ionicons name={CATEGORY_ICON[a.category]} size={18} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.articleName}>{a.name}</Text>
+                      <Text style={styles.muted}>
+                        {formatCurrency(priceFor(a))} / {a.unit}
+                        {linkedToBooking ? " · sull'account della prenotazione" : ''}
+                      </Text>
+                      {stockTracked && (
+                        <Text style={[styles.muted, (stockLeft as number) <= 5 && styles.stockLow]}>
+                          Scorte: {stockLeft} {outOfStock ? '· esaurito' : ''}
+                        </Text>
+                      )}
+                    </View>
+                    <Button
+                      title="+ Aggiungi"
+                      variant="secondary"
+                      onPress={() => addItem(a)}
+                      disabled={outOfStock}
+                      style={{ paddingVertical: 6 }}
+                    />
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -648,9 +696,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  qtyControls: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.md },
-  qtyBtn: { width: 32, height: 32, paddingVertical: 0, paddingHorizontal: 0 },
-  qtyText: { marginHorizontal: spacing.sm, fontWeight: '700', color: colors.text, minWidth: 70, textAlign: 'center' },
   itemSubtotal: { fontWeight: '700', color: colors.text, minWidth: 70, textAlign: 'right' },
   input: {
     borderWidth: 1,

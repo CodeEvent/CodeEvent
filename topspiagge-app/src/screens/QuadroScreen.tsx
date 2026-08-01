@@ -131,7 +131,7 @@ export const QuadroScreen: React.FC = () => {
         <View style={styles.titleRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Il Quadro</Text>
-            <Text style={styles.headerSubtitle}>Planning stagionale · tocca una cella libera per prenotare</Text>
+            <Text style={styles.headerSubtitle}>Planning stagionale</Text>
           </View>
           <Pressable
             onPress={() => setFiltersOpen((v) => !v)}

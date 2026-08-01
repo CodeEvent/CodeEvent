@@ -1,13 +1,13 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Modal, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BeachCanvas, GAP, MIN_CELL, useUmbrellaPositions } from '../components/BeachCanvas';
 import { countActiveFilters, FilterSheetModal } from '../components/BookingFilterBar';
 import { UmbrellaDetailModal } from '../components/UmbrellaDetailModal';
 import { useStore } from '../store/StoreContext';
-import { colors, spacing } from '../theme';
+import { colors, radius, spacing } from '../theme';
 import { Umbrella } from '../types';
 import { ROWS } from '../data/seed';
 import {
@@ -170,6 +170,7 @@ export const PiantinaScreen: React.FC = () => {
   const [pendingExtraIds, setPendingExtraIds] = useState<string[]>([]);
   const [filters, setFilters] = useState(DEFAULT_BOOKING_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const route = useRoute<any>();
   const { height } = useWindowDimensions();
   const today = isoDate(0);
@@ -231,9 +232,11 @@ export const PiantinaScreen: React.FC = () => {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
+          <Pressable onPress={() => setLegendOpen(true)} style={styles.legendToggle} accessibilityLabel="Legenda colori">
+            <Ionicons name="information-circle-outline" size={18} color={colors.primaryDark} />
+          </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Piantina Spiaggia</Text>
-            <Text style={styles.headerSubtitle}>Trascina un ombrellone per spostare la prenotazione</Text>
           </View>
           <Pressable
             onPress={() => setFiltersOpen((v) => !v)}
@@ -254,34 +257,40 @@ export const PiantinaScreen: React.FC = () => {
             )}
           </Pressable>
         </View>
-        <View style={styles.legendRow}>
-          {range ? (
-            <>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: colors.libero }]} />
-                <Text style={styles.legendText}>Libero per il periodo scelto</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: colors.occupato }]} />
-                <Text style={styles.legendText}>Non disponibile</Text>
-              </View>
-            </>
-          ) : (
-            <>
-              {PIANTINA_LEGEND.map(({ key, label }) => (
-                <View key={key} style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: displayStatusColor[key] }]} />
-                  <Text style={styles.legendText}>{label}</Text>
-                </View>
-              ))}
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, styles.unpaidDotStatic]} />
-                <Text style={styles.legendText}>Da saldare</Text>
-              </View>
-            </>
-          )}
-        </View>
       </View>
+
+      <Modal visible={legendOpen} transparent animationType="fade" onRequestClose={() => setLegendOpen(false)}>
+        <Pressable style={styles.legendBackdrop} onPress={() => setLegendOpen(false)}>
+          <Pressable style={styles.legendPopover} onPress={() => {}}>
+            <Text style={styles.legendPopoverTitle}>Legenda</Text>
+            {range ? (
+              <>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.libero }]} />
+                  <Text style={styles.legendText}>Libero per il periodo scelto</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.occupato }]} />
+                  <Text style={styles.legendText}>Non disponibile</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                {PIANTINA_LEGEND.map(({ key, label }) => (
+                  <View key={key} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: displayStatusColor[key] }]} />
+                    <Text style={styles.legendText}>{label}</Text>
+                  </View>
+                ))}
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, styles.unpaidDotStatic]} />
+                  <Text style={styles.legendText}>Da saldare</Text>
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <FilterSheetModal
         visible={filtersOpen}
@@ -348,9 +357,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   headerTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
-  headerSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  legendToggle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.prenotatoBg,
+  },
   filterToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -374,14 +390,29 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
   filterCountBadgeText: { color: colors.primary, fontSize: 10, fontWeight: '800' },
-  legendRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: spacing.sm,
+  legendBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
   },
-  legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: spacing.md },
-  legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
-  legendText: { fontSize: 11, color: colors.textMuted },
+  legendPopover: {
+    width: '100%',
+    maxWidth: 260,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: spacing.lg,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  legendPopoverTitle: { fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: spacing.sm },
+  legendItem: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs },
+  legendDot: { width: 10, height: 10, borderRadius: 5, marginRight: spacing.sm },
+  legendText: { fontSize: 13, color: colors.text },
   cell: {
     borderWidth: 3,
     alignItems: 'center',

@@ -1484,9 +1484,7 @@ const BookingForm: React.FC<{
               <Text style={styles.policyTitle}>Pagamento anticipato</Text>
             </View>
             <Text style={styles.policyText}>
-              {formatCurrency(deposit)} verranno addebitati ora. Rimborsabile con voucher se annulli entro il{' '}
-              <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>; dopo tale data, o in caso di
-              no-show, l'importo <Text style={styles.policyBold}>non è rimborsabile</Text>.
+              Rimborsabile con voucher fino al <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>.
             </Text>
           </View>
         </ScrollView>
@@ -1606,9 +1604,8 @@ const BookingForm: React.FC<{
               <Text style={styles.policyTitle}>Ombrelloni aggiuntivi</Text>
             </View>
             <Text style={styles.policyText}>
-              Per {adults} adulti servono {umbrellasNeeded} ombrelloni (i bambini non contano per il limite). Ti
-              suggeriamo i più vicini a quello scelto: aggiungine{' '}
-              {extraNeeded > extraUmbrellaIds.length ? `almeno ${extraNeeded - extraUmbrellaIds.length} in più` : 'quanti ne servono'}.
+              Per {adults} adulti servono {umbrellasNeeded} ombrelloni:{' '}
+              {extraNeeded > extraUmbrellaIds.length ? `aggiungine almeno ${extraNeeded - extraUmbrellaIds.length}` : 'ne hai aggiunti abbastanza'}.
             </Text>
             {nearbySuggestions.map((u) => {
               const selected = extraUmbrellaIds.includes(u.id);
@@ -1629,9 +1626,6 @@ const BookingForm: React.FC<{
                 </Pressable>
               );
             })}
-            <Text style={[styles.muted, { marginTop: spacing.xs }]}>
-              Capienza: max {capacity} adulti in {allUmbrellaIds.length} ombrelloni · nel gruppo: {adults} adulti
-            </Text>
           </View>
         )}
 
