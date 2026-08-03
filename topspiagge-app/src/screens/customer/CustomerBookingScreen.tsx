@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
+import { BeachPhoto } from '../../components/BeachPhoto';
 import {
   COLS_PER_SIDE,
   GAP,
@@ -31,6 +32,7 @@ import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { Booking, Customer, Umbrella } from '../../types';
 import { ROWS } from '../../data/seed';
+import { DEMO_OPERATORS } from '../../data/demoOperators';
 import {
   distributeGuests,
   findActiveHoldConflict,
@@ -54,9 +56,6 @@ import { generateBookingReference } from '../../utils/reference';
 import { DesktopNav, ItalyMapThumb } from './SearchHomeScreen';
 
 const WIDE_BREAKPOINT = 700;
-// Height of the desktop-only rating/"show on map" bar sitting above the beach map -- kept as a
-// constant since it feeds directly into mapAreaHeight's own height math below.
-const DESKTOP_PROPERTY_STRIP_HEIGHT = 44;
 
 // Splits each 10-wide side into 2 sections of 5 -- on top of the existing Nord/Sud split at
 // col 10 -- so the map reads as sections of 5 umbrellas with an aisle between, matching the
@@ -66,6 +65,11 @@ const SECTION_WALKWAYS: WalkwayBreak[] = [
   { at: 5, width: 16 },
   { at: 15, width: 16 },
 ];
+
+// This wizard only ever serves the one real bookable venue -- reusing its demo listing data
+// (rating, review count, tagline, photo palette) keeps the desktop property header/gallery
+// consistent with the rest of the app instead of re-hardcoding the same numbers a second time.
+const VENUE = DEMO_OPERATORS.find((o) => o.id === 'bagno-pietrasanta')!;
 
 // How tall a price-tier banner reserves above the first row of its band -- see buildPriceBands.
 const PRICE_BANNER_HEIGHT = 42;
@@ -288,23 +292,22 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   }, [editContext, isFormOpen, holdExpiresAt]);
 
   const labelWidth = isWide ? 84 : 60;
-  // On desktop the beach map now sits stacked above the availability/booking-form section
-  // (rather than beside it), so it only gets a share of the remaining viewport height instead
-  // of all of it -- the "320" offset below is the nav/title/progress-bar chrome already tuned
-  // for this screen; DESKTOP_PROPERTY_STRIP_HEIGHT is the new rating/show-map bar above the
-  // map. The map takes roughly half of what's left; the form takes the rest via its own flex
-  // + internal scroll (formScroll), same as it already did in the sidebar layout.
+  // On desktop the whole step is now one scrollable property-page-style layout (gallery, info,
+  // then an "Availability" section holding the map and the booking form) rather than a
+  // fixed-viewport panel -- so the map no longer needs to fit "whatever's left of the screen"
+  // (that only applies to the phone flow, which still uses the old fixed-viewport-with-bottom-
+  // sheet design). It gets a generous fixed share of window height instead, clamped so it stays
+  // usable on both a small laptop and a large monitor.
   // The map is 20 seats wide (10 Nord + walkway + 10 Sud) and rarely fits a phone or a
   // sidebar-narrowed column without shrinking cells past legibility, so the cell size is
   // normally driven by available height only -- the canvas scrolls horizontally to reveal
   // the rest. "Vista completa" (below) is the deliberate exception: it also factors in
   // width so the guest can see the entire beach at a glance on demand.
-  const desktopStackedContentHeight = height - 320 - DESKTOP_PROPERTY_STRIP_HEIGHT;
-  const mapAreaHeight = isWide ? Math.max(300, Math.round(desktopStackedContentHeight * 0.66)) : height - 320;
+  const mapAreaHeight = isWide ? Math.max(360, Math.min(560, Math.round(height * 0.55))) : height - 320;
   // MapStep renders its own date-pill header above the canvas and its "Selected spot" summary
   // row below it (see MapStep's mapHeader/selectedSpotRow), both inside the same flex:1 box as
-  // the canvas -- this is how much of wideMapSection's fixed height they eat into before the
-  // canvas itself gets mapAreaHeight worth of room.
+  // the canvas -- this is how much extra height the map's card needs on top of mapAreaHeight so
+  // the canvas itself still gets the full amount computed above.
   const desktopMapChromeHeight = 100;
   const normalCellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / ROWS) - GAP));
   const totalCols = COLS_PER_SIDE * 2;
@@ -461,55 +464,109 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
           onContinue={() => setStep('map')}
         />
       ) : isWide ? (
-        <View style={styles.wideStack}>
-          <View style={styles.propertyStrip}>
-            <View style={styles.propertyStripInfo}>
-              <View style={styles.propertyStripRatingPill}>
-                <Text style={styles.propertyStripRatingPillText}>4.8</Text>
+        <ScrollView contentContainerStyle={styles.wizardScroll} showsVerticalScrollIndicator={false}>
+          <View style={styles.wizardScrollInner}>
+            <View style={styles.propertyHeaderRow}>
+              <View style={styles.propertyHeaderInfo}>
+                <View style={styles.propertyStripRatingPill}>
+                  <Text style={styles.propertyStripRatingPillText}>{VENUE.rating.toFixed(1)}</Text>
+                </View>
+                <Text style={styles.propertyStripText}>
+                  {VENUE.reviewCount} recensioni · {VENUE.town}
+                </Text>
               </View>
-              <Text style={styles.propertyStripText}>312 recensioni · Marina di Pietrasanta</Text>
+              <Pressable
+                onPress={() => setItalyMapVisible(true)}
+                style={styles.showMapBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Mostra la posizione sulla mappa"
+              >
+                <Ionicons name="location-outline" size={14} color={colors.primary} />
+                <Text style={styles.showMapBtnText}>Mostra sulla mappa</Text>
+              </Pressable>
             </View>
-            <Pressable
-              onPress={() => setItalyMapVisible(true)}
-              style={styles.showMapBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Mostra la posizione sulla mappa"
-            >
-              <Ionicons name="location-outline" size={14} color={colors.primary} />
-              <Text style={styles.showMapBtnText}>Mostra sulla mappa</Text>
-            </Pressable>
-          </View>
 
-          <View style={[styles.wideMapSection, { height: mapAreaHeight + desktopMapChromeHeight }]}>{mapStepEl}</View>
-
-          <View style={styles.wideFormSection}>
-            {isFormOpen ? (
-              <BookingForm
-                key={selectedUmbrellaId}
-                umbrellaId={selectedUmbrellaId as string}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                allUmbrellas={umbrellas}
-                isFreeForPeriod={isFreeForPeriod}
-                bookingsForAvailability={availabilityBookings}
-                editContext={editContext}
-                holdExpiresAt={holdExpiresAt}
-                initialAdults={initialAdults}
-                onClose={closeForm}
-                onConfirmed={handleConfirmed}
-                onEditDates={() => setDateEditVisible(true)}
-                stage={formStage}
-                onStageChange={setFormStage}
-                onExtrasChange={setPendingExtraIds}
-              />
-            ) : (
-              <View style={styles.sidebarEmpty}>
-                <Ionicons name="umbrella-outline" size={36} color={colors.border} />
-                <Text style={styles.sidebarEmptyText}>Tocca un ombrellone libero sulla mappa per iniziare la prenotazione</Text>
+            <View style={styles.galleryRow}>
+              <BeachPhoto photo={VENUE.photo} height={260} variant={0} style={styles.galleryMain} borderRadius={radius.lg} />
+              <View style={styles.gallerySide}>
+                <BeachPhoto photo={VENUE.photo} height={124} variant={1} style={styles.gallerySideTile} borderRadius={radius.lg} />
+                <BeachPhoto photo={VENUE.photo} height={124} variant={2} style={styles.gallerySideTile} borderRadius={radius.lg} />
               </View>
-            )}
+            </View>
+
+            <View style={styles.infoColumns}>
+              <View style={styles.infoMain}>
+                <Text style={styles.infoSectionTitle}>Info sul lido</Text>
+                <Text style={styles.infoParagraph}>{VENUE.tagline}.</Text>
+                <View style={styles.infoServiceRow}>
+                  <Ionicons name="accessibility-outline" size={16} color={colors.peachDark} />
+                  <Text style={styles.infoServiceText}>Adatto ai disabili</Text>
+                </View>
+                <View style={styles.infoServiceRow}>
+                  <Ionicons name="cafe-outline" size={16} color={colors.peachDark} />
+                  <Text style={styles.infoServiceText}>Bar sulla spiaggia</Text>
+                </View>
+              </View>
+              <View style={styles.infoSidebar}>
+                <Text style={styles.infoSectionTitle}>Punti di forza</Text>
+                <View style={styles.highlightRow}>
+                  <Ionicons name="checkmark-circle" size={15} color={colors.success} />
+                  <Text style={styles.highlightText}>Ombrelloni fronte mare disponibili in Fila 1</Text>
+                </View>
+                <View style={styles.highlightRow}>
+                  <Ionicons name="checkmark-circle" size={15} color={colors.success} />
+                  <Text style={styles.highlightText}>Rimborsabile con voucher fino a 2 giorni prima</Text>
+                </View>
+                <View style={styles.highlightRow}>
+                  <Ionicons name="checkmark-circle" size={15} color={colors.success} />
+                  <Text style={styles.highlightText}>Noleggio lettini e sdraio in spiaggia</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.availabilitySection}>
+              <View style={styles.availabilityTitleRow}>
+                <Text style={styles.availabilityTitle}>Disponibilità</Text>
+                <View style={styles.changeSearchGuests}>
+                  <Ionicons name="people-outline" size={14} color={colors.textMuted} />
+                  <Text style={styles.changeSearchGuestsText}>
+                    {guestsHint} {guestsHint === 1 ? 'persona' : 'persone'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.mapCard, { height: mapAreaHeight + desktopMapChromeHeight }]}>{mapStepEl}</View>
+
+              <View style={styles.formCard}>
+                {isFormOpen ? (
+                  <BookingForm
+                    key={selectedUmbrellaId}
+                    umbrellaId={selectedUmbrellaId as string}
+                    dateFrom={dateFrom}
+                    dateTo={dateTo}
+                    allUmbrellas={umbrellas}
+                    isFreeForPeriod={isFreeForPeriod}
+                    bookingsForAvailability={availabilityBookings}
+                    editContext={editContext}
+                    holdExpiresAt={holdExpiresAt}
+                    initialAdults={initialAdults}
+                    onClose={closeForm}
+                    onConfirmed={handleConfirmed}
+                    onEditDates={() => setDateEditVisible(true)}
+                    stage={formStage}
+                    onStageChange={setFormStage}
+                    onExtrasChange={setPendingExtraIds}
+                  />
+                ) : (
+                  <View style={styles.sidebarEmpty}>
+                    <Ionicons name="umbrella-outline" size={36} color={colors.border} />
+                    <Text style={styles.sidebarEmptyText}>Tocca un ombrellone libero sulla mappa per iniziare la prenotazione</Text>
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
-        </View>
+        </ScrollView>
       ) : (
         mapStepEl
       )}
@@ -2240,34 +2297,74 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Desktop-only stacked layout: a slim rating/"show on map" strip, then the interactive beach
-  // map, then the booking form -- in that vertical order, matching a real property page's
-  // "gallery/info block, then availability below it" structure instead of the old side-by-side
-  // map|sidebar split.
-  wideStack: { flex: 1 },
-  propertyStrip: {
-    height: DESKTOP_PROPERTY_STRIP_HEIGHT,
+  // Desktop-only property-page layout: gallery + info/highlights, then a bordered "Disponibilita"
+  // section holding a "change search" bar, the interactive beach map and the booking form --
+  // the whole step is one normal scrollable page (like a real listing page), not a
+  // fixed-viewport panel, so it reads like the reference Booking.com property page instead of a
+  // cramped side-by-side map|sidebar split.
+  wizardScroll: { paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl, alignItems: 'center' },
+  wizardScrollInner: { width: '100%', maxWidth: 1100 },
+  propertyHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.xxl,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.card,
+    paddingTop: spacing.lg,
+    marginBottom: spacing.md,
   },
-  propertyStripInfo: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  propertyHeaderInfo: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   propertyStripRatingPill: { backgroundColor: colors.primary, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
   propertyStripRatingPillText: { color: colors.white, fontSize: 12, fontWeight: '800' },
   propertyStripText: { fontSize: 12.5, color: colors.textMuted, fontWeight: '600' },
   showMapBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   showMapBtnText: { fontSize: 12.5, color: colors.primary, fontWeight: '700' },
-  wideMapSection: {},
-  wideFormSection: {
+
+  galleryRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
+  galleryMain: { flex: 2 },
+  gallerySide: { flex: 1, gap: spacing.sm },
+  gallerySideTile: { width: '100%' },
+
+  infoColumns: { flexDirection: 'row', gap: spacing.xl, marginBottom: spacing.xl },
+  infoMain: { flex: 2 },
+  infoSidebar: {
     flex: 1,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    minWidth: 240,
     backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
   },
+  infoSectionTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: spacing.sm },
+  infoParagraph: { fontSize: 13.5, color: colors.text, lineHeight: 20, marginBottom: spacing.md },
+  infoServiceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  infoServiceText: { fontSize: 13, color: colors.text },
+  highlightRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginBottom: spacing.md },
+  highlightText: { flex: 1, fontSize: 12.5, color: colors.text, lineHeight: 18 },
+
+  availabilitySection: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+  },
+  availabilityTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  availabilityTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  changeSearchGuests: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  changeSearchGuestsText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  mapCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+  },
+  formCard: {},
   italyMapModalTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 2 },
   italyMapModalSubtitle: { fontSize: 12.5, color: colors.textMuted, marginBottom: spacing.md },
   italyMapModalThumb: {
