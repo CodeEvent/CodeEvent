@@ -50,6 +50,7 @@ import {
   isStudentDiscountEligibleRow,
 } from '../../utils/pricing';
 import { generateBookingReference } from '../../utils/reference';
+import { DesktopNav } from './SearchHomeScreen';
 
 const WIDE_BREAKPOINT = 700;
 const SIDEBAR_WIDTH = 380;
@@ -391,23 +392,39 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Plain header (back chevron + venue name inline, dark text on the app's own
-          background) matching the "Reservation for [venue]" reference screens for this
-          booking flow specifically -- kept distinct from the teal hero band used by the
-          search-home/beach-detail/manage-booking screens, per the reference's own styling. */}
-      <View style={styles.plainHeader}>
-        <Pressable onPress={onExitToLanding} style={styles.plainHeaderBackBtn} accessibilityLabel="Torna alla home">
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
-        </Pressable>
-        <Text style={styles.plainHeaderTitle} numberOfLines={1} adjustsFontSizeToFit>
-          Prenotazione per Bagno Pietrasanta
-        </Text>
-        <Pressable onPress={onManage} style={styles.plainHeaderBackBtn} accessibilityLabel="Gestisci la tua prenotazione">
-          <Ionicons name="person-circle-outline" size={20} color={colors.textMuted} />
-        </Pressable>
-      </View>
+      {/* Desktop widths get the same top nav as SearchHomeScreen's results/detail pages
+          (isWide here, 700, is always true whenever that screen's own 900px desktop shell is
+          active) -- without this the wizard was the one screen still showing the old plain
+          light header, breaking the otherwise-uniform nav/color/font treatment. Phone widths
+          keep the original back-chevron + venue-name header unchanged. */}
+      {isWide ? (
+        <DesktopNav
+          onLogoPress={onExitToLanding}
+          onNavigateTab={(tab) => (tab === 'bookings' ? onManage() : onExitToLanding())}
+        />
+      ) : (
+        <View style={styles.plainHeader}>
+          <Pressable onPress={onExitToLanding} style={styles.plainHeaderBackBtn} accessibilityLabel="Torna alla home">
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
+          </Pressable>
+          <Text style={styles.plainHeaderTitle} numberOfLines={1} adjustsFontSizeToFit>
+            Prenotazione per Bagno Pietrasanta
+          </Text>
+          <Pressable onPress={onManage} style={styles.plainHeaderBackBtn} accessibilityLabel="Gestisci la tua prenotazione">
+            <Ionicons name="person-circle-outline" size={20} color={colors.textMuted} />
+          </Pressable>
+        </View>
+      )}
 
-      <View style={styles.stepTitleRow}>
+      {isWide && (
+        <View style={styles.desktopWizardTitleRow}>
+          <Text style={styles.desktopWizardTitle} numberOfLines={1}>
+            Prenotazione per Bagno Pietrasanta
+          </Text>
+        </View>
+      )}
+
+      <View style={[styles.stepTitleRow, isWide && styles.stepTitleRowWide]}>
         <Text style={styles.headerStepTitle}>{currentStepTitle}</Text>
         <Text style={styles.headerDateText}>
           {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
@@ -1949,6 +1966,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.xs,
   },
+  // Matches the padding used by DesktopNav/SearchHomeScreen's hero+search bar (spacing.xxl)
+  // instead of the phone header's tighter spacing.lg, so this row lines up with that same
+  // nav's edges rather than sitting noticeably narrower underneath it.
+  stepTitleRowWide: { paddingHorizontal: spacing.xxl },
+  desktopWizardTitleRow: { paddingHorizontal: spacing.xxl, paddingTop: spacing.lg },
+  desktopWizardTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
   backLink: { flexDirection: 'row', alignItems: 'center' },
   backLinkText: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   headerStepTitle: { fontSize: 15, fontWeight: '700', color: colors.text },

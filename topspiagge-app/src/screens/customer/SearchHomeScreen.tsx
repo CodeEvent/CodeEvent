@@ -655,7 +655,7 @@ const DESKTOP_NAV_LINKS: Array<{ tab: GuestTab; label: string }> = [
 // hides its own GuestTabBar when wide) -- these links are the only way to reach
 // Salvati/Prenotazioni/Account without it, so they call straight back into CustomerApp's tab
 // state via onNavigateTab rather than being purely decorative.
-const DesktopNav: React.FC<{ onLogoPress?: () => void; onNavigateTab?: (tab: GuestTab) => void }> = ({
+export const DesktopNav: React.FC<{ onLogoPress?: () => void; onNavigateTab?: (tab: GuestTab) => void }> = ({
   onLogoPress,
   onNavigateTab,
 }) => (
@@ -726,8 +726,10 @@ const DesktopShell: React.FC<{
 
       {mode === 'home' && (
         <View style={styles.desktopHero}>
-          <Text style={styles.desktopHeroTitle}>Dove vuoi rilassarti?</Text>
-          <Text style={styles.desktopHeroSubtitle}>Prenota il tuo ombrellone in pochi click.</Text>
+          <View style={styles.desktopHeroInner}>
+            <Text style={styles.desktopHeroTitle}>Dove vuoi rilassarti?</Text>
+            <Text style={styles.desktopHeroSubtitle}>Prenota il tuo ombrellone in pochi click.</Text>
+          </View>
         </View>
       )}
 
@@ -801,6 +803,7 @@ const DesktopShell: React.FC<{
             </Pressable>
             {openField === 'dates' && (
               <View style={[styles.desktopPopover, { width: 320 }]}>
+                <Text style={styles.desktopPopoverTitle}>Seleziona le date</Text>
                 <Calendar startOffset={startOffset} days={days} onSelectDate={onSelectDate} />
               </View>
             )}
@@ -819,8 +822,10 @@ const DesktopShell: React.FC<{
               </View>
             </Pressable>
             {openField === 'guests' && (
-              <View style={[styles.desktopPopover, { width: 240 }]}>
+              <View style={[styles.desktopPopover, { width: 260 }]}>
+                <Text style={styles.desktopPopoverTitle}>Ospiti</Text>
                 <Stepper label="Persone" icon="people-outline" value={persone} onChange={onChangePersone} />
+                <Button title="Fatto" onPress={() => setOpenField(null)} style={{ marginTop: spacing.md }} />
               </View>
             )}
           </View>
@@ -840,13 +845,15 @@ const DesktopShell: React.FC<{
       </View>
 
       <ScrollView contentContainerStyle={styles.desktopBody}>
-        <Text style={styles.desktopSectionTitle}>
-          {mode === 'results' ? `${operators.length} stabilimenti trovati` : 'Posti popolari'}
-        </Text>
-        <View style={styles.desktopGrid}>
-          {operators.map((op) => (
-            <DesktopOperatorCard key={op.id} operator={op} onPress={() => onSelectOperator(op)} />
-          ))}
+        <View style={styles.desktopBodyInner}>
+          <Text style={styles.desktopSectionTitle}>
+            {mode === 'results' ? `${operators.length} stabilimenti trovati` : 'Posti popolari'}
+          </Text>
+          <View style={styles.desktopGrid}>
+            {operators.map((op) => (
+              <DesktopOperatorCard key={op.id} operator={op} onPress={() => onSelectOperator(op)} />
+            ))}
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1019,6 +1026,13 @@ const DesktopDetail: React.FC<{
     [priceList, umbrellas, bookings, holds, dateFrom, dateTo, bedRate]
   );
   const cutoff = useMemo(() => formatDateShort(refundCutoffDate(dateFrom)), [dateFrom]);
+  // The cheapest bare-umbrella band (Fila interna) -- matches the lowest row in the table right
+  // below this card, instead of pulling the unrelated flat 'art-ombrellone' article price,
+  // which could (and did) disagree with every number the guest can actually see in the table.
+  const cheapestBandPrice = useMemo(() => {
+    const barePrices = rows.filter((r) => r.beds === 0).map((r) => r.pricePerDay);
+    return barePrices.length ? Math.min(...barePrices) : operator.priceFrom;
+  }, [rows, operator.priceFrom]);
 
   const totalUmbrellas = Object.values(qtyByRow).reduce((sum, q) => sum + q, 0);
   const totalPrice = rows.reduce((sum, r) => sum + (qtyByRow[r.key] ?? 0) * r.pricePerDay * days, 0);
@@ -1077,7 +1091,7 @@ const DesktopDetail: React.FC<{
 
               {priceList ? (
                 <>
-                  <Pressable style={[styles.desktopSearchField, { position: 'relative', maxWidth: 260 }]} onPress={() => setDatesOpen((v) => !v)}>
+                  <Pressable style={[styles.desktopSearchField, { position: 'relative', maxWidth: 260, zIndex: 30 }]} onPress={() => setDatesOpen((v) => !v)}>
                     <View style={styles.desktopSearchFieldBtn}>
                       <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
                       <View style={{ flex: 1 }}>
@@ -1212,9 +1226,7 @@ const DesktopDetail: React.FC<{
                   ) : (
                     <>
                       <Text style={styles.desktopPriceCardHint}>A partire da</Text>
-                      <Text style={styles.desktopPriceCardAmount}>
-                        {formatCurrency(priceList.prices['art-ombrellone'] ?? operator.priceFrom)}
-                      </Text>
+                      <Text style={styles.desktopPriceCardAmount}>{formatCurrency(cheapestBandPrice)}</Text>
                       <Text style={styles.desktopPriceCardHint}>per ombrellone al giorno</Text>
                     </>
                   )}
@@ -1447,12 +1459,18 @@ const styles = StyleSheet.create({
   desktopLogo: { fontSize: 18, fontWeight: '800', color: colors.white },
   desktopNavLinksRow: { flexDirection: 'row', gap: spacing.xl },
   desktopNavLink: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
+  // Booking.com's own page content sits in a centered ~1400px column with the colored nav/hero
+  // bands running full-bleed behind it -- without this cap, the hero text/search bar/results
+  // grid below just hug the left edge with a growing dead zone on the right as the window
+  // widens past that column, which is what "the whole thing is on the left" was about.
   desktopHero: {
     backgroundColor: colors.primaryDark,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl + spacing.xl,
+    alignItems: 'center',
   },
+  desktopHeroInner: { width: '100%', maxWidth: 1400 },
   desktopHeroTitle: { fontSize: 32, fontWeight: '800', color: colors.white },
   desktopHeroSubtitle: { fontSize: 15, color: 'rgba(255,255,255,0.85)', marginTop: spacing.xs },
   desktopSearchBarWrap: {
@@ -1460,6 +1478,7 @@ const styles = StyleSheet.create({
     marginTop: -spacing.xxl - spacing.md,
     marginBottom: spacing.xl,
     zIndex: 30,
+    alignItems: 'center',
   },
   desktopSearchBarWrapResults: { marginTop: spacing.lg },
   desktopSearchBar: {
@@ -1474,6 +1493,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
     maxWidth: 900,
+    // Must outrank desktopPopoverBackdrop's zIndex -- both are siblings under
+    // desktopSearchBarWrap, and without this the backdrop (added later in JSX, so painted on
+    // top by default) sits above this whole bar and swallows every click meant for the
+    // destination/dates/guests popovers nested inside it.
+    zIndex: 30,
   },
   desktopSearchField: { flex: 1 },
   desktopSearchFieldBtn: {
@@ -1512,6 +1536,7 @@ const styles = StyleSheet.create({
     elevation: 10,
     zIndex: 30,
   },
+  desktopPopoverTitle: { fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: spacing.sm },
   desktopPopoverSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1523,7 +1548,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   desktopPopoverInput: { flex: 1, fontSize: 13, color: colors.text, paddingVertical: spacing.sm },
-  desktopBody: { paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl },
+  // ScrollView's contentContainerStyle doesn't reliably center via maxWidth+alignSelf on web
+  // (its content wrapper defaults to stretch-filling the scrollable viewport) -- centering the
+  // outer container's children instead, with the actual maxWidth cap on a plain inner View,
+  // works the same way the hero/search-bar centering above does.
+  desktopBody: { paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl, alignItems: 'center' },
+  desktopBodyInner: { width: '100%', maxWidth: 1400 },
   desktopSectionTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: spacing.lg },
   desktopGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
   desktopCardWrap: { width: 300 },
