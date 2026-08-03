@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
 import { BeachPhoto } from '../../components/BeachPhoto';
 import { Calendar } from '../../components/Calendar';
-import { Button, Card, Stepper } from '../../components/UI';
+import { Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { DEMO_OPERATORS, DEMO_TOWNS, DemoOperator } from '../../data/demoOperators';
@@ -180,10 +180,28 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
         />
       );
     }
+    if (step === 'results') {
+      return (
+        <DesktopResults
+          operators={filteredOperators}
+          destination={destination}
+          onChangeDestination={setDestination}
+          startOffset={startOffset}
+          days={days}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onSelectDate={handleSelectDate}
+          persone={persone}
+          onChangePersone={handleChangePersone}
+          onSearch={() => setStep('results')}
+          onSelectOperator={(op) => openDetail(op, 'results')}
+          onNavigateTab={onNavigateTab}
+        />
+      );
+    }
     return (
       <DesktopShell
-        mode={step === 'results' ? 'results' : 'home'}
-        operators={step === 'results' ? filteredOperators : DEMO_OPERATORS}
+        operators={DEMO_OPERATORS}
         destination={destination}
         onChangeDestination={setDestination}
         startOffset={startOffset}
@@ -194,8 +212,7 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
         persone={persone}
         onChangePersone={handleChangePersone}
         onSearch={() => setStep('results')}
-        onSelectOperator={(op) => openDetail(op, step === 'results' ? 'results' : 'home')}
-        onBackHome={() => setStep('home')}
+        onSelectOperator={(op) => openDetail(op, 'home')}
         onNavigateTab={onNavigateTab}
       />
     );
@@ -670,13 +687,148 @@ export const DesktopNav: React.FC<{ onLogoPress?: () => void; onNavigateTab?: (t
   </View>
 );
 
-// Booking.com-style top nav + hero + inline search bar (destination/dates/guests each open a
-// small functional popover instead of pushing a full-screen sub-step, since desktop has room
-// to show them inline) + a photo-card results grid -- covers both the plain "home" state
-// (hero + "popular" grid) and "results" state (post-search grid, no hero) with one component
-// so the search bar/nav chrome never has to remount between them.
+// The destination/dates/guests search bar with its three functional popovers -- shared between
+// the home hero and the results page's compact top bar (see DesktopResults) so both stay in
+// sync instead of maintaining two copies of this popover logic.
+const DesktopSearchBar: React.FC<{
+  destination: string;
+  onChangeDestination: (d: string) => void;
+  startOffset: number;
+  days: number;
+  dateFrom: string;
+  dateTo: string;
+  onSelectDate: (offset: number) => void;
+  persone: number;
+  onChangePersone: (v: number) => void;
+  onSearch: () => void;
+  compact?: boolean;
+}> = ({ destination, onChangeDestination, startOffset, days, dateFrom, dateTo, onSelectDate, persone, onChangePersone, onSearch, compact }) => {
+  const [openField, setOpenField] = useState<DesktopField>(null);
+  const [destQuery, setDestQuery] = useState('');
+  const destSuggestions = useMemo(
+    () => DEMO_TOWNS.filter((t) => t.toLowerCase().includes(destQuery.trim().toLowerCase())),
+    [destQuery]
+  );
+  const toggleField = (f: DesktopField) => setOpenField((cur) => (cur === f ? null : f));
+
+  return (
+    <View style={[styles.desktopSearchBarWrap, compact && styles.desktopSearchBarWrapResults]}>
+      <View style={styles.desktopSearchBar}>
+        <View style={[styles.desktopSearchField, { position: 'relative' }]}>
+          <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('destination')}>
+            <Ionicons name="search" size={16} color={colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.desktopFieldLabel}>Destinazione</Text>
+              <Text style={styles.desktopFieldValue} numberOfLines={1}>
+                {destination}
+              </Text>
+            </View>
+          </Pressable>
+          {openField === 'destination' && (
+            <View style={styles.desktopPopover}>
+              <View style={styles.desktopPopoverSearchRow}>
+                <Ionicons name="search" size={14} color={colors.textMuted} />
+                <TextInput
+                  style={styles.desktopPopoverInput}
+                  placeholder="Cerca una localita"
+                  placeholderTextColor={colors.textMuted}
+                  value={destQuery}
+                  onChangeText={setDestQuery}
+                  autoFocus
+                />
+              </View>
+              <Pressable
+                style={styles.suggestionRow}
+                onPress={() => {
+                  onChangeDestination(HERE_LABEL);
+                  setOpenField(null);
+                }}
+              >
+                <View style={styles.suggestionIcon}>
+                  <Ionicons name="locate" size={16} color={colors.primary} />
+                </View>
+                <Text style={styles.suggestionText}>{HERE_LABEL}</Text>
+              </Pressable>
+              {destSuggestions.map((town) => (
+                <Pressable
+                  key={town}
+                  style={styles.suggestionRow}
+                  onPress={() => {
+                    onChangeDestination(town);
+                    setOpenField(null);
+                  }}
+                >
+                  <View style={styles.suggestionIcon}>
+                    <Ionicons name="location-outline" size={16} color={colors.primary} />
+                  </View>
+                  <Text style={styles.suggestionText}>{town}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.desktopSearchDivider} />
+
+        <View style={[styles.desktopSearchField, { position: 'relative' }]}>
+          <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('dates')}>
+            <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.desktopFieldLabel}>Date</Text>
+              <Text style={styles.desktopFieldValue} numberOfLines={1}>
+                {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+              </Text>
+            </View>
+          </Pressable>
+          {openField === 'dates' && (
+            <View style={[styles.desktopPopover, { width: 320 }]}>
+              <Text style={styles.desktopPopoverTitle}>Seleziona le date</Text>
+              <Calendar startOffset={startOffset} days={days} onSelectDate={onSelectDate} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.desktopSearchDivider} />
+
+        <View style={[styles.desktopSearchField, { position: 'relative' }]}>
+          <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('guests')}>
+            <Ionicons name="people-outline" size={16} color={colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.desktopFieldLabel}>Persone</Text>
+              <Text style={styles.desktopFieldValue}>
+                {persone} {persone === 1 ? 'persona' : 'persone'}
+              </Text>
+            </View>
+          </Pressable>
+          {openField === 'guests' && (
+            <View style={[styles.desktopPopover, { width: 260 }]}>
+              <Text style={styles.desktopPopoverTitle}>Ospiti</Text>
+              <Stepper label="Persone" icon="people-outline" value={persone} onChange={onChangePersone} />
+              <Button title="Fatto" onPress={() => setOpenField(null)} style={{ marginTop: spacing.md }} />
+            </View>
+          )}
+        </View>
+
+        <Button
+          title="Cerca"
+          icon="search"
+          onPress={() => {
+            setOpenField(null);
+            onSearch();
+          }}
+          style={styles.desktopSearchBtn}
+        />
+      </View>
+
+      {openField && <Pressable style={styles.desktopPopoverBackdrop} onPress={() => setOpenField(null)} />}
+    </View>
+  );
+};
+
+// Booking.com-style top nav + hero + the shared search bar + a photo-card grid -- this is the
+// plain "home" state only (hero + "Posti popolari"); the post-search state has its own very
+// different layout (filters sidebar + list view) handled by DesktopResults instead.
 const DesktopShell: React.FC<{
-  mode: 'home' | 'results';
   operators: DemoOperator[];
   destination: string;
   onChangeDestination: (d: string) => void;
@@ -689,10 +841,8 @@ const DesktopShell: React.FC<{
   onChangePersone: (v: number) => void;
   onSearch: () => void;
   onSelectOperator: (operator: DemoOperator) => void;
-  onBackHome: () => void;
   onNavigateTab?: (tab: GuestTab) => void;
 }> = ({
-  mode,
   operators,
   destination,
   onChangeDestination,
@@ -705,146 +855,35 @@ const DesktopShell: React.FC<{
   onChangePersone,
   onSearch,
   onSelectOperator,
-  onBackHome,
   onNavigateTab,
 }) => {
-  const [openField, setOpenField] = useState<DesktopField>(null);
-  const [destQuery, setDestQuery] = useState('');
-  const destSuggestions = useMemo(
-    () => DEMO_TOWNS.filter((t) => t.toLowerCase().includes(destQuery.trim().toLowerCase())),
-    [destQuery]
-  );
-  const toggleField = (f: DesktopField) => setOpenField((cur) => (cur === f ? null : f));
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <DesktopNav onLogoPress={mode === 'results' ? onBackHome : undefined} onNavigateTab={onNavigateTab} />
+      <DesktopNav onNavigateTab={onNavigateTab} />
 
-      {mode === 'home' && (
-        <View style={styles.desktopHero}>
-          <View style={styles.desktopHeroInner}>
-            <Text style={styles.desktopHeroTitle}>Dove vuoi rilassarti?</Text>
-            <Text style={styles.desktopHeroSubtitle}>Prenota il tuo ombrellone in pochi click.</Text>
-          </View>
+      <View style={styles.desktopHero}>
+        <View style={styles.desktopHeroInner}>
+          <Text style={styles.desktopHeroTitle}>Dove vuoi rilassarti?</Text>
+          <Text style={styles.desktopHeroSubtitle}>Prenota il tuo ombrellone in pochi click.</Text>
         </View>
-      )}
-
-      <View style={[styles.desktopSearchBarWrap, mode === 'results' && styles.desktopSearchBarWrapResults]}>
-        <View style={styles.desktopSearchBar}>
-          <View style={[styles.desktopSearchField, { position: 'relative' }]}>
-            <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('destination')}>
-              <Ionicons name="search" size={16} color={colors.textMuted} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.desktopFieldLabel}>Destinazione</Text>
-                <Text style={styles.desktopFieldValue} numberOfLines={1}>
-                  {destination}
-                </Text>
-              </View>
-            </Pressable>
-            {openField === 'destination' && (
-              <View style={styles.desktopPopover}>
-                <View style={styles.desktopPopoverSearchRow}>
-                  <Ionicons name="search" size={14} color={colors.textMuted} />
-                  <TextInput
-                    style={styles.desktopPopoverInput}
-                    placeholder="Cerca una localita"
-                    placeholderTextColor={colors.textMuted}
-                    value={destQuery}
-                    onChangeText={setDestQuery}
-                    autoFocus
-                  />
-                </View>
-                <Pressable
-                  style={styles.suggestionRow}
-                  onPress={() => {
-                    onChangeDestination(HERE_LABEL);
-                    setOpenField(null);
-                  }}
-                >
-                  <View style={styles.suggestionIcon}>
-                    <Ionicons name="locate" size={16} color={colors.primary} />
-                  </View>
-                  <Text style={styles.suggestionText}>{HERE_LABEL}</Text>
-                </Pressable>
-                {destSuggestions.map((town) => (
-                  <Pressable
-                    key={town}
-                    style={styles.suggestionRow}
-                    onPress={() => {
-                      onChangeDestination(town);
-                      setOpenField(null);
-                    }}
-                  >
-                    <View style={styles.suggestionIcon}>
-                      <Ionicons name="location-outline" size={16} color={colors.primary} />
-                    </View>
-                    <Text style={styles.suggestionText}>{town}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.desktopSearchDivider} />
-
-          <View style={[styles.desktopSearchField, { position: 'relative' }]}>
-            <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('dates')}>
-              <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.desktopFieldLabel}>Date</Text>
-                <Text style={styles.desktopFieldValue} numberOfLines={1}>
-                  {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
-                </Text>
-              </View>
-            </Pressable>
-            {openField === 'dates' && (
-              <View style={[styles.desktopPopover, { width: 320 }]}>
-                <Text style={styles.desktopPopoverTitle}>Seleziona le date</Text>
-                <Calendar startOffset={startOffset} days={days} onSelectDate={onSelectDate} />
-              </View>
-            )}
-          </View>
-
-          <View style={styles.desktopSearchDivider} />
-
-          <View style={[styles.desktopSearchField, { position: 'relative' }]}>
-            <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('guests')}>
-              <Ionicons name="people-outline" size={16} color={colors.textMuted} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.desktopFieldLabel}>Persone</Text>
-                <Text style={styles.desktopFieldValue}>
-                  {persone} {persone === 1 ? 'persona' : 'persone'}
-                </Text>
-              </View>
-            </Pressable>
-            {openField === 'guests' && (
-              <View style={[styles.desktopPopover, { width: 260 }]}>
-                <Text style={styles.desktopPopoverTitle}>Ospiti</Text>
-                <Stepper label="Persone" icon="people-outline" value={persone} onChange={onChangePersone} />
-                <Button title="Fatto" onPress={() => setOpenField(null)} style={{ marginTop: spacing.md }} />
-              </View>
-            )}
-          </View>
-
-          <Button
-            title="Cerca"
-            icon="search"
-            onPress={() => {
-              setOpenField(null);
-              onSearch();
-            }}
-            style={styles.desktopSearchBtn}
-          />
-        </View>
-
-        {openField && <Pressable style={styles.desktopPopoverBackdrop} onPress={() => setOpenField(null)} />}
       </View>
+
+      <DesktopSearchBar
+        destination={destination}
+        onChangeDestination={onChangeDestination}
+        startOffset={startOffset}
+        days={days}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onSelectDate={onSelectDate}
+        persone={persone}
+        onChangePersone={onChangePersone}
+        onSearch={onSearch}
+      />
 
       <ScrollView contentContainerStyle={styles.desktopBody}>
         <View style={styles.desktopBodyInner}>
-          <Text style={styles.desktopSectionTitle}>
-            {mode === 'results' ? `${operators.length} stabilimenti trovati` : 'Posti popolari'}
-          </Text>
+          <Text style={styles.desktopSectionTitle}>Posti popolari</Text>
           <View style={styles.desktopGrid}>
             {operators.map((op) => (
               <DesktopOperatorCard key={op.id} operator={op} onPress={() => onSelectOperator(op)} />
@@ -888,6 +927,281 @@ const DesktopOperatorCard: React.FC<{ operator: DemoOperator; onPress: () => voi
               {formatCurrency(operator.priceFrom)}
               <Text style={styles.desktopCardPriceUnit}> /ombrellone al giorno</Text>
             </Text>
+          </View>
+        </View>
+      </View>
+    )}
+  </Pressable>
+);
+
+const RESULT_SORTS = [
+  { key: 'consigliati', label: 'Consigliati' },
+  { key: 'prezzo', label: 'Prezzo piu basso' },
+  { key: 'valutazione', label: 'Valutazione' },
+] as const;
+type ResultSort = (typeof RESULT_SORTS)[number]['key'];
+
+const BUDGET_MIN = 10;
+const BUDGET_MAX = 40;
+const BUDGET_STEP = 5;
+
+// Booking.com-style results page: left filters sidebar (map placeholder, budget cap, popular
+// filters, location) + right column (breadcrumb, count/sort/list-grid toggle, one honest notice
+// banner, list-view rows) -- structurally distinct from the home page's plain photo-card grid,
+// per the reference screenshot. Filters here are real (they narrow DEMO_OPERATORS, no fabricated
+// data or dark-pattern urgency copy), unlike the reference's own scarcity banners.
+const DesktopResults: React.FC<{
+  operators: DemoOperator[];
+  destination: string;
+  onChangeDestination: (d: string) => void;
+  startOffset: number;
+  days: number;
+  dateFrom: string;
+  dateTo: string;
+  onSelectDate: (offset: number) => void;
+  persone: number;
+  onChangePersone: (v: number) => void;
+  onSearch: () => void;
+  onSelectOperator: (operator: DemoOperator) => void;
+  onNavigateTab?: (tab: GuestTab) => void;
+}> = ({
+  operators,
+  destination,
+  onChangeDestination,
+  startOffset,
+  days,
+  dateFrom,
+  dateTo,
+  onSelectDate,
+  persone,
+  onChangePersone,
+  onSearch,
+  onSelectOperator,
+  onNavigateTab,
+}) => {
+  const [budgetMax, setBudgetMax] = useState(BUDGET_MAX);
+  const [onlyBookable, setOnlyBookable] = useState(false);
+  const [onlyTopRated, setOnlyTopRated] = useState(false);
+  const [selectedTowns, setSelectedTowns] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [sortBy, setSortBy] = useState<ResultSort>('consigliati');
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  const toggleTown = (town: string) =>
+    setSelectedTowns((cur) => {
+      const next = new Set(cur);
+      if (next.has(town)) next.delete(town);
+      else next.add(town);
+      return next;
+    });
+
+  const bookableCount = operators.filter((o) => o.isBookable).length;
+  const topRatedCount = operators.filter((o) => o.rating >= 4.5).length;
+  const townCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    operators.forEach((o) => counts.set(o.town, (counts.get(o.town) ?? 0) + 1));
+    return Array.from(counts.entries());
+  }, [operators]);
+
+  const filtered = useMemo(() => {
+    let list = operators.filter((o) => o.priceFrom <= budgetMax);
+    if (onlyBookable) list = list.filter((o) => o.isBookable);
+    if (onlyTopRated) list = list.filter((o) => o.rating >= 4.5);
+    if (selectedTowns.size > 0) list = list.filter((o) => selectedTowns.has(o.town));
+    const sorted = [...list];
+    if (sortBy === 'prezzo') sorted.sort((a, b) => a.priceFrom - b.priceFrom);
+    else if (sortBy === 'valutazione') sorted.sort((a, b) => b.rating - a.rating);
+    return sorted;
+  }, [operators, budgetMax, onlyBookable, onlyTopRated, selectedTowns, sortBy]);
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <DesktopNav onNavigateTab={onNavigateTab} />
+      <DesktopSearchBar
+        destination={destination}
+        onChangeDestination={onChangeDestination}
+        startOffset={startOffset}
+        days={days}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onSelectDate={onSelectDate}
+        persone={persone}
+        onChangePersone={onChangePersone}
+        onSearch={onSearch}
+        compact
+      />
+
+      <ScrollView contentContainerStyle={styles.desktopResultsScroll}>
+        <View style={styles.desktopResultsInner}>
+          <Text style={styles.desktopBreadcrumb}>
+            Home <Ionicons name="chevron-forward" size={11} color={colors.textMuted} />{' '}
+            {destination === HERE_LABEL ? 'Tutte le destinazioni' : destination}
+          </Text>
+
+          <View style={styles.desktopResultsRow}>
+            <View style={styles.desktopFiltersSidebar}>
+              <View style={styles.desktopMapThumb}>
+                <Ionicons name="map-outline" size={26} color={colors.textMuted} />
+                <Text style={styles.desktopMapThumbText}>Visualizza sulla mappa</Text>
+              </View>
+
+              <Text style={styles.desktopFilterSectionTitle}>Il tuo budget (al giorno)</Text>
+              <Text style={styles.desktopBudgetValue}>Fino a {formatCurrency(budgetMax)}</Text>
+              <View style={styles.desktopBudgetRow}>
+                <Pressable
+                  style={styles.desktopBudgetBtn}
+                  onPress={() => setBudgetMax((m) => Math.max(BUDGET_MIN, m - BUDGET_STEP))}
+                  accessibilityLabel="Diminuisci budget massimo"
+                >
+                  <Ionicons name="remove" size={16} color={colors.text} />
+                </Pressable>
+                <View style={styles.desktopBudgetTrack}>
+                  <View
+                    style={[
+                      styles.desktopBudgetFill,
+                      { width: `${((budgetMax - BUDGET_MIN) / (BUDGET_MAX - BUDGET_MIN)) * 100}%` },
+                    ]}
+                  />
+                </View>
+                <Pressable
+                  style={styles.desktopBudgetBtn}
+                  onPress={() => setBudgetMax((m) => Math.min(BUDGET_MAX, m + BUDGET_STEP))}
+                  accessibilityLabel="Aumenta budget massimo"
+                >
+                  <Ionicons name="add" size={16} color={colors.text} />
+                </Pressable>
+              </View>
+
+              <View style={styles.desktopFilterDivider} />
+              <Text style={styles.desktopFilterSectionTitle}>Filtri popolari</Text>
+              <Checkbox
+                checked={onlyBookable}
+                onToggle={() => setOnlyBookable((v) => !v)}
+                label={`Prenotabile subito (${bookableCount})`}
+              />
+              <Checkbox
+                checked={onlyTopRated}
+                onToggle={() => setOnlyTopRated((v) => !v)}
+                label={`Valutazione 4,5+ (${topRatedCount})`}
+              />
+
+              {townCounts.length > 1 && (
+                <>
+                  <View style={styles.desktopFilterDivider} />
+                  <Text style={styles.desktopFilterSectionTitle}>Localita</Text>
+                  {townCounts.map(([town, count]) => (
+                    <Checkbox
+                      key={town}
+                      checked={selectedTowns.has(town)}
+                      onToggle={() => toggleTown(town)}
+                      label={`${town} (${count})`}
+                    />
+                  ))}
+                </>
+              )}
+            </View>
+
+            <View style={styles.desktopResultsMain}>
+              {!bannerDismissed && (
+                <View style={styles.desktopNoticeBanner}>
+                  <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+                  <Text style={styles.desktopNoticeBannerText}>
+                    In questa demo solo Bagno Pietrasanta ha disponibilita reale: gli altri stabilimenti saranno
+                    prenotabili a breve.
+                  </Text>
+                  <Pressable onPress={() => setBannerDismissed(true)} hitSlop={8} accessibilityLabel="Chiudi avviso">
+                    <Ionicons name="close" size={16} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              )}
+
+              <View style={styles.desktopResultsHeaderRow}>
+                <Text style={styles.desktopResultsCount}>
+                  {filtered.length} {filtered.length === 1 ? 'stabilimento trovato' : 'stabilimenti trovati'}
+                </Text>
+                <View style={styles.desktopViewToggle}>
+                  <Pressable
+                    onPress={() => setViewMode('list')}
+                    style={[styles.desktopViewToggleBtn, viewMode === 'list' && styles.desktopViewToggleBtnActive]}
+                    accessibilityLabel="Vista elenco"
+                  >
+                    <Ionicons name="list" size={16} color={viewMode === 'list' ? colors.white : colors.text} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setViewMode('grid')}
+                    style={[styles.desktopViewToggleBtn, viewMode === 'grid' && styles.desktopViewToggleBtnActive]}
+                    accessibilityLabel="Vista griglia"
+                  >
+                    <Ionicons name="grid-outline" size={16} color={viewMode === 'grid' ? colors.white : colors.text} />
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.desktopSortRow}>
+                {RESULT_SORTS.map((s) => (
+                  <Chip key={s.key} label={s.label} selected={sortBy === s.key} onPress={() => setSortBy(s.key)} />
+                ))}
+              </View>
+
+              {filtered.length === 0 ? (
+                <View style={styles.desktopResultsEmpty}>
+                  <Text style={styles.desktopResultsEmptyText}>Nessuno stabilimento corrisponde ai filtri scelti.</Text>
+                </View>
+              ) : viewMode === 'list' ? (
+                <View style={styles.desktopResultsList}>
+                  {filtered.map((op) => (
+                    <DesktopResultRow key={op.id} operator={op} onPress={() => onSelectOperator(op)} />
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.desktopGrid}>
+                  {filtered.map((op) => (
+                    <DesktopOperatorCard key={op.id} operator={op} onPress={() => onSelectOperator(op)} />
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
+
+const DesktopResultRow: React.FC<{ operator: DemoOperator; onPress: () => void }> = ({ operator, onPress }) => (
+  <Pressable onPress={onPress} style={styles.desktopRowWrap}>
+    {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+      <View style={[styles.desktopRow, (pressed || hovered) && styles.desktopCardHovered]}>
+        <View style={styles.desktopRowPhotoWrap}>
+          <BeachPhoto photo={operator.photo} height={140} variant={0} borderRadius={radius.md} />
+          {!operator.isBookable && (
+            <View style={styles.desktopCardSoonBadge}>
+              <Text style={styles.desktopCardSoonBadgeText}>Prossimamente</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.desktopRowBody}>
+          <Text style={styles.desktopCardName} numberOfLines={1}>
+            {operator.name}
+          </Text>
+          <Text style={styles.desktopCardTown}>{operator.town}</Text>
+          <Text style={styles.desktopCardTagline} numberOfLines={2}>
+            {operator.tagline}
+          </Text>
+          <View style={styles.desktopRowRatingRow}>
+            <View style={styles.desktopRatingPill}>
+              <Text style={styles.desktopRatingPillText}>{operator.rating.toFixed(1)}</Text>
+            </View>
+            <Text style={styles.desktopCardReviews}>{operator.reviewCount} recensioni</Text>
+          </View>
+        </View>
+        <View style={styles.desktopRowPriceCol}>
+          <Text style={styles.desktopCardPriceHint}>A partire da</Text>
+          <Text style={styles.desktopRowPrice}>{formatCurrency(operator.priceFrom)}</Text>
+          <Text style={styles.desktopCardPriceUnit}>/ombrellone al giorno</Text>
+          <View style={styles.desktopRowCta}>
+            <Text style={styles.desktopRowCtaText}>Vedi disponibilita</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.white} />
           </View>
         </View>
       </View>
@@ -1458,4 +1772,103 @@ const styles = StyleSheet.create({
   desktopCategoryScore: { fontSize: 12, color: colors.text, fontWeight: '800' },
   desktopCategoryBarTrack: { height: 5, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
   desktopCategoryBarFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
+
+  // --- Desktop results page ---
+  desktopResultsScroll: { paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl, alignItems: 'center' },
+  desktopResultsInner: { width: '100%', maxWidth: 1400 },
+  desktopBreadcrumb: { fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: spacing.lg, marginBottom: spacing.md },
+  desktopResultsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xl },
+
+  desktopFiltersSidebar: {
+    width: 260,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    position: 'sticky' as any,
+    top: spacing.lg,
+  },
+  desktopMapThumb: {
+    height: 110,
+    borderRadius: radius.md,
+    backgroundColor: colors.sand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+    gap: 4,
+  },
+  desktopMapThumbText: { fontSize: 12, color: colors.textMuted, fontWeight: '700' },
+  desktopFilterSectionTitle: { fontSize: 13, fontWeight: '800', color: colors.text, marginBottom: spacing.sm },
+  desktopBudgetValue: { fontSize: 13, color: colors.textMuted, marginBottom: spacing.sm },
+  desktopBudgetRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
+  desktopBudgetBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopBudgetTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: 'hidden' },
+  desktopBudgetFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 2 },
+  desktopFilterDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
+
+  desktopResultsMain: { flex: 1, minWidth: 0 },
+  desktopNoticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  desktopNoticeBannerText: { flex: 1, fontSize: 12.5, color: colors.text, lineHeight: 17 },
+  desktopResultsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  desktopResultsCount: { fontSize: 18, fontWeight: '800', color: colors.text },
+  desktopViewToggle: { flexDirection: 'row', gap: 4, backgroundColor: colors.sand, borderRadius: radius.sm, padding: 3 },
+  desktopViewToggleBtn: { width: 30, height: 30, borderRadius: radius.sm - 2, alignItems: 'center', justifyContent: 'center' },
+  desktopViewToggleBtnActive: { backgroundColor: colors.primary },
+  desktopSortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md, marginBottom: spacing.lg },
+
+  desktopResultsEmpty: { padding: spacing.xl, alignItems: 'center' },
+  desktopResultsEmptyText: { fontSize: 14, color: colors.textMuted },
+  desktopResultsList: { gap: spacing.md },
+  desktopRowWrap: {},
+  desktopRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  desktopRowPhotoWrap: { width: 220, position: 'relative' },
+  desktopRowBody: { flex: 1, padding: spacing.lg },
+  desktopRowRatingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+  desktopRowPriceCol: {
+    width: 180,
+    padding: spacing.lg,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+  },
+  desktopRowPrice: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 2 },
+  desktopRowCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  desktopRowCtaText: { color: colors.white, fontSize: 12, fontWeight: '700' },
 });
