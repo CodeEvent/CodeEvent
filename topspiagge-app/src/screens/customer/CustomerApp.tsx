@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Booking, Customer } from '../../types';
 import { colors, spacing } from '../../theme';
 import { DemoOperator } from '../../data/demoOperators';
 import { CustomerBookingScreen, EditBookingContext } from './CustomerBookingScreen';
 import { ManageBookingScreen } from './ManageBookingScreen';
-import { SearchHomeScreen, SearchSelection } from './SearchHomeScreen';
+import { DESKTOP_BREAKPOINT, SearchHomeScreen, SearchSelection } from './SearchHomeScreen';
 
 type Tab = 'search' | 'saved' | 'bookings' | 'account';
 
@@ -27,6 +27,11 @@ export const CustomerApp: React.FC<Props> = ({ onStaffLogin }) => {
   // The search flow's destination/dates/guests/results sub-steps take over the whole screen
   // (matching the reference flow), so the bottom tab bar only shows on the plain home card.
   const [searchIsHome, setSearchIsHome] = useState(true);
+  // Desktop widths get SearchHomeScreen's own top nav (Salvati/Prenotazioni/Account links)
+  // instead of this phone bottom tab bar -- keeping both would be redundant chrome, and the
+  // bottom bar's fixed position doesn't suit a wide/scrollable page layout anyway.
+  const { width } = useWindowDimensions();
+  const isWide = width >= DESKTOP_BREAKPOINT;
 
   const closeOverlay = () => {
     setOverlayOpen(false);
@@ -57,6 +62,7 @@ export const CustomerApp: React.FC<Props> = ({ onStaffLogin }) => {
         {tab === 'search' && (
           <SearchHomeScreen
             onHomeStateChange={setSearchIsHome}
+            onNavigateTab={setTab}
             onSelectOperator={(_operator: DemoOperator, selection: SearchSelection) => {
               setInitialSelection(selection);
               setEditContext(null);
@@ -78,7 +84,7 @@ export const CustomerApp: React.FC<Props> = ({ onStaffLogin }) => {
         )}
         {tab === 'account' && <AccountTab onStaffLogin={onStaffLogin} />}
       </View>
-      {(tab !== 'search' || searchIsHome) && <GuestTabBar tab={tab} onChange={setTab} />}
+      {!isWide && (tab !== 'search' || searchIsHome) && <GuestTabBar tab={tab} onChange={setTab} />}
     </View>
   );
 };

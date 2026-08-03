@@ -1,16 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppAlert } from '../../components/AppAlert';
+import { BeachPhoto } from '../../components/BeachPhoto';
 import { Calendar } from '../../components/Calendar';
 import { Button, Card, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { DEMO_OPERATORS, DEMO_TOWNS, DemoOperator } from '../../data/demoOperators';
-import { MAX_ADULTS_PER_UMBRELLA } from '../../utils/booking';
+import { refundCutoffDate } from '../../utils/cancellation';
+import { findActiveHoldConflict, findUmbrellaConflict, MAX_ADULTS_PER_UMBRELLA } from '../../utils/booking';
+import { baseUmbrellaPricePerDay } from '../../utils/pricing';
 import { formatCurrency, formatDateShort, isoDate } from '../../utils/format';
+import { Umbrella } from '../../types';
+
+// Desktop-vs-phone threshold for this screen's Booking.com-style top-nav/hero-search/grid
+// layout -- deliberately wider than the app's usual SIDEBAR_BREAKPOINT (700, used for
+// docked-sidebar-vs-bottom-sheet chrome elsewhere) since a multi-column results grid needs
+// more room to read well than a single docked panel does.
+export const DESKTOP_BREAKPOINT = 900;
 
 // Flat top-down umbrella illustration (alternating peach/white wedges) inside a soft teal
 // ring, echoing the search hero's reference illustration without depending on any external
@@ -59,6 +69,8 @@ export interface SearchSelection {
 
 type SearchStep = 'home' | 'destination' | 'dates' | 'results' | 'detail';
 
+export type GuestTab = 'search' | 'saved' | 'bookings' | 'account';
+
 interface Props {
   onSelectOperator: (operator: DemoOperator, selection: SearchSelection) => void;
   /** Reports whether we're on the plain home card (true) or one of the search sub-steps
@@ -66,6 +78,10 @@ interface Props {
    * flow -- matching how the reference flow takes over the whole screen instead of
    * leaving tab chrome visible mid-search. */
   onHomeStateChange?: (isHome: boolean) => void;
+  /** Desktop only: the top nav's Salvati/Prenotazioni/Account links switch CustomerApp's own
+   * tab state directly, since desktop width replaces the phone bottom tab bar with this nav
+   * instead of hiding tab navigation altogether. */
+  onNavigateTab?: (tab: GuestTab) => void;
 }
 
 // Guest-facing "search a beach club" flow, styled after Booking.com's own search UX (home
@@ -78,7 +94,7 @@ interface Props {
 // Everything here is presentation over the static DEMO_OPERATORS list -- the local-fallback
 // store only ever models one beach's real inventory (Bagno Pietrasanta), so only that card
 // routes into the real map/wizard; the others show a "coming soon" message when tapped.
-export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStateChange }) => {
+export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStateChange, onNavigateTab }) => {
   const alert = useAppAlert();
   const [step, setStep] = useState<SearchStep>('home');
   React.useEffect(() => {
@@ -144,6 +160,50 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
       );
     }
   };
+
+  const { width } = useWindowDimensions();
+  const isWide = width >= DESKTOP_BREAKPOINT;
+
+  // Desktop gets its own top-nav/hero-search/grid shell end to end (home, results, detail);
+  // the narrow phone flow below (full-screen destination/dates sub-steps, stacked list,
+  // hero+tabs detail) is untouched. Both ultimately call the same onSelectOperator/alert
+  // logic, so a booking made from either layout behaves identically from here on.
+  if (isWide) {
+    if (step === 'detail' && detailOperator) {
+      return (
+        <DesktopDetail
+          operator={detailOperator}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          startOffset={startOffset}
+          days={days}
+          fallbackGuests={persone}
+          onBack={() => setStep(detailReturnStep)}
+          onBook={(sel) => handlePickOperator(detailOperator, sel)}
+          onNavigateTab={onNavigateTab}
+        />
+      );
+    }
+    return (
+      <DesktopShell
+        mode={step === 'results' ? 'results' : 'home'}
+        operators={step === 'results' ? filteredOperators : DEMO_OPERATORS}
+        destination={destination}
+        onChangeDestination={setDestination}
+        startOffset={startOffset}
+        days={days}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onSelectDate={handleSelectDate}
+        persone={persone}
+        onChangePersone={handleChangePersone}
+        onSearch={() => setStep('results')}
+        onSelectOperator={(op) => openDetail(op, step === 'results' ? 'results' : 'home')}
+        onBackHome={() => setStep('home')}
+        onNavigateTab={onNavigateTab}
+      />
+    );
+  }
 
   if (step === 'destination') {
     return (
@@ -583,6 +643,598 @@ const BeachDetailScreen: React.FC<{
   );
 };
 
+type DesktopField = 'destination' | 'dates' | 'guests' | null;
+
+const DESKTOP_NAV_LINKS: Array<{ tab: GuestTab; label: string }> = [
+  { tab: 'saved', label: 'Salvati' },
+  { tab: 'bookings', label: 'Le mie prenotazioni' },
+  { tab: 'account', label: 'Account' },
+];
+
+// Replaces the phone bottom tab bar entirely on desktop widths (see CustomerApp.tsx, which
+// hides its own GuestTabBar when wide) -- these links are the only way to reach
+// Salvati/Prenotazioni/Account without it, so they call straight back into CustomerApp's tab
+// state via onNavigateTab rather than being purely decorative.
+const DesktopNav: React.FC<{ onLogoPress?: () => void; onNavigateTab?: (tab: GuestTab) => void }> = ({
+  onLogoPress,
+  onNavigateTab,
+}) => (
+  <View style={styles.desktopNav}>
+    <Pressable style={styles.desktopNavLeft} onPress={onLogoPress} disabled={!onLogoPress}>
+      <Ionicons name="umbrella" size={20} color={colors.white} />
+      <Text style={styles.desktopLogo}>Top Spiagge</Text>
+    </Pressable>
+    <View style={styles.desktopNavLinksRow}>
+      {DESKTOP_NAV_LINKS.map((l) => (
+        <Pressable key={l.tab} onPress={() => onNavigateTab?.(l.tab)} disabled={!onNavigateTab}>
+          <Text style={styles.desktopNavLink}>{l.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  </View>
+);
+
+// Booking.com-style top nav + hero + inline search bar (destination/dates/guests each open a
+// small functional popover instead of pushing a full-screen sub-step, since desktop has room
+// to show them inline) + a photo-card results grid -- covers both the plain "home" state
+// (hero + "popular" grid) and "results" state (post-search grid, no hero) with one component
+// so the search bar/nav chrome never has to remount between them.
+const DesktopShell: React.FC<{
+  mode: 'home' | 'results';
+  operators: DemoOperator[];
+  destination: string;
+  onChangeDestination: (d: string) => void;
+  startOffset: number;
+  days: number;
+  dateFrom: string;
+  dateTo: string;
+  onSelectDate: (offset: number) => void;
+  persone: number;
+  onChangePersone: (v: number) => void;
+  onSearch: () => void;
+  onSelectOperator: (operator: DemoOperator) => void;
+  onBackHome: () => void;
+  onNavigateTab?: (tab: GuestTab) => void;
+}> = ({
+  mode,
+  operators,
+  destination,
+  onChangeDestination,
+  startOffset,
+  days,
+  dateFrom,
+  dateTo,
+  onSelectDate,
+  persone,
+  onChangePersone,
+  onSearch,
+  onSelectOperator,
+  onBackHome,
+  onNavigateTab,
+}) => {
+  const [openField, setOpenField] = useState<DesktopField>(null);
+  const [destQuery, setDestQuery] = useState('');
+  const destSuggestions = useMemo(
+    () => DEMO_TOWNS.filter((t) => t.toLowerCase().includes(destQuery.trim().toLowerCase())),
+    [destQuery]
+  );
+  const toggleField = (f: DesktopField) => setOpenField((cur) => (cur === f ? null : f));
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <DesktopNav onLogoPress={mode === 'results' ? onBackHome : undefined} onNavigateTab={onNavigateTab} />
+
+      {mode === 'home' && (
+        <View style={styles.desktopHero}>
+          <Text style={styles.desktopHeroTitle}>Dove vuoi rilassarti?</Text>
+          <Text style={styles.desktopHeroSubtitle}>Prenota il tuo ombrellone in pochi click.</Text>
+        </View>
+      )}
+
+      <View style={[styles.desktopSearchBarWrap, mode === 'results' && styles.desktopSearchBarWrapResults]}>
+        <View style={styles.desktopSearchBar}>
+          <View style={[styles.desktopSearchField, { position: 'relative' }]}>
+            <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('destination')}>
+              <Ionicons name="search" size={16} color={colors.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.desktopFieldLabel}>Destinazione</Text>
+                <Text style={styles.desktopFieldValue} numberOfLines={1}>
+                  {destination}
+                </Text>
+              </View>
+            </Pressable>
+            {openField === 'destination' && (
+              <View style={styles.desktopPopover}>
+                <View style={styles.desktopPopoverSearchRow}>
+                  <Ionicons name="search" size={14} color={colors.textMuted} />
+                  <TextInput
+                    style={styles.desktopPopoverInput}
+                    placeholder="Cerca una localita"
+                    placeholderTextColor={colors.textMuted}
+                    value={destQuery}
+                    onChangeText={setDestQuery}
+                    autoFocus
+                  />
+                </View>
+                <Pressable
+                  style={styles.suggestionRow}
+                  onPress={() => {
+                    onChangeDestination(HERE_LABEL);
+                    setOpenField(null);
+                  }}
+                >
+                  <View style={styles.suggestionIcon}>
+                    <Ionicons name="locate" size={16} color={colors.primary} />
+                  </View>
+                  <Text style={styles.suggestionText}>{HERE_LABEL}</Text>
+                </Pressable>
+                {destSuggestions.map((town) => (
+                  <Pressable
+                    key={town}
+                    style={styles.suggestionRow}
+                    onPress={() => {
+                      onChangeDestination(town);
+                      setOpenField(null);
+                    }}
+                  >
+                    <View style={styles.suggestionIcon}>
+                      <Ionicons name="location-outline" size={16} color={colors.primary} />
+                    </View>
+                    <Text style={styles.suggestionText}>{town}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.desktopSearchDivider} />
+
+          <View style={[styles.desktopSearchField, { position: 'relative' }]}>
+            <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('dates')}>
+              <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.desktopFieldLabel}>Date</Text>
+                <Text style={styles.desktopFieldValue} numberOfLines={1}>
+                  {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+                </Text>
+              </View>
+            </Pressable>
+            {openField === 'dates' && (
+              <View style={[styles.desktopPopover, { width: 320 }]}>
+                <Calendar startOffset={startOffset} days={days} onSelectDate={onSelectDate} />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.desktopSearchDivider} />
+
+          <View style={[styles.desktopSearchField, { position: 'relative' }]}>
+            <Pressable style={styles.desktopSearchFieldBtn} onPress={() => toggleField('guests')}>
+              <Ionicons name="people-outline" size={16} color={colors.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.desktopFieldLabel}>Persone</Text>
+                <Text style={styles.desktopFieldValue}>
+                  {persone} {persone === 1 ? 'persona' : 'persone'}
+                </Text>
+              </View>
+            </Pressable>
+            {openField === 'guests' && (
+              <View style={[styles.desktopPopover, { width: 240 }]}>
+                <Stepper label="Persone" icon="people-outline" value={persone} onChange={onChangePersone} />
+              </View>
+            )}
+          </View>
+
+          <Button
+            title="Cerca"
+            icon="search"
+            onPress={() => {
+              setOpenField(null);
+              onSearch();
+            }}
+            style={styles.desktopSearchBtn}
+          />
+        </View>
+
+        {openField && <Pressable style={styles.desktopPopoverBackdrop} onPress={() => setOpenField(null)} />}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.desktopBody}>
+        <Text style={styles.desktopSectionTitle}>
+          {mode === 'results' ? `${operators.length} stabilimenti trovati` : 'Posti popolari'}
+        </Text>
+        <View style={styles.desktopGrid}>
+          {operators.map((op) => (
+            <DesktopOperatorCard key={op.id} operator={op} onPress={() => onSelectOperator(op)} />
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
+
+const DesktopOperatorCard: React.FC<{ operator: DemoOperator; onPress: () => void }> = ({ operator, onPress }) => (
+  <Pressable onPress={onPress} style={styles.desktopCardWrap}>
+    {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+      <View style={[styles.desktopCard, (pressed || hovered) && styles.desktopCardHovered]}>
+        <View style={styles.desktopCardPhotoWrap}>
+          <BeachPhoto photo={operator.photo} height={160} variant={0} borderRadius={0} />
+          {!operator.isBookable && (
+            <View style={styles.desktopCardSoonBadge}>
+              <Text style={styles.desktopCardSoonBadgeText}>Prossimamente</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.desktopCardBody}>
+          <View style={styles.desktopCardHeaderRow}>
+            <Text style={styles.desktopCardName} numberOfLines={1}>
+              {operator.name}
+            </Text>
+            <View style={styles.desktopRatingPill}>
+              <Text style={styles.desktopRatingPillText}>{operator.rating.toFixed(1)}</Text>
+            </View>
+          </View>
+          <Text style={styles.desktopCardTown}>{operator.town}</Text>
+          <Text style={styles.desktopCardTagline} numberOfLines={2}>
+            {operator.tagline}
+          </Text>
+          <Text style={styles.desktopCardReviews}>{operator.reviewCount} recensioni</Text>
+          <View style={styles.desktopCardPriceRow}>
+            <Text style={styles.desktopCardPriceHint}>A partire da</Text>
+            <Text style={styles.desktopCardPrice}>
+              {formatCurrency(operator.priceFrom)}
+              <Text style={styles.desktopCardPriceUnit}> /ombrellone al giorno</Text>
+            </Text>
+          </View>
+        </View>
+      </View>
+    )}
+  </Pressable>
+);
+
+// One row of the Availability table -- a real price band (see baseUmbrellaPricePerDay) crossed
+// with an equipment package (bare vs. + lettini), each independently quantity-selectable. Only
+// ever built for the one bookable operator: everything here (price, refund-cutoff date, free
+// count) comes straight from the real store/pricing engine, never a fabricated number.
+interface AvailabilityRow {
+  key: string;
+  bandLabel: string;
+  filaRange: string;
+  pricePerDay: number;
+  packageLabel: string;
+  beds: number;
+  freeCount: number;
+}
+
+function buildAvailabilityRows(
+  umbrellas: Umbrella[],
+  bookings: ReturnType<typeof useStore>['bookings'],
+  holds: ReturnType<typeof useStore>['holds'],
+  dateFrom: string,
+  dateTo: string,
+  bedRate: number
+): AvailabilityRow[] {
+  const byPrice = new Map<number, Umbrella[]>();
+  umbrellas.forEach((u) => {
+    const price = baseUmbrellaPricePerDay(u);
+    byPrice.set(price, [...(byPrice.get(price) ?? []), u]);
+  });
+  const sortedPrices = Array.from(byPrice.keys()).sort((a, b) => b - a);
+  const bandNames = ['Prima fila', 'Vicino al mare', 'Zona centrale', 'Fila interna'];
+  const rows: AvailabilityRow[] = [];
+  sortedPrices.forEach((price, idx) => {
+    const group = byPrice.get(price) ?? [];
+    const filaMin = Math.min(...group.map((u) => u.row)) + 1;
+    const filaMax = Math.max(...group.map((u) => u.row)) + 1;
+    const freeCount = group.filter(
+      (u) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo) && !findActiveHoldConflict(holds, u.id, dateFrom, dateTo)
+    ).length;
+    const filaRange = filaMin === filaMax ? `Fila ${filaMin}` : `Fila ${filaMin}-${filaMax}`;
+    const bandLabel = bandNames[idx] ?? filaRange;
+    rows.push({
+      key: `${price}-bare`,
+      bandLabel,
+      filaRange,
+      pricePerDay: price,
+      packageLabel: 'Solo ombrellone',
+      beds: 0,
+      freeCount,
+    });
+    rows.push({
+      key: `${price}-beds`,
+      bandLabel,
+      filaRange,
+      pricePerDay: price + 2 * bedRate,
+      packageLabel: 'Ombrellone + 2 lettini',
+      beds: 2,
+      freeCount,
+    });
+  });
+  return rows;
+}
+
+const REVIEW_CATEGORIES: Array<{ label: string; score: number }> = [
+  { label: 'Personale', score: 9.1 },
+  { label: 'Servizi', score: 9.2 },
+  { label: 'Pulizia', score: 9.5 },
+  { label: 'Comfort', score: 9.4 },
+  { label: 'Rapporto qualita/prezzo', score: 8.9 },
+  { label: 'Posizione', score: 9.0 },
+];
+
+// Two-column desktop detail page (photo gallery + description/costs/services/reviews on the
+// left, a sticky price+Reserve card on the right) plus a Booking.com-style Availability table:
+// each row crosses a real price band with a real equipment package, its own live free-count
+// for the selected dates, and a quantity selector -- selecting quantities and pressing Prenota
+// carries the resulting guest count (qty * MAX_ADULTS_PER_UMBRELLA) and the dates chosen here
+// straight into the real booking wizard's initial state, same as the plain "Prenota" shortcut
+// falls back to the guest count/dates carried from the home search card.
+const DesktopDetail: React.FC<{
+  operator: DemoOperator;
+  dateFrom: string;
+  dateTo: string;
+  startOffset: number;
+  days: number;
+  fallbackGuests: number;
+  onBack: () => void;
+  onBook: (selection: SearchSelection) => void;
+  onNavigateTab?: (tab: GuestTab) => void;
+}> = ({
+  operator,
+  dateFrom: initialDateFrom,
+  dateTo: initialDateTo,
+  startOffset: initialStartOffset,
+  days: initialDays,
+  fallbackGuests,
+  onBack,
+  onBook,
+  onNavigateTab,
+}) => {
+  const { getActivePriceList, umbrellas, bookings, holds } = useStore();
+  const priceList = operator.isBookable ? getActivePriceList() : null;
+  const [startOffset, setStartOffset] = useState(initialStartOffset);
+  const [days, setDays] = useState(initialDays);
+  const [awaitingEndDate, setAwaitingEndDate] = useState(false);
+  const [datesOpen, setDatesOpen] = useState(false);
+  const [qtyByRow, setQtyByRow] = useState<Record<string, number>>({});
+
+  const dateFrom = useMemo(() => isoDate(startOffset), [startOffset]);
+  const dateTo = useMemo(() => isoDate(startOffset + days - 1), [startOffset, days]);
+
+  const handleSelectDate = (offset: number) => {
+    if (awaitingEndDate && offset > startOffset) {
+      setDays(offset - startOffset + 1);
+      setAwaitingEndDate(false);
+      setDatesOpen(false);
+    } else {
+      setStartOffset(offset);
+      setDays(1);
+      setAwaitingEndDate(true);
+    }
+  };
+
+  const bedRate = priceList?.prices['art-lettino'] ?? 6;
+  const rows = useMemo(
+    () => (priceList ? buildAvailabilityRows(umbrellas, bookings, holds, dateFrom, dateTo, bedRate) : []),
+    [priceList, umbrellas, bookings, holds, dateFrom, dateTo, bedRate]
+  );
+  const cutoff = useMemo(() => formatDateShort(refundCutoffDate(dateFrom)), [dateFrom]);
+
+  const totalUmbrellas = Object.values(qtyByRow).reduce((sum, q) => sum + q, 0);
+  const totalPrice = rows.reduce((sum, r) => sum + (qtyByRow[r.key] ?? 0) * r.pricePerDay * days, 0);
+
+  const handleReserve = () => {
+    const guests = totalUmbrellas > 0 ? totalUmbrellas * MAX_ADULTS_PER_UMBRELLA : fallbackGuests;
+    onBook({ startOffset, days, guests });
+  };
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <DesktopNav onNavigateTab={onNavigateTab} />
+      <ScrollView contentContainerStyle={styles.desktopDetailBody}>
+        <Pressable onPress={onBack} style={styles.desktopBackLink} hitSlop={8}>
+          <Ionicons name="chevron-back" size={16} color={colors.primary} />
+          <Text style={styles.desktopBackLinkText}>Torna ai risultati</Text>
+        </Pressable>
+
+        <Text style={styles.desktopDetailTitle}>{operator.name}</Text>
+        <View style={styles.desktopDetailMetaRow}>
+          <View style={styles.desktopRatingPill}>
+            <Text style={styles.desktopRatingPillText}>{operator.rating.toFixed(1)}</Text>
+          </View>
+          <Text style={styles.desktopDetailMetaText}>
+            {operator.reviewCount} recensioni · {operator.town}
+          </Text>
+        </View>
+
+        <View style={styles.desktopGalleryRow}>
+          <BeachPhoto photo={operator.photo} height={340} variant={0} style={styles.desktopGalleryMain} borderRadius={radius.lg} />
+          <View style={styles.desktopGallerySide}>
+            <BeachPhoto photo={operator.photo} height={162} variant={1} style={styles.desktopGallerySideTile} borderRadius={radius.lg} />
+            <BeachPhoto photo={operator.photo} height={162} variant={2} style={styles.desktopGallerySideTile} borderRadius={radius.lg} />
+          </View>
+        </View>
+
+        <View style={styles.desktopDetailColumns}>
+          <View style={styles.desktopDetailMain}>
+            <Text style={styles.detailSectionTitle}>Descrizione</Text>
+            <Text style={styles.detailParagraph}>{operator.tagline}.</Text>
+
+            <Text style={styles.detailSectionTitle}>Servizi presenti</Text>
+            <View style={styles.detailServiceRow}>
+              <Ionicons name="accessibility-outline" size={16} color={colors.peachDark} />
+              <Text style={styles.detailServiceText}>Adatto ai disabili</Text>
+            </View>
+            <View style={styles.detailServiceRow}>
+              <Ionicons name="cafe-outline" size={16} color={colors.peachDark} />
+              <Text style={styles.detailServiceText}>Bar sulla spiaggia</Text>
+            </View>
+
+            <View style={styles.desktopAvailabilitySection}>
+              <View style={styles.desktopAvailabilityHeaderRow}>
+                <Text style={styles.detailSectionTitle}>Disponibilità</Text>
+              </View>
+
+              {priceList ? (
+                <>
+                  <Pressable style={[styles.desktopSearchField, { position: 'relative', maxWidth: 260 }]} onPress={() => setDatesOpen((v) => !v)}>
+                    <View style={styles.desktopSearchFieldBtn}>
+                      <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.desktopFieldLabel}>Date</Text>
+                        <Text style={styles.desktopFieldValue} numberOfLines={1}>
+                          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
+                        </Text>
+                      </View>
+                    </View>
+                    {datesOpen && (
+                      <View style={[styles.desktopPopover, { width: 320 }]}>
+                        <Calendar startOffset={startOffset} days={days} onSelectDate={handleSelectDate} />
+                      </View>
+                    )}
+                  </Pressable>
+                  {datesOpen && <Pressable style={styles.desktopPopoverBackdrop} onPress={() => setDatesOpen(false)} />}
+
+                  <View style={styles.availabilityTable}>
+                    <View style={styles.availabilityHeaderRow}>
+                      <Text style={[styles.availabilityHeaderCell, { flex: 2 }]}>Tipo di ombrellone</Text>
+                      <Text style={[styles.availabilityHeaderCell, { flex: 1 }]}>Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}</Text>
+                      <Text style={[styles.availabilityHeaderCell, { flex: 1 }]}>La tua scelta</Text>
+                      <Text style={[styles.availabilityHeaderCell, { width: 90, textAlign: 'center' }]}>Ombrelloni</Text>
+                    </View>
+                    {rows.map((row, i) => {
+                      const isFirstOfBand = i === 0 || rows[i - 1].bandLabel !== row.bandLabel;
+                      const qty = qtyByRow[row.key] ?? 0;
+                      return (
+                        <View key={row.key} style={[styles.availabilityRow, isFirstOfBand && styles.availabilityRowBandStart]}>
+                          <View style={{ flex: 2 }}>
+                            {isFirstOfBand && (
+                              <>
+                                <Text style={styles.availabilityBandLabel}>{row.bandLabel}</Text>
+                                <Text style={styles.availabilityBandSub}>{row.filaRange} · max {MAX_ADULTS_PER_UMBRELLA} adulti</Text>
+                              </>
+                            )}
+                            <Text style={styles.availabilityPackageLabel}>{row.packageLabel}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.availabilityPrice}>{formatCurrency(row.pricePerDay * days)}</Text>
+                            <Text style={styles.availabilityPriceHint}>tasse incluse</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={styles.availabilityChoiceRow}>
+                              <Ionicons name="checkmark-circle" size={13} color={colors.success} />
+                              <Text style={styles.availabilityChoiceText}>Rimborsabile con voucher fino al {cutoff}</Text>
+                            </View>
+                            {row.beds > 0 && (
+                              <View style={styles.availabilityChoiceRow}>
+                                <Ionicons name="bed-outline" size={13} color={colors.textMuted} />
+                                <Text style={styles.availabilityChoiceText}>{row.beds} lettini inclusi</Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={{ width: 90, alignItems: 'center' }}>
+                            {row.freeCount > 0 ? (
+                              <Stepper label={`${row.bandLabel} ${row.packageLabel}`} hideLabel min={0} max={row.freeCount} value={qty} onChange={(v) => setQtyByRow((cur) => ({ ...cur, [row.key]: v }))} />
+                            ) : (
+                              <Text style={styles.availabilityNoneLeft}>Esaurito</Text>
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : (
+                <View style={styles.detailComingSoonBox}>
+                  <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
+                  <Text style={styles.detailComingSoonText}>
+                    Prenotabile prossimamente in questa demo. Prova intanto con Bagno Pietrasanta.
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <Text style={styles.detailSectionTitle}>Recensioni</Text>
+            <View style={styles.desktopRatingRow}>
+              <View style={styles.desktopRatingBadgeLarge}>
+                <Text style={styles.desktopRatingBadgeLargeText}>{operator.rating.toFixed(1)}</Text>
+              </View>
+              <View>
+                <Text style={styles.desktopRatingSummary}>Ottimo</Text>
+                <Text style={styles.detailRatingCount}>{operator.reviewCount} recensioni</Text>
+              </View>
+            </View>
+            <View style={styles.desktopCategoryGrid}>
+              {REVIEW_CATEGORIES.map((c) => (
+                <View key={c.label} style={styles.desktopCategoryItem}>
+                  <View style={styles.desktopCategoryLabelRow}>
+                    <Text style={styles.desktopCategoryLabel}>{c.label}</Text>
+                    <Text style={styles.desktopCategoryScore}>{c.score.toFixed(1)}</Text>
+                  </View>
+                  <View style={styles.desktopCategoryBarTrack}>
+                    <View style={[styles.desktopCategoryBarFill, { width: `${(c.score / 10) * 100}%` }]} />
+                  </View>
+                </View>
+              ))}
+            </View>
+            {DETAIL_REVIEWS.map((r) => (
+              <View key={r.name} style={styles.detailReviewCard}>
+                <View style={styles.detailReviewHeader}>
+                  <View style={styles.detailReviewAvatar}>
+                    <Ionicons name="person" size={16} color={colors.primary} />
+                  </View>
+                  <View>
+                    <Text style={styles.detailReviewName}>{r.name}</Text>
+                    <View style={{ flexDirection: 'row', gap: 2 }}>
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Ionicons key={i} name={i < r.stars ? 'ellipse' : 'ellipse-outline'} size={9} color={colors.primary} />
+                      ))}
+                    </View>
+                  </View>
+                </View>
+                <Text style={styles.detailParagraph}>Ottima esperienza, personale gentile e spiaggia curata nei minimi dettagli.</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.desktopDetailSidebar}>
+            <View style={styles.desktopPriceCard}>
+              {priceList ? (
+                <>
+                  {totalUmbrellas > 0 ? (
+                    <>
+                      <Text style={styles.desktopPriceCardHint}>
+                        {totalUmbrellas} {totalUmbrellas === 1 ? 'ombrellone' : 'ombrelloni'} selezionati
+                      </Text>
+                      <Text style={styles.desktopPriceCardAmount}>{formatCurrency(totalPrice)}</Text>
+                      <Text style={styles.desktopPriceCardHint}>tasse e costi inclusi</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.desktopPriceCardHint}>A partire da</Text>
+                      <Text style={styles.desktopPriceCardAmount}>
+                        {formatCurrency(priceList.prices['art-ombrellone'] ?? operator.priceFrom)}
+                      </Text>
+                      <Text style={styles.desktopPriceCardHint}>per ombrellone al giorno</Text>
+                    </>
+                  )}
+                  <Button title="Prenota" onPress={handleReserve} style={{ marginTop: spacing.md }} />
+                  <Text style={styles.desktopPriceCardFootnote}>Bastano due minuti · nessun addebito qui</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.desktopPriceCardHint}>Non disponibile in questa demo</Text>
+                  <Button title="Prossimamente" onPress={handleReserve} disabled style={{ marginTop: spacing.md }} />
+                </>
+              )}
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   homeScroll: { paddingBottom: spacing.xl },
@@ -781,4 +1433,216 @@ const styles = StyleSheet.create({
   },
   detailFooterPrice: { fontSize: 16, fontWeight: '800', color: colors.text },
   detailFooterPriceHint: { fontSize: 11, color: colors.textMuted },
+
+  // --- Desktop-only (>= DESKTOP_BREAKPOINT) top-nav/hero-search/grid shell ---
+  desktopNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.primaryDark,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.md,
+  },
+  desktopNavLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  desktopLogo: { fontSize: 18, fontWeight: '800', color: colors.white },
+  desktopNavLinksRow: { flexDirection: 'row', gap: spacing.xl },
+  desktopNavLink: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
+  desktopHero: {
+    backgroundColor: colors.primaryDark,
+    paddingHorizontal: spacing.xxl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl + spacing.xl,
+  },
+  desktopHeroTitle: { fontSize: 32, fontWeight: '800', color: colors.white },
+  desktopHeroSubtitle: { fontSize: 15, color: 'rgba(255,255,255,0.85)', marginTop: spacing.xs },
+  desktopSearchBarWrap: {
+    paddingHorizontal: spacing.xxl,
+    marginTop: -spacing.xxl - spacing.md,
+    marginBottom: spacing.xl,
+    zIndex: 30,
+  },
+  desktopSearchBarWrapResults: { marginTop: spacing.lg },
+  desktopSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.xs,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+    maxWidth: 900,
+  },
+  desktopSearchField: { flex: 1 },
+  desktopSearchFieldBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+  },
+  desktopFieldLabel: { fontSize: 10, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase' },
+  desktopFieldValue: { fontSize: 13, fontWeight: '700', color: colors.text, marginTop: 1 },
+  desktopSearchDivider: { width: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  desktopSearchBtn: { paddingHorizontal: spacing.xl, marginLeft: spacing.xs, alignSelf: 'center' },
+  desktopPopoverBackdrop: {
+    position: 'absolute',
+    top: -2000,
+    left: -2000,
+    right: -2000,
+    bottom: -2000,
+    zIndex: 25,
+  },
+  desktopPopover: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    marginTop: spacing.sm,
+    width: 280,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+    zIndex: 30,
+  },
+  desktopPopoverSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  desktopPopoverInput: { flex: 1, fontSize: 13, color: colors.text, paddingVertical: spacing.sm },
+  desktopBody: { paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl },
+  desktopSectionTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: spacing.lg },
+  desktopGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
+  desktopCardWrap: { width: 300 },
+  desktopCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  desktopCardHovered: {
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  desktopCardPhotoWrap: { position: 'relative' },
+  desktopCardSoonBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    backgroundColor: 'rgba(35,48,68,0.85)',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  desktopCardSoonBadgeText: { color: colors.white, fontSize: 11, fontWeight: '700' },
+  desktopCardBody: { padding: spacing.md },
+  desktopCardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  desktopCardName: { flex: 1, fontSize: 15, fontWeight: '800', color: colors.text },
+  desktopRatingPill: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  desktopRatingPillText: { color: colors.white, fontSize: 12, fontWeight: '800' },
+  desktopCardTown: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  desktopCardTagline: { fontSize: 12, color: colors.textMuted, marginTop: 4, lineHeight: 16 },
+  desktopCardReviews: { fontSize: 11, color: colors.textMuted, marginTop: spacing.sm },
+  desktopCardPriceRow: { marginTop: spacing.sm, alignItems: 'flex-end' },
+  desktopCardPriceHint: { fontSize: 11, color: colors.textMuted },
+  desktopCardPrice: { fontSize: 17, fontWeight: '800', color: colors.text },
+  desktopCardPriceUnit: { fontSize: 11, fontWeight: '600', color: colors.textMuted },
+
+  // --- Desktop detail page ---
+  desktopDetailBody: { paddingHorizontal: spacing.xxl, paddingVertical: spacing.xl, maxWidth: 1100, alignSelf: 'center', width: '100%' },
+  desktopBackLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: spacing.md },
+  desktopBackLinkText: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  desktopDetailTitle: { fontSize: 26, fontWeight: '800', color: colors.text },
+  desktopDetailMetaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs, marginBottom: spacing.lg },
+  desktopDetailMetaText: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
+  desktopGalleryRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
+  desktopGalleryMain: { flex: 2 },
+  desktopGallerySide: { flex: 1, gap: spacing.sm },
+  desktopGallerySideTile: { width: '100%' },
+  desktopDetailColumns: { flexDirection: 'row', gap: spacing.xl, alignItems: 'flex-start' },
+  desktopDetailMain: { flex: 2 },
+  desktopDetailSidebar: { flex: 1, minWidth: 260 },
+  desktopPriceCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    position: 'sticky' as any,
+    top: spacing.lg,
+  },
+  desktopPriceCardHint: { fontSize: 12, color: colors.textMuted },
+  desktopPriceCardAmount: { fontSize: 24, fontWeight: '800', color: colors.text, marginTop: 2 },
+  desktopPriceCardFootnote: { fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, textAlign: 'center' },
+
+  desktopAvailabilitySection: { marginTop: spacing.sm },
+  desktopAvailabilityHeaderRow: { marginBottom: spacing.sm },
+  availabilityTable: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  availabilityHeaderRow: { flexDirection: 'row', backgroundColor: colors.primaryDark, padding: spacing.sm },
+  availabilityHeaderCell: { color: colors.white, fontSize: 11, fontWeight: '700' },
+  availabilityRow: {
+    flexDirection: 'row',
+    padding: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    alignItems: 'center',
+  },
+  availabilityRowBandStart: { backgroundColor: colors.bg },
+  availabilityBandLabel: { fontSize: 13, fontWeight: '800', color: colors.text },
+  availabilityBandSub: { fontSize: 11, color: colors.textMuted, marginBottom: 4 },
+  availabilityPackageLabel: { fontSize: 12, color: colors.text, fontWeight: '600', marginTop: 2 },
+  availabilityPrice: { fontSize: 14, fontWeight: '800', color: colors.text },
+  availabilityPriceHint: { fontSize: 10, color: colors.textMuted },
+  availabilityChoiceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
+  availabilityChoiceText: { fontSize: 11, color: colors.textMuted, flexShrink: 1 },
+  availabilityNoneLeft: { fontSize: 11, color: colors.danger, fontWeight: '700' },
+
+  desktopRatingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xs, marginBottom: spacing.lg },
+  desktopRatingBadgeLarge: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopRatingBadgeLargeText: { color: colors.white, fontSize: 16, fontWeight: '800' },
+  desktopRatingSummary: { fontSize: 14, fontWeight: '800', color: colors.text },
+  desktopCategoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg, marginBottom: spacing.lg },
+  desktopCategoryItem: { width: 240 },
+  desktopCategoryLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  desktopCategoryLabel: { fontSize: 12, color: colors.text, fontWeight: '600' },
+  desktopCategoryScore: { fontSize: 12, color: colors.text, fontWeight: '800' },
+  desktopCategoryBarTrack: { height: 5, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
+  desktopCategoryBarFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
 });

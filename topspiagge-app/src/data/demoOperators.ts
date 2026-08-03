@@ -3,16 +3,22 @@
 // beach's umbrellas/bookings), it just gives the discovery screens something real to
 // browse. Only `isBookable` operators route into the real map/wizard; the rest show a
 // "coming soon" message when tapped, so nothing here is presented as more real than it is.
-// There's deliberately no price field here: the only real pricing engine lives in
-// CustomerBookingScreen/utils/pricing.ts, and it can't quote a total before the guest has
-// picked dates, an umbrella, and lettini/sdraio -- a static "from X€" label on these cards
-// would just be a made-up number disconnected from that engine.
+// For the one bookable operator, `priceFrom` is a display-only "starting from" figure kept in
+// sync by hand with the real base rate in utils/pricing.ts (Fila 1 = 22/day) -- every actual
+// quoted cost the guest sees past this point (results card, detail page, availability table)
+// still comes straight from the real pricing engine / active price list, never this field.
 export interface DemoOperator {
   id: string;
   name: string;
   town: string;
   tagline: string;
   isBookable: boolean;
+  priceFrom: number;
+  rating: number;
+  reviewCount: number;
+  /** Purely-illustrated "photo" palette (no external image assets, drawn by BeachPhoto) --
+   * gives each card/gallery tile a distinct sky/sea/sand scene per beach. */
+  photo: { sky: string; sea: string; sand: string };
 }
 
 export const DEMO_OPERATORS: DemoOperator[] = [
@@ -22,6 +28,10 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     town: 'Marina di Pietrasanta',
     tagline: 'Ombrelloni in prima fila, noleggio lettini e sdraio, bar sulla spiaggia',
     isBookable: true,
+    priceFrom: 22,
+    rating: 4.8,
+    reviewCount: 312,
+    photo: { sky: '#8FE3E8', sea: '#17A2AA', sand: '#F2D9A6' },
   },
   {
     id: 'bagno-argentina',
@@ -29,6 +39,10 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     town: 'Forte dei Marmi',
     tagline: 'Stabilimento storico con ristorante vista mare',
     isBookable: false,
+    priceFrom: 28,
+    rating: 4.6,
+    reviewCount: 187,
+    photo: { sky: '#A9C6E8', sea: '#3D6FA8', sand: '#EAD6B0' },
   },
   {
     id: 'bagno-roma',
@@ -36,6 +50,10 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     town: 'Marina di Pietrasanta',
     tagline: 'Ideale per famiglie, area giochi bambini',
     isBookable: false,
+    priceFrom: 18,
+    rating: 4.5,
+    reviewCount: 96,
+    photo: { sky: '#FFE0B2', sea: '#4FB3BF', sand: '#F6E2B8' },
   },
   {
     id: 'bagno-le-dune',
@@ -43,6 +61,10 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     town: 'Viareggio',
     tagline: 'Spiaggia libera attrezzata, prezzi economici',
     isBookable: false,
+    priceFrom: 14,
+    rating: 4.2,
+    reviewCount: 54,
+    photo: { sky: '#CDEEDB', sea: '#3FA37E', sand: '#EDE0C8' },
   },
   {
     id: 'bagno-miramare',
@@ -50,6 +72,10 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     town: 'Forte dei Marmi',
     tagline: 'Servizio di lusso, cabine private e spa',
     isBookable: false,
+    priceFrom: 35,
+    rating: 4.9,
+    reviewCount: 241,
+    photo: { sky: '#D9CFF2', sea: '#5C4A9E', sand: '#F0E6D2' },
   },
 ];
 
