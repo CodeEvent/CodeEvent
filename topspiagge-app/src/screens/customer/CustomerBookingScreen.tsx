@@ -48,6 +48,7 @@ import {
   computeDiscounts,
   isSameDayWalkIn,
   isStudentDiscountEligibleRow,
+  priceBandLabel,
 } from '../../utils/pricing';
 import { generateBookingReference } from '../../utils/reference';
 import { DesktopNav } from './SearchHomeScreen';
@@ -1629,6 +1630,84 @@ const BookingForm: React.FC<{
           </View>
         )}
 
+        {/* Booking.com-style package table, but only ever meaningful once a specific umbrella
+            (and therefore a specific price band) is already chosen -- shown here, right after
+            that pick, rather than on the pre-booking marketing/detail page where selecting a
+            band/quantity would look like a reservation without a real spot behind it. The
+            "+N lettini" package's N always matches the adults just entered above (capped at
+            MAX_EQUIPMENT_PER_UMBRELLA, since a big group needing multiple umbrellas can't all
+            fit their lettini on this one) -- tapping a package just sets this umbrella's own
+            Lettini stepper below, which the guest can still fine-tune afterward. */}
+        {umbrella && (
+          <>
+            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Disponibilità</Text>
+            <View style={styles.packageTable}>
+              <View style={styles.packageHeaderRow}>
+                <Text style={[styles.packageHeaderCell, { flex: 2 }]}>Tipo di ombrellone</Text>
+                <Text style={[styles.packageHeaderCell, { flex: 1 }]}>
+                  Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}
+                </Text>
+                <Text style={[styles.packageHeaderCell, { flex: 1 }]}>La tua scelta</Text>
+                <Text style={[styles.packageHeaderCell, { width: 60, textAlign: 'center' }]}>Seleziona</Text>
+              </View>
+              {[
+                { key: 'bare', label: 'Solo ombrellone', beds: 0 },
+                { key: 'beds', label: `Ombrellone + ${Math.min(adults, MAX_EQUIPMENT_PER_UMBRELLA)} lettini`, beds: Math.min(adults, MAX_EQUIPMENT_PER_UMBRELLA) },
+              ].map((pkg, i) => {
+                const eq = equipment[umbrellaId] ?? defaultEquipmentFor(umbrellaId);
+                const price = (baseUmbrellaPricePerDay(umbrella) + pkg.beds * bedRate) * days;
+                const selected = eq.beds === pkg.beds;
+                return (
+                  <View key={pkg.key} style={[styles.packageRow, i === 0 && styles.packageRowFirst]}>
+                    <View style={{ flex: 2 }}>
+                      {i === 0 && (
+                        <>
+                          <Text style={styles.packageBandLabel}>{priceBandLabel(umbrella)}</Text>
+                          <Text style={styles.packageBandSub}>
+                            Fila {umbrella.row + 1} · max {MAX_ADULTS_PER_UMBRELLA} adulti
+                          </Text>
+                        </>
+                      )}
+                      <Text style={styles.packagePackageLabel}>{pkg.label}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.packagePrice}>{formatCurrency(price)}</Text>
+                      <Text style={styles.packagePriceHint}>tasse incluse</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.packageChoiceRow}>
+                        <Ionicons name="checkmark-circle" size={13} color={colors.success} />
+                        <Text style={styles.packageChoiceText}>Rimborsabile con voucher fino al {formatDateShort(cutoffDate)}</Text>
+                      </View>
+                      {pkg.beds > 0 && (
+                        <View style={styles.packageChoiceRow}>
+                          <Ionicons name="bed-outline" size={13} color={colors.textMuted} />
+                          <Text style={styles.packageChoiceText}>{pkg.beds} lettini inclusi</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={{ width: 60, alignItems: 'center' }}>
+                      <Pressable
+                        onPress={() => setBeds(umbrellaId, pkg.beds)}
+                        style={styles.packageSelectBtn}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={pkg.label}
+                      >
+                        <Ionicons
+                          name={selected ? 'radio-button-on' : 'radio-button-off'}
+                          size={20}
+                          color={selected ? colors.primary : colors.border}
+                        />
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        )}
+
         <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>
           {allUmbrellaIds.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
         </Text>
@@ -2397,4 +2476,33 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   confirmValue: { fontWeight: '700', color: colors.text },
+
+  // Booking.com-style package table (see BookingForm's "Disponibilità" section) -- a compact,
+  // single-band version of the same table style used pre-booking on SearchHomeScreen's detail
+  // page, since here there's only ever one relevant band (the umbrella already chosen).
+  packageTable: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  packageHeaderRow: { flexDirection: 'row', backgroundColor: colors.primaryDark, padding: spacing.sm },
+  packageHeaderCell: { color: colors.white, fontSize: 11, fontWeight: '700' },
+  packageRow: {
+    flexDirection: 'row',
+    padding: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    alignItems: 'center',
+  },
+  packageRowFirst: { borderTopWidth: 0 },
+  packageBandLabel: { fontSize: 13, fontWeight: '800', color: colors.text },
+  packageBandSub: { fontSize: 11, color: colors.textMuted, marginBottom: 4 },
+  packagePackageLabel: { fontSize: 12, color: colors.text, fontWeight: '600', marginTop: 2 },
+  packagePrice: { fontSize: 14, fontWeight: '800', color: colors.text },
+  packagePriceHint: { fontSize: 10, color: colors.textMuted },
+  packageChoiceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
+  packageChoiceText: { fontSize: 11, color: colors.textMuted, flexShrink: 1 },
+  packageSelectBtn: { alignItems: 'center', justifyContent: 'center' },
 });

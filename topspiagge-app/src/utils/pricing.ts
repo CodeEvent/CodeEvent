@@ -13,6 +13,18 @@ export function baseUmbrellaPricePerDay(umbrella: Umbrella): number {
   return 11;
 }
 
+// Friendly name for the row band a price belongs to -- mirrors baseUmbrellaPricePerDay's own
+// row thresholds exactly, so the two never drift apart. Used anywhere a guest needs to see
+// which "section" of the beach an umbrella's price corresponds to (the availability table on
+// the booking form, the search-side results/detail pages).
+export function priceBandLabel(umbrella: Umbrella): string {
+  const fila = umbrella.row + 1;
+  if (fila === 1) return 'Prima fila';
+  if (fila <= 4) return 'Vicino al mare';
+  if (fila <= 10) return 'Zona centrale';
+  return 'Fila interna';
+}
+
 // Both time-based discounts only ever apply to a same-day walk-in: booked and used
 // entirely today. A future-dated or multi-night booking never qualifies, regardless of
 // when it's placed or who's booking it.

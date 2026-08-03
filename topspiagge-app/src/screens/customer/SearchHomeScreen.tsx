@@ -10,11 +10,9 @@ import { Button, Card, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { DEMO_OPERATORS, DEMO_TOWNS, DemoOperator } from '../../data/demoOperators';
-import { refundCutoffDate } from '../../utils/cancellation';
-import { findActiveHoldConflict, findUmbrellaConflict, MAX_ADULTS_PER_UMBRELLA } from '../../utils/booking';
+import { MAX_ADULTS_PER_UMBRELLA } from '../../utils/booking';
 import { baseUmbrellaPricePerDay } from '../../utils/pricing';
 import { formatCurrency, formatDateShort, isoDate } from '../../utils/format';
-import { Umbrella } from '../../types';
 
 // Desktop-vs-phone threshold for this screen's Booking.com-style top-nav/hero-search/grid
 // layout -- deliberately wider than the app's usual SIDEBAR_BREAKPOINT (700, used for
@@ -173,8 +171,6 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
       return (
         <DesktopDetail
           operator={detailOperator}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
           startOffset={startOffset}
           days={days}
           fallbackGuests={persone}
@@ -899,67 +895,6 @@ const DesktopOperatorCard: React.FC<{ operator: DemoOperator; onPress: () => voi
   </Pressable>
 );
 
-// One row of the Availability table -- a real price band (see baseUmbrellaPricePerDay) crossed
-// with an equipment package (bare vs. + lettini), each independently quantity-selectable. Only
-// ever built for the one bookable operator: everything here (price, refund-cutoff date, free
-// count) comes straight from the real store/pricing engine, never a fabricated number.
-interface AvailabilityRow {
-  key: string;
-  bandLabel: string;
-  filaRange: string;
-  pricePerDay: number;
-  packageLabel: string;
-  beds: number;
-  freeCount: number;
-}
-
-function buildAvailabilityRows(
-  umbrellas: Umbrella[],
-  bookings: ReturnType<typeof useStore>['bookings'],
-  holds: ReturnType<typeof useStore>['holds'],
-  dateFrom: string,
-  dateTo: string,
-  bedRate: number
-): AvailabilityRow[] {
-  const byPrice = new Map<number, Umbrella[]>();
-  umbrellas.forEach((u) => {
-    const price = baseUmbrellaPricePerDay(u);
-    byPrice.set(price, [...(byPrice.get(price) ?? []), u]);
-  });
-  const sortedPrices = Array.from(byPrice.keys()).sort((a, b) => b - a);
-  const bandNames = ['Prima fila', 'Vicino al mare', 'Zona centrale', 'Fila interna'];
-  const rows: AvailabilityRow[] = [];
-  sortedPrices.forEach((price, idx) => {
-    const group = byPrice.get(price) ?? [];
-    const filaMin = Math.min(...group.map((u) => u.row)) + 1;
-    const filaMax = Math.max(...group.map((u) => u.row)) + 1;
-    const freeCount = group.filter(
-      (u) => !findUmbrellaConflict(bookings, u.id, dateFrom, dateTo) && !findActiveHoldConflict(holds, u.id, dateFrom, dateTo)
-    ).length;
-    const filaRange = filaMin === filaMax ? `Fila ${filaMin}` : `Fila ${filaMin}-${filaMax}`;
-    const bandLabel = bandNames[idx] ?? filaRange;
-    rows.push({
-      key: `${price}-bare`,
-      bandLabel,
-      filaRange,
-      pricePerDay: price,
-      packageLabel: 'Solo ombrellone',
-      beds: 0,
-      freeCount,
-    });
-    rows.push({
-      key: `${price}-beds`,
-      bandLabel,
-      filaRange,
-      pricePerDay: price + 2 * bedRate,
-      packageLabel: 'Ombrellone + 2 lettini',
-      beds: 2,
-      freeCount,
-    });
-  });
-  return rows;
-}
-
 const REVIEW_CATEGORIES: Array<{ label: string; score: number }> = [
   { label: 'Personale', score: 9.1 },
   { label: 'Servizi', score: 9.2 },
@@ -969,78 +904,35 @@ const REVIEW_CATEGORIES: Array<{ label: string; score: number }> = [
   { label: 'Posizione', score: 9.0 },
 ];
 
-// Two-column desktop detail page (photo gallery + description/costs/services/reviews on the
-// left, a sticky price+Reserve card on the right) plus a Booking.com-style Availability table:
-// each row crosses a real price band with a real equipment package, its own live free-count
-// for the selected dates, and a quantity selector -- selecting quantities and pressing Prenota
-// carries the resulting guest count (qty * MAX_ADULTS_PER_UMBRELLA) and the dates chosen here
-// straight into the real booking wizard's initial state, same as the plain "Prenota" shortcut
-// falls back to the guest count/dates carried from the home search card.
+// Two-column desktop detail page: photo gallery + description/costs/services/reviews on the
+// left, a price+Reserve card on the right. "Prenota" carries the dates/guest count from the
+// home search card straight into the real booking wizard, same as the mobile flow -- choosing
+// a specific price band/package/lettini count only makes sense once a specific umbrella (and
+// therefore a specific band) is picked, so that now lives in the booking form itself, right
+// after the guest has picked their spot on the real map (see BookingForm's package table).
 const DesktopDetail: React.FC<{
   operator: DemoOperator;
-  dateFrom: string;
-  dateTo: string;
   startOffset: number;
   days: number;
   fallbackGuests: number;
   onBack: () => void;
   onBook: (selection: SearchSelection) => void;
   onNavigateTab?: (tab: GuestTab) => void;
-}> = ({
-  operator,
-  dateFrom: initialDateFrom,
-  dateTo: initialDateTo,
-  startOffset: initialStartOffset,
-  days: initialDays,
-  fallbackGuests,
-  onBack,
-  onBook,
-  onNavigateTab,
-}) => {
-  const { getActivePriceList, umbrellas, bookings, holds } = useStore();
+}> = ({ operator, startOffset, days, fallbackGuests, onBack, onBook, onNavigateTab }) => {
+  const { getActivePriceList, umbrellas } = useStore();
   const priceList = operator.isBookable ? getActivePriceList() : null;
-  const [startOffset, setStartOffset] = useState(initialStartOffset);
-  const [days, setDays] = useState(initialDays);
-  const [awaitingEndDate, setAwaitingEndDate] = useState(false);
-  const [datesOpen, setDatesOpen] = useState(false);
-  const [qtyByRow, setQtyByRow] = useState<Record<string, number>>({});
-
-  const dateFrom = useMemo(() => isoDate(startOffset), [startOffset]);
-  const dateTo = useMemo(() => isoDate(startOffset + days - 1), [startOffset, days]);
-
-  const handleSelectDate = (offset: number) => {
-    if (awaitingEndDate && offset > startOffset) {
-      setDays(offset - startOffset + 1);
-      setAwaitingEndDate(false);
-      setDatesOpen(false);
-    } else {
-      setStartOffset(offset);
-      setDays(1);
-      setAwaitingEndDate(true);
-    }
-  };
-
-  const bedRate = priceList?.prices['art-lettino'] ?? 6;
-  const rows = useMemo(
-    () => (priceList ? buildAvailabilityRows(umbrellas, bookings, holds, dateFrom, dateTo, bedRate) : []),
-    [priceList, umbrellas, bookings, holds, dateFrom, dateTo, bedRate]
-  );
-  const cutoff = useMemo(() => formatDateShort(refundCutoffDate(dateFrom)), [dateFrom]);
-  // The cheapest bare-umbrella band (Fila interna) -- matches the lowest row in the table right
-  // below this card, instead of pulling the unrelated flat 'art-ombrellone' article price,
-  // which could (and did) disagree with every number the guest can actually see in the table.
+  // The cheapest real price band (Fila interna) -- an honest "starting from" figure that
+  // matches what the guest will actually see once they reach the real map, rather than the
+  // unrelated flat 'art-ombrellone' article price (which disagreed with it). Choosing a
+  // specific package/lettini count only makes sense once a specific umbrella (and therefore a
+  // specific band) is picked, so that choice now lives in the real booking form after the
+  // guest has picked their spot on the map -- this page just gets them there.
   const cheapestBandPrice = useMemo(() => {
-    const barePrices = rows.filter((r) => r.beds === 0).map((r) => r.pricePerDay);
-    return barePrices.length ? Math.min(...barePrices) : operator.priceFrom;
-  }, [rows, operator.priceFrom]);
+    const prices = umbrellas.map(baseUmbrellaPricePerDay);
+    return prices.length ? Math.min(...prices) : operator.priceFrom;
+  }, [umbrellas, operator.priceFrom]);
 
-  const totalUmbrellas = Object.values(qtyByRow).reduce((sum, q) => sum + q, 0);
-  const totalPrice = rows.reduce((sum, r) => sum + (qtyByRow[r.key] ?? 0) * r.pricePerDay * days, 0);
-
-  const handleReserve = () => {
-    const guests = totalUmbrellas > 0 ? totalUmbrellas * MAX_ADULTS_PER_UMBRELLA : fallbackGuests;
-    onBook({ startOffset, days, guests });
-  };
+  const handleReserve = () => onBook({ startOffset, days, guests: fallbackGuests });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -1084,89 +976,20 @@ const DesktopDetail: React.FC<{
               <Text style={styles.detailServiceText}>Bar sulla spiaggia</Text>
             </View>
 
-            <View style={styles.desktopAvailabilitySection}>
-              <View style={styles.desktopAvailabilityHeaderRow}>
-                <Text style={styles.detailSectionTitle}>Disponibilità</Text>
+            {priceList ? (
+              <>
+                <Text style={styles.detailSectionTitle}>Costi</Text>
+                <Text style={styles.detailParagraph}>Ombrellone: a partire da {formatCurrency(cheapestBandPrice)}/giorno</Text>
+                <Text style={styles.detailParagraph}>Sdraio: {formatCurrency(priceList.prices['art-sdraio'] ?? 0)}/giorno</Text>
+              </>
+            ) : (
+              <View style={styles.detailComingSoonBox}>
+                <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
+                <Text style={styles.detailComingSoonText}>
+                  Prenotabile prossimamente in questa demo. Prova intanto con Bagno Pietrasanta.
+                </Text>
               </View>
-
-              {priceList ? (
-                <>
-                  <Pressable style={[styles.desktopSearchField, { position: 'relative', maxWidth: 260, zIndex: 30 }]} onPress={() => setDatesOpen((v) => !v)}>
-                    <View style={styles.desktopSearchFieldBtn}>
-                      <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.desktopFieldLabel}>Date</Text>
-                        <Text style={styles.desktopFieldValue} numberOfLines={1}>
-                          {formatDateShort(dateFrom)} → {formatDateShort(dateTo)}
-                        </Text>
-                      </View>
-                    </View>
-                    {datesOpen && (
-                      <View style={[styles.desktopPopover, { width: 320 }]}>
-                        <Calendar startOffset={startOffset} days={days} onSelectDate={handleSelectDate} />
-                      </View>
-                    )}
-                  </Pressable>
-                  {datesOpen && <Pressable style={styles.desktopPopoverBackdrop} onPress={() => setDatesOpen(false)} />}
-
-                  <View style={styles.availabilityTable}>
-                    <View style={styles.availabilityHeaderRow}>
-                      <Text style={[styles.availabilityHeaderCell, { flex: 2 }]}>Tipo di ombrellone</Text>
-                      <Text style={[styles.availabilityHeaderCell, { flex: 1 }]}>Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}</Text>
-                      <Text style={[styles.availabilityHeaderCell, { flex: 1 }]}>La tua scelta</Text>
-                      <Text style={[styles.availabilityHeaderCell, { width: 90, textAlign: 'center' }]}>Ombrelloni</Text>
-                    </View>
-                    {rows.map((row, i) => {
-                      const isFirstOfBand = i === 0 || rows[i - 1].bandLabel !== row.bandLabel;
-                      const qty = qtyByRow[row.key] ?? 0;
-                      return (
-                        <View key={row.key} style={[styles.availabilityRow, isFirstOfBand && styles.availabilityRowBandStart]}>
-                          <View style={{ flex: 2 }}>
-                            {isFirstOfBand && (
-                              <>
-                                <Text style={styles.availabilityBandLabel}>{row.bandLabel}</Text>
-                                <Text style={styles.availabilityBandSub}>{row.filaRange} · max {MAX_ADULTS_PER_UMBRELLA} adulti</Text>
-                              </>
-                            )}
-                            <Text style={styles.availabilityPackageLabel}>{row.packageLabel}</Text>
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.availabilityPrice}>{formatCurrency(row.pricePerDay * days)}</Text>
-                            <Text style={styles.availabilityPriceHint}>tasse incluse</Text>
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <View style={styles.availabilityChoiceRow}>
-                              <Ionicons name="checkmark-circle" size={13} color={colors.success} />
-                              <Text style={styles.availabilityChoiceText}>Rimborsabile con voucher fino al {cutoff}</Text>
-                            </View>
-                            {row.beds > 0 && (
-                              <View style={styles.availabilityChoiceRow}>
-                                <Ionicons name="bed-outline" size={13} color={colors.textMuted} />
-                                <Text style={styles.availabilityChoiceText}>{row.beds} lettini inclusi</Text>
-                              </View>
-                            )}
-                          </View>
-                          <View style={{ width: 90, alignItems: 'center' }}>
-                            {row.freeCount > 0 ? (
-                              <Stepper label={`${row.bandLabel} ${row.packageLabel}`} hideLabel min={0} max={row.freeCount} value={qty} onChange={(v) => setQtyByRow((cur) => ({ ...cur, [row.key]: v }))} />
-                            ) : (
-                              <Text style={styles.availabilityNoneLeft}>Esaurito</Text>
-                            )}
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </>
-              ) : (
-                <View style={styles.detailComingSoonBox}>
-                  <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
-                  <Text style={styles.detailComingSoonText}>
-                    Prenotabile prossimamente in questa demo. Prova intanto con Bagno Pietrasanta.
-                  </Text>
-                </View>
-              )}
-            </View>
+            )}
 
             <Text style={styles.detailSectionTitle}>Recensioni</Text>
             <View style={styles.desktopRatingRow}>
@@ -1215,23 +1038,11 @@ const DesktopDetail: React.FC<{
             <View style={styles.desktopPriceCard}>
               {priceList ? (
                 <>
-                  {totalUmbrellas > 0 ? (
-                    <>
-                      <Text style={styles.desktopPriceCardHint}>
-                        {totalUmbrellas} {totalUmbrellas === 1 ? 'ombrellone' : 'ombrelloni'} selezionati
-                      </Text>
-                      <Text style={styles.desktopPriceCardAmount}>{formatCurrency(totalPrice)}</Text>
-                      <Text style={styles.desktopPriceCardHint}>tasse e costi inclusi</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.desktopPriceCardHint}>A partire da</Text>
-                      <Text style={styles.desktopPriceCardAmount}>{formatCurrency(cheapestBandPrice)}</Text>
-                      <Text style={styles.desktopPriceCardHint}>per ombrellone al giorno</Text>
-                    </>
-                  )}
+                  <Text style={styles.desktopPriceCardHint}>A partire da</Text>
+                  <Text style={styles.desktopPriceCardAmount}>{formatCurrency(cheapestBandPrice)}</Text>
+                  <Text style={styles.desktopPriceCardHint}>per ombrellone al giorno</Text>
                   <Button title="Prenota" onPress={handleReserve} style={{ marginTop: spacing.md }} />
-                  <Text style={styles.desktopPriceCardFootnote}>Bastano due minuti · nessun addebito qui</Text>
+                  <Text style={styles.desktopPriceCardFootnote}>Scegli il tuo posto sulla mappa</Text>
                 </>
               ) : (
                 <>
@@ -1628,34 +1439,6 @@ const styles = StyleSheet.create({
   desktopPriceCardHint: { fontSize: 12, color: colors.textMuted },
   desktopPriceCardAmount: { fontSize: 24, fontWeight: '800', color: colors.text, marginTop: 2 },
   desktopPriceCardFootnote: { fontSize: 11, color: colors.textMuted, marginTop: spacing.sm, textAlign: 'center' },
-
-  desktopAvailabilitySection: { marginTop: spacing.sm },
-  desktopAvailabilityHeaderRow: { marginBottom: spacing.sm },
-  availabilityTable: {
-    marginTop: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  availabilityHeaderRow: { flexDirection: 'row', backgroundColor: colors.primaryDark, padding: spacing.sm },
-  availabilityHeaderCell: { color: colors.white, fontSize: 11, fontWeight: '700' },
-  availabilityRow: {
-    flexDirection: 'row',
-    padding: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    alignItems: 'center',
-  },
-  availabilityRowBandStart: { backgroundColor: colors.bg },
-  availabilityBandLabel: { fontSize: 13, fontWeight: '800', color: colors.text },
-  availabilityBandSub: { fontSize: 11, color: colors.textMuted, marginBottom: 4 },
-  availabilityPackageLabel: { fontSize: 12, color: colors.text, fontWeight: '600', marginTop: 2 },
-  availabilityPrice: { fontSize: 14, fontWeight: '800', color: colors.text },
-  availabilityPriceHint: { fontSize: 10, color: colors.textMuted },
-  availabilityChoiceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
-  availabilityChoiceText: { fontSize: 11, color: colors.textMuted, flexShrink: 1 },
-  availabilityNoneLeft: { fontSize: 11, color: colors.danger, fontWeight: '700' },
 
   desktopRatingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xs, marginBottom: spacing.lg },
   desktopRatingBadgeLarge: {
