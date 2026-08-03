@@ -51,10 +51,12 @@ import {
   priceBandLabel,
 } from '../../utils/pricing';
 import { generateBookingReference } from '../../utils/reference';
-import { DesktopNav } from './SearchHomeScreen';
+import { DesktopNav, ItalyMapThumb } from './SearchHomeScreen';
 
 const WIDE_BREAKPOINT = 700;
-const SIDEBAR_WIDTH = 380;
+// Height of the desktop-only rating/"show on map" bar sitting above the beach map -- kept as a
+// constant since it feeds directly into mapAreaHeight's own height math below.
+const DESKTOP_PROPERTY_STRIP_HEIGHT = 44;
 
 // Splits each 10-wide side into 2 sections of 5 -- on top of the existing Nord/Sud split at
 // col 10 -- so the map reads as sections of 5 umbrellas with an aisle between, matching the
@@ -190,6 +192,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const [confirmedGroup, setConfirmedGroup] = useState<Booking[] | null>(null);
   const [confirmedIsEdit, setConfirmedIsEdit] = useState(false);
   const [dateEditVisible, setDateEditVisible] = useState(false);
+  const [italyMapVisible, setItalyMapVisible] = useState(false);
   const [waitlistUmbrella, setWaitlistUmbrella] = useState<Umbrella | null>(null);
   // This guest's own in-flight checkout hold(s) -- kept out of `isFreeForPeriod`'s conflict
   // check (below) so the umbrella(s) they're actively booking still look selectable/theirs,
@@ -285,12 +288,24 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   }, [editContext, isFormOpen, holdExpiresAt]);
 
   const labelWidth = isWide ? 84 : 60;
+  // On desktop the beach map now sits stacked above the availability/booking-form section
+  // (rather than beside it), so it only gets a share of the remaining viewport height instead
+  // of all of it -- the "320" offset below is the nav/title/progress-bar chrome already tuned
+  // for this screen; DESKTOP_PROPERTY_STRIP_HEIGHT is the new rating/show-map bar above the
+  // map. The map takes roughly half of what's left; the form takes the rest via its own flex
+  // + internal scroll (formScroll), same as it already did in the sidebar layout.
   // The map is 20 seats wide (10 Nord + walkway + 10 Sud) and rarely fits a phone or a
   // sidebar-narrowed column without shrinking cells past legibility, so the cell size is
   // normally driven by available height only -- the canvas scrolls horizontally to reveal
   // the rest. "Vista completa" (below) is the deliberate exception: it also factors in
   // width so the guest can see the entire beach at a glance on demand.
-  const mapAreaHeight = height - 320;
+  const desktopStackedContentHeight = height - 320 - DESKTOP_PROPERTY_STRIP_HEIGHT;
+  const mapAreaHeight = isWide ? Math.max(300, Math.round(desktopStackedContentHeight * 0.66)) : height - 320;
+  // MapStep renders its own date-pill header above the canvas and its "Selected spot" summary
+  // row below it (see MapStep's mapHeader/selectedSpotRow), both inside the same flex:1 box as
+  // the canvas -- this is how much of wideMapSection's fixed height they eat into before the
+  // canvas itself gets mapAreaHeight worth of room.
+  const desktopMapChromeHeight = 100;
   const normalCellSize = Math.max(MIN_CELL, Math.min(72, Math.floor(mapAreaHeight / ROWS) - GAP));
   const totalCols = COLS_PER_SIDE * 2;
   const mapAreaWidth = width - labelWidth - spacing.lg * 2;
@@ -446,9 +461,28 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
           onContinue={() => setStep('map')}
         />
       ) : isWide ? (
-        <View style={styles.wideRow}>
-          <View style={styles.wideMapCol}>{mapStepEl}</View>
-          <View style={styles.sidebarCol}>
+        <View style={styles.wideStack}>
+          <View style={styles.propertyStrip}>
+            <View style={styles.propertyStripInfo}>
+              <View style={styles.propertyStripRatingPill}>
+                <Text style={styles.propertyStripRatingPillText}>4.8</Text>
+              </View>
+              <Text style={styles.propertyStripText}>312 recensioni · Marina di Pietrasanta</Text>
+            </View>
+            <Pressable
+              onPress={() => setItalyMapVisible(true)}
+              style={styles.showMapBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Mostra la posizione sulla mappa"
+            >
+              <Ionicons name="location-outline" size={14} color={colors.primary} />
+              <Text style={styles.showMapBtnText}>Mostra sulla mappa</Text>
+            </Pressable>
+          </View>
+
+          <View style={[styles.wideMapSection, { height: mapAreaHeight + desktopMapChromeHeight }]}>{mapStepEl}</View>
+
+          <View style={styles.wideFormSection}>
             {isFormOpen ? (
               <BookingForm
                 key={selectedUmbrellaId}
@@ -529,6 +563,22 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 onContinue={() => setDateEditVisible(false)}
                 continueLabel="Conferma date"
               />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
+      {italyMapVisible && (
+        <Modal visible transparent animationType={isWide ? 'fade' : 'slide'} onRequestClose={() => setItalyMapVisible(false)}>
+          <Pressable style={isWide ? sidebarBackdrop : styles.backdrop} onPress={() => setItalyMapVisible(false)}>
+            <Pressable style={isWide ? sidebarSheet(360) : styles.formSheet} onPress={(e) => e.stopPropagation()}>
+              {!isWide && <View style={styles.handle} />}
+              <Text style={styles.italyMapModalTitle}>Bagno Pietrasanta</Text>
+              <Text style={styles.italyMapModalSubtitle}>Marina di Pietrasanta, Toscana, Italia</Text>
+              <View style={styles.italyMapModalThumb}>
+                <ItalyMapThumb width={120} height={150} />
+              </View>
+              <Button title="Chiudi" variant="secondary" onPress={() => setItalyMapVisible(false)} />
             </Pressable>
           </Pressable>
         </Modal>
@@ -2190,13 +2240,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  wideRow: { flex: 1, flexDirection: 'row' },
-  wideMapCol: { flex: 1 },
-  sidebarCol: {
-    width: SIDEBAR_WIDTH,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.border,
+  // Desktop-only stacked layout: a slim rating/"show on map" strip, then the interactive beach
+  // map, then the booking form -- in that vertical order, matching a real property page's
+  // "gallery/info block, then availability below it" structure instead of the old side-by-side
+  // map|sidebar split.
+  wideStack: { flex: 1 },
+  propertyStrip: {
+    height: DESKTOP_PROPERTY_STRIP_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xxl,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     backgroundColor: colors.card,
+  },
+  propertyStripInfo: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  propertyStripRatingPill: { backgroundColor: colors.primary, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2 },
+  propertyStripRatingPillText: { color: colors.white, fontSize: 12, fontWeight: '800' },
+  propertyStripText: { fontSize: 12.5, color: colors.textMuted, fontWeight: '600' },
+  showMapBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  showMapBtnText: { fontSize: 12.5, color: colors.primary, fontWeight: '700' },
+  wideMapSection: {},
+  wideFormSection: {
+    flex: 1,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  italyMapModalTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 2 },
+  italyMapModalSubtitle: { fontSize: 12.5, color: colors.textMuted, marginBottom: spacing.md },
+  italyMapModalThumb: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.sand,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.lg,
+    marginBottom: spacing.lg,
   },
   sidebarEmpty: {
     flex: 1,

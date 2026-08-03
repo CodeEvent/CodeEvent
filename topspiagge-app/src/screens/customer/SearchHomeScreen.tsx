@@ -53,6 +53,33 @@ const UmbrellaBadge: React.FC<{ size?: number }> = ({ size = 140 }) => {
   );
 };
 
+// Stylized, illustrated silhouette of Italy (mainland "boot" + Sicily + Sardinia) with a pin
+// over the Tuscan coast, roughly where Marina di Pietrasanta sits -- used anywhere the app
+// shows a "show on map" location thumbnail, so it reads as this real country rather than a
+// generic globe/pin glyph. Not cartographically precise (no external map asset/API involved,
+// matching this app's existing drawn-illustration pattern), just recognizable at a glance.
+export const ItalyMapThumb: React.FC<{ width?: number; height?: number }> = ({ width = 96, height = 120 }) => (
+  <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
+    <Svg width={width} height={height} viewBox="0 0 100 140">
+      <Path
+        d="M46,4 C38,4 34,10 36,16 C30,18 28,26 33,30 C28,34 26,42 32,46 C27,50 25,58 31,62 C26,66 24,74 30,78 C25,82 22,88 27,94 C30,100 36,104 40,100 C44,106 50,110 47,116 C53,112 58,104 56,98 C62,94 66,86 60,80 C65,74 68,66 62,60 C67,54 68,46 62,40 C66,34 65,26 58,22 C60,16 57,8 46,4 Z"
+        fill={colors.sandDark}
+      />
+      <Path
+        d="M18,58 C14,62 13,70 16,76 C13,82 15,90 20,92 C25,90 27,82 24,76 C28,70 26,62 18,58 Z"
+        fill={colors.sandDark}
+      />
+      <Path
+        d="M55,118 C50,122 48,128 52,132 C58,135 66,133 68,128 C70,123 64,119 55,118 Z"
+        fill={colors.sandDark}
+      />
+    </Svg>
+    <View style={{ position: 'absolute', left: width * 0.28, top: height * 0.22 }}>
+      <Ionicons name="location" size={Math.max(14, width * 0.16)} color={colors.danger} />
+    </View>
+  </View>
+);
+
 const HERE_LABEL = 'Intorno alla posizione attuale';
 
 export interface SearchSelection {
@@ -1041,7 +1068,7 @@ const DesktopResults: React.FC<{
           <View style={styles.desktopResultsRow}>
             <View style={styles.desktopFiltersSidebar}>
               <View style={styles.desktopMapThumb}>
-                <Ionicons name="map-outline" size={26} color={colors.textMuted} />
+                <ItalyMapThumb width={64} height={80} />
                 <Text style={styles.desktopMapThumbText}>Visualizza sulla mappa</Text>
               </View>
 
