@@ -302,6 +302,29 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const rowBannerHeight = (row: number) => (priceBands.isNewBandRow(row) ? PRICE_BANNER_HEIGHT : 0);
   const positions = useUmbrellaPositions(umbrellas, cellSize, GAP, cellSize, SECTION_WALKWAYS, rowBannerHeight);
 
+  // Known ahead of the map -- carried from the home search card's "Persone" stepper (falls
+  // back to 2 if the guest arrived without going through search first). Used both to label
+  // the "Selected spot" row and to warn the guest, right when they select a spot, that their
+  // group needs more than one umbrella.
+  const guestsHint = initialAdults && initialAdults > 0 ? initialAdults : 2;
+
+  // Takes the umbrella id explicitly (rather than reading selectedUmbrellaId from closure)
+  // because this always runs in the same tap that just set it -- that state update hasn't
+  // committed yet when this executes.
+  const maybeWarnMultiUmbrella = (umbrellaId: string) => {
+    if (editContext || multiUmbrellaNoticeShownFor === umbrellaId) return;
+    const needed = umbrellasNeededFor(guestsHint);
+    if (needed > 1) {
+      setMultiUmbrellaNoticeShownFor(umbrellaId);
+      const extraCount = needed - 1;
+      const extraText = extraCount === 1 ? 'un altro ombrellone' : `altri ${extraCount} ombrelloni`;
+      alert(
+        'Serviranno più ombrelloni',
+        `Per ${guestsHint} persone servono almeno ${needed} ombrelloni (max ${MAX_ADULTS_PER_UMBRELLA} persone ciascuno). Ti abbiamo già suggerito ${extraText} vicino al tuo: potrai controllarli nel prossimo passo.`
+      );
+    }
+  };
+
   const handleTap = (u: Umbrella) => {
     if (!isFreeForPeriod(u)) {
       alert(
@@ -324,28 +347,8 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
     setPendingExtraIds([]);
     setSelectedUmbrellaId(u.id);
     setFormStage('details');
-  };
-
-  // Known ahead of the map -- carried from the home search card's "Persone" stepper (falls
-  // back to 2 if the guest arrived without going through search first). Used both to label
-  // the "Selected spot" row and to warn the guest, right when they advance off the map, that
-  // their group needs more than one umbrella.
-  const guestsHint = initialAdults && initialAdults > 0 ? initialAdults : 2;
-
-  const handleAdvanceFromMap = () => {
-    if (!selectedUmbrellaId) return;
-    if (!editContext && multiUmbrellaNoticeShownFor !== selectedUmbrellaId) {
-      const needed = umbrellasNeededFor(guestsHint);
-      if (needed > 1) {
-        setMultiUmbrellaNoticeShownFor(selectedUmbrellaId);
-        const extraCount = needed - 1;
-        const extraText = extraCount === 1 ? 'un altro ombrellone' : `altri ${extraCount} ombrelloni`;
-        alert(
-          'Serviranno più ombrelloni',
-          `Per ${guestsHint} persone servono almeno ${needed} ombrelloni (max ${MAX_ADULTS_PER_UMBRELLA} persone ciascuno). Ti abbiamo già suggerito ${extraText} vicino al tuo: potrai controllarli nel prossimo passo.`
-        );
-      }
-    }
+    // Selecting a spot goes straight into the booking form -- no separate "Conferma" tap.
+    maybeWarnMultiUmbrella(u.id);
     setFormOpen(true);
   };
 
@@ -381,10 +384,8 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       onToggleFullMapView={() => setFullMapView((v) => !v)}
       rowBannerHeight={rowBannerHeight}
       rowPrices={priceBands.rowPrices}
-      hasSelection={!!selectedUmbrellaId}
       selectedUmbrella={umbrellas.find((u) => u.id === selectedUmbrellaId) ?? null}
       guestsHint={guestsHint}
-      onAdvance={handleAdvanceFromMap}
     />
   );
 
@@ -449,13 +450,6 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
                 onStageChange={setFormStage}
                 onExtrasChange={setPendingExtraIds}
               />
-            ) : selectedUmbrellaId ? (
-              <View style={styles.sidebarEmpty}>
-                <Ionicons name="checkmark-circle-outline" size={36} color={colors.primary} />
-                <Text style={styles.sidebarEmptyText}>
-                  Ombrellone selezionato -- tocca "Conferma" sotto la mappa per continuare
-                </Text>
-              </View>
             ) : (
               <View style={styles.sidebarEmpty}>
                 <Ionicons name="umbrella-outline" size={36} color={colors.border} />
@@ -700,10 +694,8 @@ const MapStep: React.FC<{
   onToggleFullMapView: () => void;
   rowBannerHeight: (row: number) => number;
   rowPrices: Map<number, number>;
-  hasSelection: boolean;
   selectedUmbrella: Umbrella | null;
   guestsHint: number;
-  onAdvance: () => void;
 }> = ({
   umbrellas,
   positions,
@@ -719,10 +711,8 @@ const MapStep: React.FC<{
   onToggleFullMapView,
   rowBannerHeight,
   rowPrices,
-  hasSelection,
   selectedUmbrella,
   guestsHint,
-  onAdvance,
 }) => {
   // Where the Nord side ends and the Sud side begins, in the same units BeachCanvas positions
   // cells in -- needed so each price banner's label can center within the side that's actually
@@ -735,10 +725,11 @@ const MapStep: React.FC<{
   // A real View (not a Fragment) so `flex: 1` can bound this step's height to whatever's left
   // of the screen below the header/progress-bar -- without it, BeachCanvas's own `flex: 1`
   // has no definite space to fill and instead renders at its full natural content height (all
-  // 17 rows), pushing "Conferma" and everything below it past the bottom of the viewport with
-  // no way to scroll there (the app disables native page scroll; BeachCanvas's drag-to-pan
-  // only pans *within* its own box, it doesn't reveal siblings after it). Bounding this step
-  // properly means the map now scrolls/pans within a fixed-size box and the footer stays put.
+  // 17 rows), pushing the selected-spot row and everything below it past the bottom of the
+  // viewport with no way to scroll there (the app disables native page scroll; BeachCanvas's
+  // drag-to-pan only pans *within* its own box, it doesn't reveal siblings after it). Bounding
+  // this step properly means the map now scrolls/pans within a fixed-size box and the footer
+  // stays put.
   <View style={styles.mapStepOuter}>
     <View style={styles.mapHeader}>
       <Pressable onPress={onChangeDates} style={styles.dateSelectPill}>
@@ -896,14 +887,6 @@ const MapStep: React.FC<{
         </Text>
       )}
     </View>
-
-    <Pressable
-      onPress={onAdvance}
-      disabled={!hasSelection}
-      style={[styles.mapConfirmBtn, !hasSelection && styles.mapConfirmBtnDisabled]}
-    >
-      <Text style={[styles.mapConfirmBtnText, !hasSelection && styles.mapConfirmBtnTextDisabled]}>Conferma</Text>
-    </Pressable>
   </View>
   );
 };
@@ -2088,20 +2071,6 @@ const styles = StyleSheet.create({
   selectedSpotItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   selectedSpotText: { color: colors.text, fontWeight: '600', fontSize: 12 },
   selectedSpotPrice: { color: colors.text, fontWeight: '800', fontSize: 14, marginLeft: 'auto' },
-  // Dark-navy "Confirm" button with mint-green text -- a one-off accent distinct from the
-  // shared teal primary button, matching this specific reference's own button styling.
-  mapConfirmBtn: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-    borderRadius: radius.xl,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    backgroundColor: '#12283D',
-  },
-  mapConfirmBtnDisabled: { backgroundColor: colors.border },
-  mapConfirmBtnText: { color: '#8FF5CB', fontWeight: '800', fontSize: 15 },
-  mapConfirmBtnTextDisabled: { color: colors.textMuted },
   cell: {
     position: 'absolute',
     alignItems: 'center',
