@@ -58,10 +58,16 @@ const linking: LinkingOptions<any> = {
 };
 
 const CustomerRoute: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
-  const beachSlug = route.params?.beachSlug;
+  // The URL-level beachSlug seeds the initial beach (deep link / today's plain "/"); picking a
+  // different bookable operator in-app (see CustomerApp's onSelectBeach) swaps this without a
+  // page navigation, re-scoping the same StoreProvider to that operator's own local inventory.
+  const [beachSlug, setBeachSlug] = React.useState<string | undefined>(route.params?.beachSlug);
   return (
     <StoreProvider beachSlug={beachSlug}>
-      <CustomerApp onStaffLogin={() => navigation.navigate('Operator', { beachSlug })} />
+      <CustomerApp
+        onStaffLogin={() => navigation.navigate('Operator', { beachSlug })}
+        onSelectBeach={setBeachSlug}
+      />
     </StoreProvider>
   );
 };

@@ -116,9 +116,10 @@ interface Props {
 // count is a real value carried into the booking flow (seeds the real form's "Adulti" stepper)
 // -- lettini/sdraio equipment is still chosen later, after picking a specific umbrella on the
 // map (see CustomerBookingScreen), since that genuinely can't be known before then.
-// Everything here is presentation over the static DEMO_OPERATORS list -- the local-fallback
-// store only ever models one beach's real inventory (Bagno Pietrasanta), so only that card
-// routes into the real map/wizard; the others show a "coming soon" message when tapped.
+// Everything here is presentation over the static DEMO_OPERATORS list -- each `isBookable`
+// operator gets its own independent local-fallback inventory (see StoreContext's
+// storageKeyFor), so those cards route into the real map/wizard; the rest show a "coming soon"
+// message when tapped.
 export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStateChange, onNavigateTab }) => {
   const alert = useAppAlert();
   const [step, setStep] = useState<SearchStep>('home');
@@ -181,7 +182,7 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
     } else {
       alert(
         'Prossimamente disponibile',
-        `${op.name} sarà prenotabile presto in questa demo. Prova intanto con Bagno Pietrasanta.`
+        `${op.name} sarà prenotabile presto in questa demo. Prova con Bagno Pietrasanta, Bagno Argentina o Bagno Roma.`
       );
     }
   };
@@ -543,7 +544,7 @@ const DETAIL_REVIEWS = [
 
 const DETAIL_PHOTO_TILES = 9;
 
-// Only Bagno Pietrasanta is real, bookable inventory (see demoOperators.ts) -- its Costi
+// Only `isBookable` operators are real, bookable inventory (see demoOperators.ts) -- their Costi
 // section pulls the actual base prices from the store's active price list rather than
 // inventing numbers; the other demo operators show a plain "coming soon" notice instead of
 // a fabricated price, matching this file's existing rule against disconnected made-up costs.
@@ -608,7 +609,7 @@ const BeachDetailScreen: React.FC<{
               <View style={styles.detailComingSoonBox}>
                 <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
                 <Text style={styles.detailComingSoonText}>
-                  Prenotabile prossimamente in questa demo. Prova intanto con Bagno Pietrasanta.
+                  Prenotabile prossimamente in questa demo. Prova con Bagno Pietrasanta, Bagno Argentina o Bagno Roma.
                 </Text>
               </View>
             )}
@@ -1133,8 +1134,8 @@ const DesktopResults: React.FC<{
                 <View style={styles.desktopNoticeBanner}>
                   <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
                   <Text style={styles.desktopNoticeBannerText}>
-                    In questa demo solo Bagno Pietrasanta ha disponibilita reale: gli altri stabilimenti saranno
-                    prenotabili a breve.
+                    In questa demo Bagno Pietrasanta, Bagno Argentina e Bagno Roma hanno disponibilita reale: gli
+                    altri stabilimenti saranno prenotabili a breve.
                   </Text>
                   <Pressable onPress={() => setBannerDismissed(true)} hitSlop={8} accessibilityLabel="Chiudi avviso">
                     <Ionicons name="close" size={16} color={colors.textMuted} />
@@ -1327,7 +1328,7 @@ const DesktopDetail: React.FC<{
               <View style={styles.detailComingSoonBox}>
                 <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
                 <Text style={styles.detailComingSoonText}>
-                  Prenotabile prossimamente in questa demo. Prova intanto con Bagno Pietrasanta.
+                  Prenotabile prossimamente in questa demo. Prova con Bagno Pietrasanta, Bagno Argentina o Bagno Roma.
                 </Text>
               </View>
             )}

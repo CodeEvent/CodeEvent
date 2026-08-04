@@ -1,12 +1,12 @@
-// Static, presentation-only list for the guest-side "search nearby beach clubs" flow --
-// this is not real bookable inventory (the local-fallback store only ever models one
-// beach's umbrellas/bookings), it just gives the discovery screens something real to
-// browse. Only `isBookable` operators route into the real map/wizard; the rest show a
-// "coming soon" message when tapped, so nothing here is presented as more real than it is.
-// For the one bookable operator, `priceFrom` is a display-only "starting from" figure kept in
-// sync by hand with the real base rate in utils/pricing.ts (Fila 1 = 22/day) -- every actual
-// quoted cost the guest sees past this point (results card, detail page, availability table)
-// still comes straight from the real pricing engine / active price list, never this field.
+// Static, presentation-only list for the guest-side "search nearby beach clubs" flow. Each
+// `isBookable` operator gets its own independent local-fallback umbrella grid/bookings/price
+// list (see StoreContext's storageKeyFor, keyed by this `id` as the beachSlug) so it's a real,
+// separately-bookable beach rather than shared/aliased state; the rest still show a "coming
+// soon" message when tapped, so nothing here is presented as more real than it is.
+// `priceFrom` is a display-only "starting from" figure kept in sync by hand with the real base
+// rate in utils/pricing.ts (Fila 1 = 22/day) -- every actual quoted cost the guest sees past
+// this point (results card, detail page, availability table) still comes straight from the
+// real pricing engine / active price list, never this field.
 export interface DemoOperator {
   id: string;
   name: string;
@@ -38,7 +38,7 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     name: 'Bagno Argentina',
     town: 'Forte dei Marmi',
     tagline: 'Stabilimento storico con ristorante vista mare',
-    isBookable: false,
+    isBookable: true,
     priceFrom: 28,
     rating: 4.6,
     reviewCount: 187,
@@ -49,7 +49,7 @@ export const DEMO_OPERATORS: DemoOperator[] = [
     name: 'Bagno Roma',
     town: 'Marina di Pietrasanta',
     tagline: 'Ideale per famiglie, area giochi bambini',
-    isBookable: false,
+    isBookable: true,
     priceFrom: 18,
     rating: 4.5,
     reviewCount: 96,

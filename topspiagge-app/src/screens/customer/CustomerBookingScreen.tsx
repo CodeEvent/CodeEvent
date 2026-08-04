@@ -65,10 +65,7 @@ const SECTION_WALKWAYS: WalkwayBreak[] = [
   { at: 15, width: 16 },
 ];
 
-// This wizard only ever serves the one real bookable venue -- reusing its demo listing data
-// (rating, review count, tagline, photo palette) keeps the desktop property header/gallery
-// consistent with the rest of the app instead of re-hardcoding the same numbers a second time.
-const VENUE = DEMO_OPERATORS.find((o) => o.id === 'bagno-pietrasanta')!;
+const DEFAULT_OPERATOR_ID = 'bagno-pietrasanta';
 
 // How tall a price-tier banner reserves above the first row of its band -- see buildPriceBands.
 const PRICE_BANNER_HEIGHT = 42;
@@ -117,6 +114,9 @@ export interface EditBookingContext {
 }
 
 interface CustomerBookingScreenProps {
+  /** Which bookable demo operator this wizard instance is for -- drives the venue header
+   * (name/rating/town) shown on the property page. Defaults to Bagno Pietrasanta. */
+  operatorId?: string;
   editContext?: EditBookingContext | null;
   onExitToLanding: () => void;
   onManage: () => void;
@@ -132,6 +132,7 @@ interface CustomerBookingScreenProps {
 }
 
 export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
+  operatorId,
   editContext,
   onExitToLanding,
   onManage,
@@ -143,6 +144,9 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const { umbrellas, bookings, holds, joinWaitlist, createHold, releaseHold } = useStore();
   const alert = useAppAlert();
   const { width, height } = useWindowDimensions();
+  const VENUE =
+    DEMO_OPERATORS.find((o) => o.id === (operatorId ?? DEFAULT_OPERATOR_ID)) ??
+    DEMO_OPERATORS.find((o) => o.id === DEFAULT_OPERATOR_ID)!;
 
   const primaryEditBooking = editContext?.bookings[0];
 
@@ -426,7 +430,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </Pressable>
           <Text style={styles.plainHeaderTitle} numberOfLines={1} adjustsFontSizeToFit>
-            Prenotazione per Bagno Pietrasanta
+            Prenotazione per {VENUE.name}
           </Text>
           <Pressable onPress={onManage} style={styles.plainHeaderBackBtn} accessibilityLabel="Gestisci la tua prenotazione">
             <Ionicons name="person-circle-outline" size={20} color={colors.textMuted} />
@@ -437,7 +441,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       {isWide && (
         <View style={styles.desktopWizardTitleRow}>
           <Text style={styles.desktopWizardTitle} numberOfLines={1}>
-            Prenotazione per Bagno Pietrasanta
+            Prenotazione per {VENUE.name}
           </Text>
         </View>
       )}
@@ -591,8 +595,8 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
           <Pressable style={isWide ? sidebarBackdrop : styles.backdrop} onPress={() => setItalyMapVisible(false)}>
             <Pressable style={isWide ? sidebarSheet(360) : styles.formSheet} onPress={(e) => e.stopPropagation()}>
               {!isWide && <View style={styles.handle} />}
-              <Text style={styles.italyMapModalTitle}>Bagno Pietrasanta</Text>
-              <Text style={styles.italyMapModalSubtitle}>Marina di Pietrasanta, Toscana, Italia</Text>
+              <Text style={styles.italyMapModalTitle}>{VENUE.name}</Text>
+              <Text style={styles.italyMapModalSubtitle}>{VENUE.town}, Toscana, Italia</Text>
               <View style={styles.italyMapModalThumb}>
                 <ItalyMapThumb width={120} height={150} />
               </View>

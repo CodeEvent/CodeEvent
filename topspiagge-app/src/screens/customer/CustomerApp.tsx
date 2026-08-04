@@ -12,6 +12,10 @@ type Tab = 'search' | 'saved' | 'bookings' | 'account';
 
 interface Props {
   onStaffLogin: () => void;
+  /** Switches the store's active beachSlug (see App.tsx/StoreContext) so the booking wizard
+   * reads/writes the picked operator's own independent inventory instead of always the one the
+   * page happened to mount with. */
+  onSelectBeach: (beachId: string) => void;
 }
 
 // Guest-facing shell: a Booking.com-style bottom tab bar (Cerca/Salvati/Prenotazioni/Account)
@@ -19,11 +23,15 @@ interface Props {
 // overlay on top of it -- consistent with how the wizard already manages its own internal
 // steps, no nested navigator needed here either (the only route that genuinely needs a
 // distinct URL is /operator).
-export const CustomerApp: React.FC<Props> = ({ onStaffLogin }) => {
+export const CustomerApp: React.FC<Props> = ({ onStaffLogin, onSelectBeach }) => {
   const [tab, setTab] = useState<Tab>('search');
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [editContext, setEditContext] = useState<EditBookingContext | null>(null);
   const [initialSelection, setInitialSelection] = useState<SearchSelection | null>(null);
+  // Which bookable operator the guest is currently booking/browsing-into -- drives both the
+  // wizard's venue display (name/rating/town) and, via onSelectBeach, which beach's data the
+  // store actually loads. Defaults to Pietrasanta so a plain "/" URL keeps today's behavior.
+  const [operatorId, setOperatorId] = useState('bagno-pietrasanta');
   // The search flow's destination/dates/guests/results sub-steps take over the whole screen
   // (matching the reference flow), so the bottom tab bar only shows on the plain home card.
   const [searchIsHome, setSearchIsHome] = useState(true);
@@ -42,6 +50,7 @@ export const CustomerApp: React.FC<Props> = ({ onStaffLogin }) => {
   if (overlayOpen) {
     return (
       <CustomerBookingScreen
+        operatorId={operatorId}
         editContext={editContext}
         onExitToLanding={closeOverlay}
         onManage={() => {
@@ -63,7 +72,9 @@ export const CustomerApp: React.FC<Props> = ({ onStaffLogin }) => {
           <SearchHomeScreen
             onHomeStateChange={setSearchIsHome}
             onNavigateTab={setTab}
-            onSelectOperator={(_operator: DemoOperator, selection: SearchSelection) => {
+            onSelectOperator={(operator: DemoOperator, selection: SearchSelection) => {
+              setOperatorId(operator.id);
+              onSelectBeach(operator.id);
               setInitialSelection(selection);
               setEditContext(null);
               setOverlayOpen(true);

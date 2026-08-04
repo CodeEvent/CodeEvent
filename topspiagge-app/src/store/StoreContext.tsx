@@ -61,6 +61,15 @@ import {
 // state forever instead of picking up the new default.
 const STORAGE_KEY = 'topspiagge:v2';
 
+// Local-fallback (no Supabase) mode has no real per-tenant database, so the only way for
+// several demo beaches (see beachSlug below) to have genuinely independent inventories --
+// instead of all quietly sharing and clobbering one global blob -- is to give each slug its
+// own storage bucket. `undefined` (today's plain single-beach URL) keeps the original
+// unsuffixed key so existing local sessions are unaffected.
+function storageKeyFor(beachSlug?: string): string {
+  return beachSlug ? `${STORAGE_KEY}:${beachSlug}` : STORAGE_KEY;
+}
+
 // Fire-and-forget Supabase write: local state is already updated optimistically by the time
 // this runs, so a failure here just means this device's change hasn't reached the shared
 // database yet (it'll retry on the next action) rather than blocking the UI.
@@ -735,8 +744,10 @@ function reducer(state: AppState, action: Action): AppState {
 }
 
 interface StoreContextValue extends AppState {
-  // The beach this store instance is scoped to -- null in local-only mode (no Supabase
-  // configured) or while a Supabase-backed instance is still resolving it on mount.
+  // The beach this store instance is scoped to. In local-only mode (no Supabase configured)
+  // this mirrors beachSlug (null for today's plain single-beach URL/local dev, so existing
+  // behavior is unchanged); with Supabase it's the resolved beach row id and stays null while
+  // that resolution is still in flight on mount.
   beachId: string | null;
   addRow: () => void;
   swapUmbrellaPositions: (aId: string, bId: string) => void;
@@ -881,7 +892,11 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
           console.warn('Supabase initial load failed, falling back to local seed data:', err);
         }
       }
-      const raw = await safeGetItem(STORAGE_KEY);
+      // No Supabase (or it failed above): each beachSlug still gets its own independent seed
+      // and storage bucket -- see storageKeyFor -- so the local-fallback demo can genuinely
+      // model several bookable beaches side by side instead of one shared blob.
+      if (!cancelled) setBeachId(beachSlug ?? null);
+      const raw = await safeGetItem(storageKeyFor(beachSlug));
       if (raw) {
         try {
           const parsed = JSON.parse(raw);
@@ -902,8 +917,8 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
   // whole store into AsyncStorage on every change would just be a second, redundant copy.
   useEffect(() => {
     if (!state.hydrated || isSupabaseConfigured) return;
-    safeSetItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    safeSetItem(storageKeyFor(beachSlug), JSON.stringify(state));
+  }, [state, beachSlug]);
 
   // Local-only cross-tab sync: without Supabase, "the operator dashboard notices what the guest
   // just did" only actually happens if both are the same in-memory reducer -- which is true for
@@ -916,8 +931,9 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
   // notification bell, or a booking becoming visible on Quadro, without a manual reload.
   useEffect(() => {
     if (isSupabaseConfigured || typeof window === 'undefined' || !window.addEventListener) return;
+    const key = storageKeyFor(beachSlug);
     const onStorage = (e: StorageEvent) => {
-      if (e.key !== STORAGE_KEY || !e.newValue) return;
+      if (e.key !== key || !e.newValue) return;
       try {
         const parsed = JSON.parse(e.newValue);
         dispatch({ type: 'HYDRATE', payload: { ...parsed, hydrated: true } });
@@ -927,7 +943,7 @@ export const StoreProvider: React.FC<StoreProviderProps> = ({ children, beachSlu
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  }, [beachSlug]);
 
   // Layout decorations (walkways, bar, entry, shapes, ...) have no Supabase table yet, so they're
   // kept in their own small device-local cache -- independent of the big STORAGE_KEY blob above,
