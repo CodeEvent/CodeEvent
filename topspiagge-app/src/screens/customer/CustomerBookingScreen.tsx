@@ -2517,7 +2517,10 @@ const styles = StyleSheet.create({
   },
   welcomeText: { color: colors.libero, fontWeight: '700', fontSize: 13, marginTop: spacing.xs },
   contactNameRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  contactNameField: { flex: 1, marginTop: 0 },
+  // minWidth: 0 overrides the flex item's default min-width:auto -- without it, a text input's
+  // own content-based min width stops flex:1 from actually shrinking it to share the row, and
+  // Cognome (the second field) overflows past the row's right edge instead of matching Nome.
+  contactNameField: { flex: 1, marginTop: 0, minWidth: 0 },
   editingAsBox: {
     flexDirection: 'row',
     alignItems: 'center',
