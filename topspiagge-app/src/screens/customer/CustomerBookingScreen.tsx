@@ -1346,6 +1346,14 @@ const BookingForm: React.FC<{
   const allUmbrellaIds = [umbrellaId, ...extraUmbrellaIds];
   const capacity = allUmbrellaIds.length * MAX_ADULTS_PER_UMBRELLA;
   const capacityOk = capacity >= adults;
+  // Guests are spread at most MAX_ADULTS_PER_UMBRELLA per umbrella (filling one before the
+  // next, same split used at confirm() time) -- reused here so each umbrella's own suggested
+  // lettini count in the Disponibilita table reflects only the guests actually assigned to IT,
+  // not the whole group's total.
+  const guestSlots = useMemo(
+    () => distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length),
+    [adults, children5to15, childrenUnder5, allUmbrellaIds.length]
+  );
 
   const perDayRate = (id: string) => {
     const u = getUmbrella(id);
@@ -1466,7 +1474,6 @@ const BookingForm: React.FC<{
     }
     const reference = editContext ? editContext.bookings[0].reference : generateBookingReference();
     const groupId = allUmbrellaIds.length > 1 ? `grp-${Date.now()}` : undefined;
-    const guestSlots = distributeGuests({ adults, children5to15, childrenUnder5 }, allUmbrellaIds.length);
     const createdBookings: Booking[] = allUmbrellaIds.map((uId, idx) => {
       const eq = equipment[uId] ?? defaultEquipmentFor(uId);
       return {
@@ -1679,6 +1686,11 @@ const BookingForm: React.FC<{
   return (
     <View style={styles.formOuter}>
       <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContentSticky}>
+        <Pressable onPress={onClose} style={styles.backLink}>
+          <Ionicons name="chevron-back" size={14} color={colors.textMuted} />
+          <Text style={styles.backLinkText}>Torna indietro</Text>
+        </Pressable>
+
         <Text style={styles.sheetTitle}>
           Ombrellone {umbrella.number} · {umbrella.zone}
         </Text>
@@ -1737,81 +1749,100 @@ const BookingForm: React.FC<{
           </View>
         )}
 
-        {/* Booking.com-style package table, but only ever meaningful once a specific umbrella
-            (and therefore a specific price band) is already chosen -- shown here, right after
+        {/* Booking.com-style package table, but only ever meaningful once specific umbrellas
+            (and therefore specific price bands) are already chosen -- shown here, right after
             that pick, rather than on the pre-booking marketing/detail page where selecting a
-            band/quantity would look like a reservation without a real spot behind it. The
-            "+N lettini" package's N always matches the adults just entered above (capped at
-            MAX_EQUIPMENT_PER_UMBRELLA, since a big group needing multiple umbrellas can't all
-            fit their lettini on this one) -- tapping a package just sets this umbrella's own
-            Lettini stepper below, which the guest can still fine-tune afterward. */}
+            band/quantity would look like a reservation without a real spot behind it. One table
+            per umbrella in the group (not just the primary one), since a big group's guests are
+            split at most MAX_ADULTS_PER_UMBRELLA per umbrella (see guestSlots/distributeGuests
+            above) -- the "+N lettini" package's N matches THAT umbrella's own guest share, so a
+            6-adult/2-umbrella booking suggests 4 lettini on the first and 2 on the second,
+            never 4 on both. Tapping a package just sets that umbrella's own Lettini stepper
+            below, which the guest can still fine-tune afterward. */}
         {umbrella && (
           <>
             <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Disponibilità</Text>
-            <View style={styles.packageTable}>
-              <View style={styles.packageHeaderRow}>
-                <Text style={[styles.packageHeaderCell, { flex: 2 }]}>Tipo di ombrellone</Text>
-                <Text style={[styles.packageHeaderCell, { flex: 1 }]}>
-                  Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}
-                </Text>
-                <Text style={[styles.packageHeaderCell, { flex: 1 }]}>La tua scelta</Text>
-                <Text style={[styles.packageHeaderCell, { width: 60, textAlign: 'center' }]}>Seleziona</Text>
-              </View>
-              {[
-                { key: 'bare', label: 'Solo ombrellone', beds: 0 },
-                { key: 'beds', label: `Ombrellone + ${Math.min(adults, MAX_EQUIPMENT_PER_UMBRELLA)} lettini`, beds: Math.min(adults, MAX_EQUIPMENT_PER_UMBRELLA) },
-              ].map((pkg, i) => {
-                const eq = equipment[umbrellaId] ?? defaultEquipmentFor(umbrellaId);
-                const price = (baseUmbrellaPricePerDay(umbrella) + pkg.beds * bedRate) * days;
-                const selected = eq.beds === pkg.beds;
-                return (
-                  <View key={pkg.key} style={[styles.packageRow, i === 0 && styles.packageRowFirst]}>
-                    <View style={{ flex: 2 }}>
-                      {i === 0 && (
-                        <>
-                          <Text style={styles.packageBandLabel}>{priceBandLabel(umbrella)}</Text>
-                          <Text style={styles.packageBandSub}>
-                            Fila {umbrella.row + 1} · max {MAX_ADULTS_PER_UMBRELLA} adulti
-                          </Text>
-                        </>
-                      )}
-                      <Text style={styles.packagePackageLabel}>{pkg.label}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.packagePrice}>{formatCurrency(price)}</Text>
-                      <Text style={styles.packagePriceHint}>tasse incluse</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.packageChoiceRow}>
-                        <Ionicons name="checkmark-circle" size={13} color={colors.success} />
-                        <Text style={styles.packageChoiceText}>Rimborsabile con voucher fino al {formatDateShort(cutoffDate)}</Text>
-                      </View>
-                      {pkg.beds > 0 && (
-                        <View style={styles.packageChoiceRow}>
-                          <Ionicons name="bed-outline" size={13} color={colors.textMuted} />
-                          <Text style={styles.packageChoiceText}>{pkg.beds} lettini inclusi</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={{ width: 60, alignItems: 'center' }}>
-                      <Pressable
-                        onPress={() => setBeds(umbrellaId, pkg.beds)}
-                        style={styles.packageSelectBtn}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected }}
-                        accessibilityLabel={pkg.label}
-                      >
-                        <Ionicons
-                          name={selected ? 'radio-button-on' : 'radio-button-off'}
-                          size={20}
-                          color={selected ? colors.primary : colors.border}
-                        />
-                      </Pressable>
-                    </View>
+            {allUmbrellaIds.map((id, umbrellaIdx) => {
+              const u = getUmbrella(id);
+              if (!u) return null;
+              const ownAdults = guestSlots[umbrellaIdx]?.adults ?? 0;
+              const suggestedBeds = Math.min(ownAdults, MAX_EQUIPMENT_PER_UMBRELLA);
+              const packages =
+                suggestedBeds > 0
+                  ? [
+                      { key: 'bare', label: 'Solo ombrellone', beds: 0 },
+                      { key: 'beds', label: `Ombrellone + ${suggestedBeds} lettini`, beds: suggestedBeds },
+                    ]
+                  : [{ key: 'bare', label: 'Solo ombrellone', beds: 0 }];
+              return (
+                <View key={id} style={[styles.packageTable, umbrellaIdx > 0 && { marginTop: spacing.md }]}>
+                  {allUmbrellaIds.length > 1 && (
+                    <Text style={styles.packageUmbrellaHeading}>
+                      Ombrellone N.{u.number} · {u.zone} · {ownAdults} {ownAdults === 1 ? 'adulto' : 'adulti'}
+                    </Text>
+                  )}
+                  <View style={styles.packageHeaderRow}>
+                    <Text style={[styles.packageHeaderCell, { flex: 2 }]}>Tipo di ombrellone</Text>
+                    <Text style={[styles.packageHeaderCell, { flex: 1 }]}>
+                      Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}
+                    </Text>
+                    <Text style={[styles.packageHeaderCell, { flex: 1 }]}>La tua scelta</Text>
+                    <Text style={[styles.packageHeaderCell, { width: 60, textAlign: 'center' }]}>Seleziona</Text>
                   </View>
-                );
-              })}
-            </View>
+                  {packages.map((pkg, i) => {
+                    const eq = equipment[id] ?? defaultEquipmentFor(id);
+                    const price = (baseUmbrellaPricePerDay(u) + pkg.beds * bedRate) * days;
+                    const selected = eq.beds === pkg.beds;
+                    return (
+                      <View key={pkg.key} style={[styles.packageRow, i === 0 && styles.packageRowFirst]}>
+                        <View style={{ flex: 2 }}>
+                          {i === 0 && (
+                            <>
+                              <Text style={styles.packageBandLabel}>{priceBandLabel(u)}</Text>
+                              <Text style={styles.packageBandSub}>
+                                Fila {u.row + 1} · max {MAX_ADULTS_PER_UMBRELLA} adulti
+                              </Text>
+                            </>
+                          )}
+                          <Text style={styles.packagePackageLabel}>{pkg.label}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.packagePrice}>{formatCurrency(price)}</Text>
+                          <Text style={styles.packagePriceHint}>tasse incluse</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <View style={styles.packageChoiceRow}>
+                            <Ionicons name="checkmark-circle" size={13} color={colors.success} />
+                            <Text style={styles.packageChoiceText}>Rimborsabile con voucher fino al {formatDateShort(cutoffDate)}</Text>
+                          </View>
+                          {pkg.beds > 0 && (
+                            <View style={styles.packageChoiceRow}>
+                              <Ionicons name="bed-outline" size={13} color={colors.textMuted} />
+                              <Text style={styles.packageChoiceText}>{pkg.beds} lettini inclusi</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ width: 60, alignItems: 'center' }}>
+                          <Pressable
+                            onPress={() => setBeds(id, pkg.beds)}
+                            style={styles.packageSelectBtn}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            accessibilityLabel={pkg.label}
+                          >
+                            <Ionicons
+                              name={selected ? 'radio-button-on' : 'radio-button-off'}
+                              size={20}
+                              color={selected ? colors.primary : colors.border}
+                            />
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
           </>
         )}
 
@@ -2663,6 +2694,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     overflow: 'hidden',
+  },
+  packageUmbrellaHeading: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: colors.text,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+    backgroundColor: colors.card,
   },
   packageHeaderRow: { flexDirection: 'row', backgroundColor: colors.primaryDark, padding: spacing.sm },
   packageHeaderCell: { color: colors.white, fontSize: 11, fontWeight: '700' },
