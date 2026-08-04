@@ -1168,6 +1168,7 @@ const BookingForm: React.FC<{
 }) => {
   const { getUmbrella, customers, createBooking, upsertCustomer, getActivePriceList, cancelBooking } = useStore();
   const alert = useAppAlert();
+  const isWideForm = useSidebarMode();
   // Every umbrella (bundle rows included) starts bare -- see DEFAULT_EQUIPMENT above. If the
   // guest later picks exactly Fila 1/2's bundle quantity, perDayRate below still snaps to that
   // package's discounted rate; there's just no equipment assumed before they've chosen any.
@@ -1211,7 +1212,9 @@ const BookingForm: React.FC<{
       : [];
 
   const [phone, setPhone] = useState('');
-  const [newName, setNewName] = useState('');
+  const [newFirstName, setNewFirstName] = useState('');
+  const [newLastName, setNewLastName] = useState('');
+  const newName = `${newFirstName} ${newLastName}`.trim();
   const [newEmail, setNewEmail] = useState('');
   const [adults, setAdults] = useState(() => startingAdults);
   const [children5to15, setChildren5to15] = useState(() =>
@@ -1942,72 +1945,186 @@ const BookingForm: React.FC<{
         )}
 
         {/* Editing an existing booking already knows who the customer is -- only a brand-new
-            booking needs to ask. */}
-        {!editContext && (
+            booking needs to ask, and gets the full Booking.com-style "enter your details" split:
+            a plain-flow (not sticky/fixed) left summary card recapping the stay and price, and
+            the actual editable contact fields on the right. */}
+        {!editContext ? (
           <>
-            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>I tuoi contatti</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Il tuo numero di telefono"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={setPhone}
-            />
-            {matchedCustomer && (
-              <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
-            )}
-            {matchedCustomer && !!matchedCustomer.voucherBalance && (
-              <Text style={styles.welcomeText}>
-                Hai un credito voucher di {formatCurrency(matchedCustomer.voucherBalance)}: verrà applicato a questa
-                prenotazione.
-              </Text>
-            )}
-            {isNewCustomer && (
-              <View style={{ marginTop: spacing.sm }}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nome e cognome"
-                  placeholderTextColor={colors.textMuted}
-                  value={newName}
-                  onChangeText={setNewName}
-                />
-              </View>
-            )}
-            {(isNewCustomer || (matchedCustomer && !matchedCustomer.email)) && (
-              <View style={{ marginTop: spacing.sm }}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email (per la conferma della prenotazione)"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={newEmail}
-                  onChangeText={setNewEmail}
-                />
-              </View>
-            )}
-          </>
-        )}
+            <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>I tuoi dati</Text>
+            <View style={[styles.contactColumns, !isWideForm && styles.contactColumnsNarrow]}>
+              <View style={[styles.contactSummaryCol, !isWideForm && styles.contactSummaryColNarrow]}>
+                <View style={styles.contactVenueRow}>
+                  <BeachPhoto photo={VENUE.photo} width={72} height={56} variant={0} borderRadius={radius.md} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.contactVenueName}>{VENUE.name}</Text>
+                    <View style={styles.contactVenueRatingRow}>
+                      <View style={styles.propertyStripRatingPill}>
+                        <Text style={styles.propertyStripRatingPillText}>{VENUE.rating.toFixed(1)}</Text>
+                      </View>
+                      <Text style={styles.contactVenueTown}>{VENUE.town}</Text>
+                    </View>
+                  </View>
+                </View>
 
-        <View style={styles.policyBox}>
-          <View style={styles.policyHeaderRow}>
-            <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
-            <Text style={styles.policyTitle}>Pagamento anticipato</Text>
+                <View style={styles.contactSummaryCard}>
+                  <Text style={styles.contactSummaryTitle}>La tua prenotazione</Text>
+                  <View style={styles.contactSummaryRow}>
+                    <Text style={styles.contactSummaryLabel}>Check-in</Text>
+                    <Text style={styles.contactSummaryValue}>{formatDateLong(dateFrom)}</Text>
+                  </View>
+                  <View style={styles.contactSummaryRow}>
+                    <Text style={styles.contactSummaryLabel}>Check-out</Text>
+                    <Text style={styles.contactSummaryValue}>{formatDateLong(dateTo)}</Text>
+                  </View>
+                  {offsetFromToday(dateFrom) > 0 && (
+                    <Text style={styles.contactSummaryHint}>
+                      Tra {offsetFromToday(dateFrom)} {offsetFromToday(dateFrom) === 1 ? 'giorno' : 'giorni'}
+                    </Text>
+                  )}
+                  <View style={styles.contactSummaryDivider} />
+                  <Text style={styles.contactSummaryLabel}>
+                    {allUmbrellaIds.length > 1 ? 'I tuoi ombrelloni' : 'Il tuo ombrellone'}
+                  </Text>
+                  {allUmbrellaIds.map((id) => {
+                    const u = getUmbrella(id);
+                    if (!u) return null;
+                    return (
+                      <Text key={id} style={styles.contactSummaryValue}>
+                        Ombrellone N.{u.number} · {u.zone}
+                      </Text>
+                    );
+                  })}
+                  <Text style={styles.contactSummaryHint}>
+                    {adults} {adults === 1 ? 'adulto' : 'adulti'}
+                    {children5to15 + childrenUnder5 > 0 ? ` · ${children5to15 + childrenUnder5} bambini` : ''}
+                  </Text>
+                  <Pressable onPress={onClose} hitSlop={8}>
+                    <Text style={styles.contactChangeLink}>Cambia selezione</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.contactSummaryCard}>
+                  <Text style={styles.contactSummaryTitle}>Riepilogo prezzo</Text>
+                  {allUmbrellaIds.map((id) => {
+                    const u = getUmbrella(id);
+                    if (!u) return null;
+                    return (
+                      <View key={id} style={styles.contactSummaryRow}>
+                        <Text style={styles.contactSummaryLabel}>Ombrellone N.{u.number}</Text>
+                        <Text style={styles.contactSummaryValue}>{formatCurrency(umbrellaTotal(id))}</Text>
+                      </View>
+                    );
+                  })}
+                  {voucherApplied > 0 && (
+                    <View style={styles.contactSummaryRow}>
+                      <Text style={styles.contactSummaryLabel}>Credito voucher</Text>
+                      <Text style={[styles.contactSummaryValue, { color: colors.libero }]}>
+                        -{formatCurrency(voucherApplied)}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.contactSummaryDivider} />
+                  <View style={styles.contactSummaryRow}>
+                    <Text style={styles.contactSummaryTotalLabel}>Totale</Text>
+                    <Text style={styles.contactSummaryTotalValue}>{formatCurrency(total)}</Text>
+                  </View>
+                  <Text style={styles.contactSummaryHint}>
+                    Rimborsabile con voucher se annulli entro il {formatDateShort(cutoffDate)}.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.contactFormCol}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Il tuo numero di telefono"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="phone-pad"
+                  value={phone}
+                  onChangeText={setPhone}
+                />
+                {matchedCustomer && (
+                  <Text style={styles.welcomeText}>Bentornato/a, {matchedCustomer.name}! 👋</Text>
+                )}
+                {matchedCustomer && !!matchedCustomer.voucherBalance && (
+                  <Text style={styles.welcomeText}>
+                    Hai un credito voucher di {formatCurrency(matchedCustomer.voucherBalance)}: verrà applicato a
+                    questa prenotazione.
+                  </Text>
+                )}
+                {isNewCustomer && (
+                  <View style={styles.contactNameRow}>
+                    <TextInput
+                      style={[styles.input, styles.contactNameField]}
+                      placeholder="Nome"
+                      placeholderTextColor={colors.textMuted}
+                      value={newFirstName}
+                      onChangeText={setNewFirstName}
+                    />
+                    <TextInput
+                      style={[styles.input, styles.contactNameField]}
+                      placeholder="Cognome"
+                      placeholderTextColor={colors.textMuted}
+                      value={newLastName}
+                      onChangeText={setNewLastName}
+                    />
+                  </View>
+                )}
+                {(isNewCustomer || (matchedCustomer && !matchedCustomer.email)) && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Email (per la conferma della prenotazione)"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={newEmail}
+                      onChangeText={setNewEmail}
+                    />
+                  </View>
+                )}
+
+                <View style={[styles.policyBox, { marginTop: spacing.lg }]}>
+                  <View style={styles.policyHeaderRow}>
+                    <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+                    <Text style={styles.policyTitle}>Pagamento anticipato</Text>
+                  </View>
+                  <Text style={styles.policyText}>
+                    {formatCurrency(deposit)} vengono addebitati ora. Rimborsabile con voucher se annulli entro il{' '}
+                    <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>; dopo tale data, o in caso
+                    di no-show, l'importo <Text style={styles.policyBold}>non è rimborsabile</Text>.
+                  </Text>
+                  <View style={{ marginTop: spacing.sm }}>
+                    <Checkbox
+                      checked={policyAccepted}
+                      onToggle={() => setPolicyAccepted((v) => !v)}
+                      label="Ho letto e accetto la politica di pagamento e cancellazione"
+                    />
+                  </View>
+                </View>
+              </View>
+            </View>
+          </>
+        ) : (
+          <View style={styles.policyBox}>
+            <View style={styles.policyHeaderRow}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={colors.primaryDark} />
+              <Text style={styles.policyTitle}>Pagamento anticipato</Text>
+            </View>
+            <Text style={styles.policyText}>
+              {formatCurrency(deposit)} vengono addebitati ora. Rimborsabile con voucher se annulli entro il{' '}
+              <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>; dopo tale data, o in caso di
+              no-show, l'importo <Text style={styles.policyBold}>non è rimborsabile</Text>.
+            </Text>
+            <View style={{ marginTop: spacing.sm }}>
+              <Checkbox
+                checked={policyAccepted}
+                onToggle={() => setPolicyAccepted((v) => !v)}
+                label="Ho letto e accetto la politica di pagamento e cancellazione"
+              />
+            </View>
           </View>
-          <Text style={styles.policyText}>
-            {formatCurrency(deposit)} vengono addebitati ora. Rimborsabile con voucher se annulli entro il{' '}
-            <Text style={styles.policyBold}>{formatDateShort(cutoffDate)}</Text>; dopo tale data, o in caso di
-            no-show, l'importo <Text style={styles.policyBold}>non è rimborsabile</Text>.
-          </Text>
-          <View style={{ marginTop: spacing.sm }}>
-            <Checkbox
-              checked={policyAccepted}
-              onToggle={() => setPolicyAccepted((v) => !v)}
-              label="Ho letto e accetto la politica di pagamento e cancellazione"
-            />
-          </View>
-        </View>
+        )}
       </ScrollView>
       <BookingFooter
         total={grossTotal}
@@ -2574,6 +2691,36 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   welcomeText: { color: colors.libero, fontWeight: '700', fontSize: 13, marginTop: spacing.xs },
+  // Booking.com-style "enter your details" split: a plain-flow (never position:sticky) left
+  // summary card recapping the stay/price, and the actual editable contact fields on the right
+  // -- matches the reference's own two-column shape instead of everything in one long column.
+  contactColumns: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.md },
+  contactColumnsNarrow: { flexDirection: 'column' },
+  contactSummaryCol: { flex: 1, minWidth: 220, gap: spacing.md },
+  contactSummaryColNarrow: { minWidth: 0 },
+  contactFormCol: { flex: 1.4 },
+  contactVenueRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  contactVenueName: { fontSize: 14, fontWeight: '800', color: colors.text },
+  contactVenueRatingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
+  contactVenueTown: { fontSize: 12, color: colors.textMuted },
+  contactSummaryCard: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  contactSummaryTitle: { fontSize: 13, fontWeight: '800', color: colors.text, marginBottom: spacing.sm },
+  contactSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  contactSummaryLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  contactSummaryValue: { fontSize: 12, color: colors.text, fontWeight: '700' },
+  contactSummaryHint: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  contactSummaryDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  contactSummaryTotalLabel: { fontSize: 13, color: colors.text, fontWeight: '800' },
+  contactSummaryTotalValue: { fontSize: 15, color: colors.text, fontWeight: '800' },
+  contactChangeLink: { fontSize: 12, color: colors.primary, fontWeight: '700', marginTop: spacing.sm },
+  contactNameRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  contactNameField: { flex: 1, marginTop: 0 },
   editingAsBox: {
     flexDirection: 'row',
     alignItems: 'center',
