@@ -1741,65 +1741,94 @@ const BookingForm: React.FC<{
                       { key: 'beds', label: `Ombrellone + ${suggestedBeds} lettini`, beds: suggestedBeds },
                     ]
                   : [{ key: 'bare', label: 'Solo ombrellone', beds: 0 }];
+              // Same-row free umbrellas (excluding this one) -- an honest "how many others like
+              // this are still free" figure, echoing Booking.com's "We have N left" urgency line
+              // under each room card without inventing a number.
+              const sameRowFree = allUmbrellas.filter((o) => o.row === u.row && o.id !== u.id && isFreeForPeriod(o)).length;
+              const eq = equipment[id] ?? defaultEquipmentFor(id);
               return (
-                <View key={id} style={[styles.packageTable, umbrellaIdx > 0 && { marginTop: spacing.md }]}>
+                <View key={id} style={umbrellaIdx > 0 ? { marginTop: spacing.lg } : undefined}>
                   {allUmbrellaIds.length > 1 && (
                     <Text style={styles.packageUmbrellaHeading}>
                       Ombrellone N.{u.number} · {u.zone} · {ownAdults} {ownAdults === 1 ? 'adulto' : 'adulti'}
                     </Text>
                   )}
-                  <View style={styles.packageHeaderRow}>
-                    <Text style={[styles.packageHeaderCell, { flex: 2 }]}>Tipo di ombrellone</Text>
-                    <Text style={[styles.packageHeaderCell, { flex: 1 }]}>
-                      Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}
-                    </Text>
-                    <Text style={[styles.packageHeaderCell, { width: 60, textAlign: 'center' }]}>Seleziona</Text>
-                  </View>
-                  {packages.map((pkg, i) => {
-                    const eq = equipment[id] ?? defaultEquipmentFor(id);
+                  {packages.map((pkg) => {
                     const price = (baseUmbrellaPricePerDay(u) + pkg.beds * bedRate) * days;
                     const selected = eq.beds === pkg.beds;
                     return (
-                      <View key={pkg.key} style={[styles.packageRow, i === 0 && styles.packageRowFirst]}>
-                        <View style={{ flex: 2 }}>
-                          {i === 0 && (
-                            <>
-                              <Text style={styles.packageBandLabel}>{priceBandLabel(u)}</Text>
-                              <Text style={styles.packageBandSub}>
-                                Fila {u.row + 1} · max {MAX_ADULTS_PER_UMBRELLA} adulti
+                      <React.Fragment key={pkg.key}>
+                        <View style={[styles.roomCard, selected && styles.roomCardSelected]}>
+                          <View style={styles.roomCardTopRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.roomCardTitle}>{priceBandLabel(u)}</Text>
+                              <View style={styles.roomCardSpecsRow}>
+                                <Ionicons name="people-outline" size={13} color={colors.textMuted} />
+                                <Text style={styles.roomCardSpecText}>max {MAX_ADULTS_PER_UMBRELLA} adulti</Text>
+                                <Ionicons name="location-outline" size={13} color={colors.textMuted} />
+                                <Text style={styles.roomCardSpecText}>Fila {u.row + 1}</Text>
+                                {u.hasCabin && (
+                                  <>
+                                    <Ionicons name="business-outline" size={13} color={colors.textMuted} />
+                                    <Text style={styles.roomCardSpecText}>Cabina inclusa</Text>
+                                  </>
+                                )}
+                              </View>
+                            </View>
+                            <View style={styles.roomCardThumb}>
+                              <Ionicons name="sunny-outline" size={22} color={colors.primary} />
+                            </View>
+                          </View>
+
+                          <View style={styles.roomCardPriceBox}>
+                            <View style={styles.roomCardPackageRow}>
+                              <Text style={styles.roomCardPackageLabel}>{pkg.label}</Text>
+                              <Pressable
+                                onPress={() => setBeds(id, pkg.beds)}
+                                accessibilityRole="radio"
+                                accessibilityState={{ selected }}
+                                accessibilityLabel={pkg.label}
+                                hitSlop={8}
+                              >
+                                <Ionicons
+                                  name={selected ? 'radio-button-on' : 'radio-button-off'}
+                                  size={20}
+                                  color={selected ? colors.primary : colors.border}
+                                />
+                              </Pressable>
+                            </View>
+                            <View style={styles.checkmarkRow}>
+                              <Ionicons name="checkmark" size={13} color={colors.success} />
+                              <Text style={styles.checkmarkRowTextGreen}>
+                                Rimborsabile con voucher fino al {formatDateShort(cutoffDate)}
                               </Text>
-                            </>
-                          )}
-                          <Text style={styles.packagePackageLabel}>{pkg.label}</Text>
+                            </View>
+                            <View style={styles.checkmarkRow}>
+                              <Ionicons name="checkmark" size={13} color={colors.success} />
+                              <Text style={styles.checkmarkRowTextGreen}>Nessun anticipo richiesto</Text>
+                            </View>
+                            <Text style={styles.roomCardPriceLabel}>
+                              Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}
+                            </Text>
+                            <Text style={styles.roomCardPriceAmount}>{formatCurrency(price)}</Text>
+                            <Pressable
+                              onPress={() => setBeds(id, pkg.beds)}
+                              style={styles.roomCardSelectBtn}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Seleziona ${pkg.label}`}
+                            >
+                              <Text style={styles.roomCardSelectBtnText}>{selected ? 'Selezionato' : 'Seleziona'}</Text>
+                            </Pressable>
+                          </View>
                         </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.packagePrice}>{formatCurrency(price)}</Text>
-                          <Text style={styles.packagePriceHint}>tasse incluse</Text>
-                        </View>
-                        <View style={{ width: 60, alignItems: 'center' }}>
-                          <Pressable
-                            onPress={() => setBeds(id, pkg.beds)}
-                            style={styles.packageSelectBtn}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected }}
-                            accessibilityLabel={pkg.label}
-                          >
-                            <Ionicons
-                              name={selected ? 'radio-button-on' : 'radio-button-off'}
-                              size={20}
-                              color={selected ? colors.primary : colors.border}
-                            />
-                          </Pressable>
-                        </View>
-                      </View>
+                        {sameRowFree > 0 && sameRowFree <= 3 && (
+                          <Text style={styles.roomCardUrgency}>
+                            Ne abbiamo {sameRowFree} {sameRowFree === 1 ? 'libero' : 'liberi'} in Fila {u.row + 1}
+                          </Text>
+                        )}
+                      </React.Fragment>
                     );
                   })}
-                  <View style={styles.packageRefundRow}>
-                    <Ionicons name="checkmark-circle" size={13} color={colors.success} />
-                    <Text style={styles.packageChoiceText}>
-                      Rimborsabile con voucher fino al {formatDateShort(cutoffDate)}
-                    </Text>
-                  </View>
                 </View>
               );
             })}
@@ -2636,48 +2665,50 @@ const styles = StyleSheet.create({
   },
   confirmValue: { fontWeight: '700', color: colors.text },
 
-  // Booking.com-style package table (see BookingForm's "Disponibilità" section) -- a compact,
-  // single-band version of the same table style used pre-booking on SearchHomeScreen's detail
-  // page, since here there's only ever one relevant band (the umbrella already chosen).
-  packageTable: {
-    marginTop: spacing.md,
+  // Booking.com-style room-option card (see BookingForm's "Disponibilità" section) -- one card
+  // per package (Solo ombrellone / + lettini), matching the reference screenshots' room-list
+  // structure: title+specs+thumbnail up top, a bordered price box below with the radio select,
+  // cancellation/prepayment checks, price, and a full-width Select button.
+  packageUmbrellaHeading: { fontSize: 12.5, fontWeight: '800', color: colors.text, marginBottom: spacing.xs },
+  roomCard: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    overflow: 'hidden',
+    padding: spacing.md,
+    marginTop: spacing.sm,
   },
-  packageUmbrellaHeading: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    color: colors.text,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.sm,
-    backgroundColor: colors.card,
+  roomCardSelected: { borderColor: colors.primary },
+  roomCardTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  roomCardTitle: { fontSize: 14, fontWeight: '800', color: colors.primaryDark },
+  roomCardSpecsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+  roomCardSpecText: { fontSize: 11, color: colors.textMuted, marginRight: spacing.sm },
+  roomCardThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.prenotatoBg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  packageHeaderRow: { flexDirection: 'row', backgroundColor: colors.primaryDark, padding: spacing.sm },
-  packageHeaderCell: { color: colors.white, fontSize: 11, fontWeight: '700' },
-  packageRow: {
-    flexDirection: 'row',
-    padding: spacing.sm,
+  roomCardPriceBox: {
+    marginTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  roomCardPackageRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  roomCardPackageLabel: { fontSize: 13, fontWeight: '700', color: colors.text },
+  roomCardPriceLabel: { fontSize: 11, color: colors.textMuted, marginTop: spacing.sm },
+  roomCardPriceAmount: { fontSize: 18, fontWeight: '800', color: colors.text },
+  roomCardSelectBtn: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
   },
-  packageRowFirst: { borderTopWidth: 0 },
-  packageBandLabel: { fontSize: 13, fontWeight: '800', color: colors.text },
-  packageBandSub: { fontSize: 11, color: colors.textMuted, marginBottom: 4 },
-  packagePackageLabel: { fontSize: 12, color: colors.text, fontWeight: '600', marginTop: 2 },
-  packagePrice: { fontSize: 14, fontWeight: '800', color: colors.text },
-  packagePriceHint: { fontSize: 10, color: colors.textMuted },
-  packageChoiceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
-  packageChoiceText: { fontSize: 11, color: colors.textMuted, flexShrink: 1 },
-  packageRefundRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    padding: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  packageSelectBtn: { alignItems: 'center', justifyContent: 'center' },
+  roomCardSelectBtnText: { color: colors.white, fontSize: 13, fontWeight: '800' },
+  roomCardUrgency: { fontSize: 11, fontWeight: '700', color: colors.danger, marginTop: 4 },
+  checkmarkRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  checkmarkRowTextGreen: { fontSize: 11, fontWeight: '600', color: colors.success, flexShrink: 1 },
 });

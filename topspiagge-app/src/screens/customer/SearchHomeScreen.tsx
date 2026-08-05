@@ -10,7 +10,7 @@ import { Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
 import { colors, radius, spacing } from '../../theme';
 import { DEMO_OPERATORS, DEMO_TOWNS, DemoOperator } from '../../data/demoOperators';
-import { MAX_ADULTS_PER_UMBRELLA } from '../../utils/booking';
+import { MAX_ADULTS_PER_UMBRELLA, umbrellasNeededFor } from '../../utils/booking';
 import { baseUmbrellaPricePerDay } from '../../utils/pricing';
 import { formatCurrency, formatDateShort, isoDate } from '../../utils/format';
 
@@ -292,6 +292,10 @@ export const SearchHomeScreen: React.FC<Props> = ({ onSelectOperator, onHomeStat
     return (
       <BeachDetailScreen
         operator={detailOperator}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        days={days}
+        guests={persone}
         onBack={() => setStep(detailReturnStep)}
         onBook={() => handlePickOperator(detailOperator, selection)}
       />
@@ -535,150 +539,183 @@ const ResultsList: React.FC<{
   </SafeAreaView>
 );
 
-type DetailTab = 'panoramica' | 'recensioni' | 'foto';
-
-const DETAIL_REVIEWS = [
-  { name: 'Fantastico', stars: 5 },
-  { name: 'Servizi incredibili', stars: 4 },
+// Property highlights pill row -- a fixed, generic set (not per-operator) since every demo
+// beach club offers roughly the same core amenities; keeps demoOperators.ts from needing a
+// whole new per-operator content field for what's ultimately decorative.
+const PROPERTY_HIGHLIGHTS: Array<{ icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string }> = [
+  { icon: 'umbrella-outline', title: 'Ombrelloni', subtitle: 'Prima fila disponibile' },
+  { icon: 'car-outline', title: 'Parcheggio', subtitle: 'Gratuito, in loco' },
+  { icon: 'cafe-outline', title: 'Bar sulla spiaggia', subtitle: 'Aperto tutto il giorno' },
+  { icon: 'accessibility-outline', title: 'Accessibile', subtitle: 'Adatto a persone con disabilita' },
 ];
 
-const DETAIL_PHOTO_TILES = 9;
+// Guest review quotes shown on the property page -- fixed, generic set (not per-operator, same
+// reasoning as PROPERTY_HIGHLIGHTS above). Mirrors Booking.com's "Guests who stayed here loved"
+// card format: name + traveller type, country flag, short quote.
+const GUEST_REVIEWS: Array<{ name: string; type: string; country: string; flag: string; quote: string }> = [
+  {
+    name: 'Marco',
+    type: 'Viaggiatore in coppia',
+    country: 'Italia',
+    flag: '🇮🇹',
+    quote: 'Ombrelloni comodi, personale gentilissimo, spiaggia pulita ogni giorno.',
+  },
+  {
+    name: 'Anna',
+    type: 'Famiglia con bambini',
+    country: 'Germania',
+    flag: '🇩🇪',
+    quote: 'Perfetto per i bambini, area giochi curata e staff sempre disponibile.',
+  },
+  {
+    name: 'Luca',
+    type: 'Viaggiatore singolo',
+    country: 'Svizzera',
+    flag: '🇨🇭',
+    quote: "Bar ottimo, prenotazione facilissima dall'app, tornero sicuramente.",
+  },
+];
+
+// Booking.com-style tiering for the big rating badge's label.
+function ratingSummaryLabel(rating: number): string {
+  if (rating >= 4.8) return 'Eccezionale';
+  if (rating >= 4.5) return 'Favoloso';
+  if (rating >= 4.0) return 'Ottimo';
+  return 'Buono';
+}
 
 // Only `isBookable` operators are real, bookable inventory (see demoOperators.ts) -- their Costi
 // section pulls the actual base prices from the store's active price list rather than
 // inventing numbers; the other demo operators show a plain "coming soon" notice instead of
 // a fabricated price, matching this file's existing rule against disconnected made-up costs.
+// One continuous scroll page (no tabs) structured to match the reference Booking.com property
+// page exactly: title+rating badge, address, photo gallery, highlights pills, check-in/checkout
+// + "you searched for" + price summary, cancellation checks, rating breakdown, guest reviews,
+// sticky footer. Replaces the old Panoramica/Recensioni/Foto tab layout.
 const BeachDetailScreen: React.FC<{
   operator: DemoOperator;
+  dateFrom: string;
+  dateTo: string;
+  days: number;
+  guests: number;
   onBack: () => void;
   onBook: () => void;
-}> = ({ operator, onBack, onBook }) => {
-  const [tab, setTab] = useState<DetailTab>('panoramica');
-  const { getActivePriceList } = useStore();
+}> = ({ operator, dateFrom, dateTo, days, guests, onBack, onBook }) => {
+  const { getActivePriceList, umbrellas } = useStore();
   const priceList = operator.isBookable ? getActivePriceList() : null;
+  const cheapestBandPrice = useMemo(() => {
+    const prices = umbrellas.map(baseUmbrellaPricePerDay);
+    return prices.length ? Math.min(...prices) : operator.priceFrom;
+  }, [umbrellas, operator.priceFrom]);
+  const umbrellasNeeded = umbrellasNeededFor(Math.max(1, guests));
+  const totalFrom = cheapestBandPrice * umbrellasNeeded * days;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.detailHero}>
-        <Pressable onPress={onBack} style={styles.detailBackBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={20} color={colors.white} />
+      <View style={styles.detailTopBar}>
+        <Pressable onPress={onBack} style={styles.detailBackBtn} hitSlop={8} accessibilityLabel="Torna indietro">
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
         </Pressable>
-        <View style={styles.detailHeroIconWrap}>
-          <Ionicons name="umbrella" size={56} color="rgba(255,255,255,0.5)" />
-        </View>
-        <Text style={styles.detailHeroTitle} numberOfLines={2}>
+        <Text style={styles.detailTopBarTitle} numberOfLines={1}>
           {operator.name}
         </Text>
-      </View>
-
-      <View style={styles.detailTabsRow}>
-        {(['panoramica', 'recensioni', 'foto'] as DetailTab[]).map((t) => (
-          <Pressable key={t} style={styles.detailTab} onPress={() => setTab(t)}>
-            <Text style={[styles.detailTabText, tab === t && styles.detailTabTextActive]}>
-              {t === 'panoramica' ? 'Panoramica' : t === 'recensioni' ? 'Recensioni' : 'Foto'}
-            </Text>
-            {tab === t && <View style={styles.detailTabUnderline} />}
-          </Pressable>
-        ))}
+        <View style={{ flexDirection: 'row', gap: spacing.md }}>
+          <Ionicons name="heart-outline" size={20} color={colors.text} />
+          <Ionicons name="share-outline" size={20} color={colors.text} />
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.detailBody}>
-        {tab === 'panoramica' && (
-          <>
-            <Text style={styles.detailParagraph}>{operator.tagline}.</Text>
-            {priceList ? (
-              <>
-                <Text style={styles.detailSectionTitle}>Costi</Text>
-                <Text style={styles.detailParagraph}>
-                  Ombrellone: {formatCurrency(priceList.prices['art-ombrellone'] ?? 0)}/giorno
-                </Text>
-                <Text style={styles.detailParagraph}>
-                  Sdraio: {formatCurrency(priceList.prices['art-sdraio'] ?? 0)}/giorno
-                </Text>
-                <Text style={styles.detailSectionTitle}>Servizi presenti</Text>
-                <View style={styles.detailServiceRow}>
-                  <Ionicons name="accessibility-outline" size={16} color={colors.peachDark} />
-                  <Text style={styles.detailServiceText}>Adatto ai disabili</Text>
-                </View>
-                <View style={styles.detailServiceRow}>
-                  <Ionicons name="cafe-outline" size={16} color={colors.peachDark} />
-                  <Text style={styles.detailServiceText}>Bar sulla spiaggia</Text>
-                </View>
-              </>
-            ) : (
-              <View style={styles.detailComingSoonBox}>
-                <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
-                <Text style={styles.detailComingSoonText}>
-                  Prenotabile prossimamente in questa demo. Prova con Bagno Pietrasanta, Bagno Argentina o Bagno Roma.
-                </Text>
-              </View>
-            )}
-          </>
-        )}
+        <View style={styles.detailTitleRow}>
+          <Text style={styles.detailTitleBig} numberOfLines={2}>
+            {operator.name}
+          </Text>
+          <View style={styles.detailTitleRatingBadge}>
+            <Text style={styles.detailTitleRatingBadgeText}>{operator.rating.toFixed(1)}</Text>
+          </View>
+        </View>
+        <Text style={styles.detailAddressLine}>{operator.town}, Toscana, Italia</Text>
 
-        {tab === 'recensioni' && (
-          <>
-            <View style={styles.detailRatingRow}>
-              <Text style={styles.detailRatingScore}>4,9</Text>
-              <View style={{ flexDirection: 'row', gap: 2 }}>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Ionicons key={i} name="ellipse" size={12} color={colors.primary} />
-                ))}
-              </View>
-              <Text style={styles.detailRatingCount}>100 recensioni</Text>
-            </View>
-            {DETAIL_REVIEWS.map((r) => (
-              <View key={r.name} style={styles.detailReviewCard}>
-                <View style={styles.detailReviewHeader}>
-                  <View style={styles.detailReviewAvatar}>
-                    <Ionicons name="person" size={16} color={colors.primary} />
-                  </View>
-                  <View>
-                    <Text style={styles.detailReviewName}>{r.name}</Text>
-                    <View style={{ flexDirection: 'row', gap: 2 }}>
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Ionicons
-                          key={i}
-                          name={i < r.stars ? 'ellipse' : 'ellipse-outline'}
-                          size={9}
-                          color={colors.primary}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                </View>
-                <Text style={styles.detailParagraph}>
-                  Ottima esperienza, personale gentile e spiaggia curata nei minimi dettagli.
-                </Text>
-              </View>
-            ))}
-          </>
-        )}
+        <GalleryGrid photo={operator.photo} mainHeight={140} smallHeight={80} />
 
-        {tab === 'foto' && (
+        <Text style={styles.detailSectionTitle}>Punti di forza della struttura</Text>
+        <PropertyHighlightsRow />
+
+        <View style={styles.detailDivider} />
+
+        <View style={styles.checkRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.checkLabel}>Check-in</Text>
+            <Text style={styles.checkValue}>{formatDateShort(dateFrom)}</Text>
+          </View>
+          <View style={styles.checkDivider} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.checkLabel}>Check-out</Text>
+            <Text style={styles.checkValue}>{formatDateShort(dateTo)}</Text>
+          </View>
+        </View>
+
+        <Text style={[styles.detailSectionTitle, { marginTop: spacing.lg }]}>Hai cercato</Text>
+        <Text style={styles.searchedForLink}>
+          {umbrellasNeeded} {umbrellasNeeded === 1 ? 'ombrellone' : 'ombrelloni'} · {Math.max(1, guests)}{' '}
+          {guests === 1 ? 'persona' : 'persone'}
+        </Text>
+
+        {priceList ? (
           <>
-            <Text style={styles.detailPhotoHint}>Foto più recenti</Text>
-            <View style={styles.detailPhotoGrid}>
-              {Array.from({ length: DETAIL_PHOTO_TILES }).map((_, i) => (
-                <View key={i} style={[styles.detailPhotoTile, i % 2 === 0 && styles.detailPhotoTileAlt]}>
-                  <Ionicons name="umbrella-outline" size={20} color="rgba(255,255,255,0.7)" />
-                </View>
-              ))}
+            <Text style={[styles.detailSectionTitle, { marginTop: spacing.lg }]}>
+              Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'} ({formatDateShort(dateFrom)} - {formatDateShort(dateTo)})
+            </Text>
+            <Text style={styles.priceSummaryAmount}>{formatCurrency(totalFrom)}</Text>
+            <Text style={styles.priceSummaryHint}>a partire da, tasse incluse</Text>
+            <View style={{ marginTop: spacing.sm, gap: 4 }}>
+              <View style={styles.checkmarkRow}>
+                <Ionicons name="checkmark" size={14} color={colors.success} />
+                <Text style={styles.checkmarkRowTextGreen}>Cancellazione gratuita</Text>
+              </View>
+              <View style={styles.checkmarkRow}>
+                <Ionicons name="checkmark" size={14} color={colors.success} />
+                <Text style={styles.checkmarkRowTextGreen}>Nessun anticipo richiesto</Text>
+              </View>
             </View>
           </>
+        ) : (
+          <View style={[styles.detailComingSoonBox, { marginTop: spacing.md }]}>
+            <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
+            <Text style={styles.detailComingSoonText}>
+              Prenotabile prossimamente in questa demo. Prova con Bagno Pietrasanta, Bagno Argentina o Bagno Roma.
+            </Text>
+          </View>
         )}
+
+        <View style={styles.detailDivider} />
+
+        <View style={styles.ratingCardRow}>
+          <View style={styles.desktopRatingBadgeLarge}>
+            <Text style={styles.desktopRatingBadgeLargeText}>{operator.rating.toFixed(1)}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.desktopRatingSummary}>{ratingSummaryLabel(operator.rating)}</Text>
+            <Text style={styles.detailRatingCount}>Vedi {operator.reviewCount} recensioni</Text>
+          </View>
+        </View>
+        <RatingBreakdown />
+
+        <View style={styles.detailDivider} />
+
+        <Text style={styles.detailSectionTitle}>Gli ospiti hanno apprezzato</Text>
+        <GuestReviewsSection />
       </ScrollView>
 
       <View style={styles.detailFooter}>
-        {priceList ? (
-          <View>
-            <Text style={styles.detailFooterPrice}>{formatCurrency(priceList.prices['art-ombrellone'] ?? 0)}/giorno</Text>
-            <Text style={styles.detailFooterPriceHint}>per ombrellone</Text>
+        <View style={{ flex: 1 }}>
+          <View style={styles.checkmarkRow}>
+            <Ionicons name="checkmark" size={14} color={colors.success} />
+            <Text style={styles.checkmarkRowTextGreen}>Cancellazione gratuita</Text>
           </View>
-        ) : (
-          <Text style={styles.detailFooterPriceHint}>Non disponibile in questa demo</Text>
-        )}
-        <Button title="Prenota" onPress={onBook} style={{ paddingHorizontal: spacing.xl }} />
+          <Text style={styles.detailFooterPriceHint}>Non ti addebitiamo nulla ora</Text>
+        </View>
+        <Button title="Vedi disponibilita" onPress={onBook} style={{ paddingHorizontal: spacing.lg }} />
       </View>
     </SafeAreaView>
   );
@@ -1237,14 +1274,109 @@ const DesktopResultRow: React.FC<{ operator: DemoOperator; onPress: () => void }
   </Pressable>
 );
 
+// Ordered so the first 3 (Pulizia/Comfort/Servizi) are the "always visible" bars, matching the
+// reference screenshots' Cleanliness/Comfort/Facilities trio -- the rest sit behind "Show more".
 const REVIEW_CATEGORIES: Array<{ label: string; score: number }> = [
-  { label: 'Personale', score: 9.1 },
-  { label: 'Servizi', score: 9.2 },
   { label: 'Pulizia', score: 9.5 },
   { label: 'Comfort', score: 9.4 },
+  { label: 'Servizi', score: 9.2 },
+  { label: 'Personale', score: 9.1 },
   { label: 'Rapporto qualita/prezzo', score: 8.9 },
   { label: 'Posizione', score: 9.0 },
 ];
+const REVIEW_CATEGORIES_VISIBLE_COUNT = 3;
+
+// Shared "Cleanliness/Comfort/Facilities... Show more" rating breakdown block, used by both the
+// mobile and desktop property pages so their score bars/thresholds never drift apart.
+const RatingBreakdown: React.FC = () => {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? REVIEW_CATEGORIES : REVIEW_CATEGORIES.slice(0, REVIEW_CATEGORIES_VISIBLE_COUNT);
+  return (
+    <View style={{ marginTop: spacing.md }}>
+      {visible.map((c) => (
+        <View key={c.label} style={styles.desktopCategoryItem}>
+          <View style={styles.desktopCategoryLabelRow}>
+            <Text style={styles.desktopCategoryLabel}>{c.label}</Text>
+            <Text style={styles.desktopCategoryScore}>{c.score.toFixed(1)}</Text>
+          </View>
+          <View style={styles.desktopCategoryBarTrack}>
+            <View style={[styles.desktopCategoryBarFill, { width: `${(c.score / 10) * 100}%` }]} />
+          </View>
+        </View>
+      ))}
+      {!expanded && (
+        <Pressable onPress={() => setExpanded(true)} hitSlop={8} style={{ marginTop: spacing.xs }}>
+          <Text style={styles.detailShowMoreLink}>Mostra altro</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+};
+
+// Shared "Guests who stayed here loved" review-card list, used by both mobile and desktop.
+const GuestReviewsSection: React.FC = () => (
+  <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+    {GUEST_REVIEWS.map((r) => (
+      <View key={r.name} style={styles.reviewCard2}>
+        <View style={styles.reviewCard2Header}>
+          <View style={styles.reviewCard2Avatar}>
+            <Text style={styles.reviewCard2AvatarText}>{r.name[0]}</Text>
+          </View>
+          <View>
+            <Text style={styles.reviewCard2Name}>
+              {r.name} - {r.type}
+            </Text>
+            <Text style={styles.reviewCard2Country}>
+              {r.flag} {r.country}
+            </Text>
+          </View>
+        </View>
+        <Text style={styles.reviewCard2Quote}>&ldquo;{r.quote}&rdquo;</Text>
+      </View>
+    ))}
+  </View>
+);
+
+// Shared "Property highlights" pill row, used by both mobile and desktop property pages.
+const PropertyHighlightsRow: React.FC = () => (
+  <View style={styles.highlightsRow}>
+    {PROPERTY_HIGHLIGHTS.map((h) => (
+      <View key={h.title} style={styles.highlightPill}>
+        <View style={styles.highlightIconCircle}>
+          <Ionicons name={h.icon} size={18} color={colors.primaryDark} />
+        </View>
+        <Text style={styles.highlightTitle}>{h.title}</Text>
+        <Text style={styles.highlightSubtitle}>{h.subtitle}</Text>
+      </View>
+    ))}
+  </View>
+);
+
+// Shared 2-large-top + 3-small-bottom (last tile carrying a "+N" overlay) photo gallery grid,
+// matching the reference screenshots' structure exactly -- used by both mobile and desktop.
+const GalleryGrid: React.FC<{ photo: DemoOperator['photo']; mainHeight: number; smallHeight: number; extraCount?: number }> = ({
+  photo,
+  mainHeight,
+  smallHeight,
+  extraCount = 33,
+}) => (
+  <View style={{ gap: spacing.xs }}>
+    <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+      <BeachPhoto photo={photo} height={mainHeight} variant={0} style={{ flex: 1 }} borderRadius={radius.lg} />
+      <BeachPhoto photo={photo} height={mainHeight} variant={1} style={{ flex: 1 }} borderRadius={radius.lg} />
+    </View>
+    <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+      <BeachPhoto photo={photo} height={smallHeight} variant={2} style={{ flex: 1 }} borderRadius={radius.lg} />
+      <BeachPhoto photo={photo} height={smallHeight} variant={3} style={{ flex: 1 }} borderRadius={radius.lg} />
+      <View style={{ flex: 1 }}>
+        <BeachPhoto photo={photo} height={smallHeight} variant={4} style={{ width: '100%' }} borderRadius={radius.lg} />
+        <View style={styles.galleryMoreOverlay} pointerEvents="none">
+          <Text style={styles.galleryMoreOverlayText}>+{extraCount}</Text>
+        </View>
+      </View>
+    </View>
+  </View>
+);
 
 // Two-column desktop detail page: photo gallery + description/costs/services/reviews on the
 // left, a price+Reserve card on the right. "Prenota" carries the dates/guest count from the
@@ -1273,6 +1405,10 @@ const DesktopDetail: React.FC<{
     const prices = umbrellas.map(baseUmbrellaPricePerDay);
     return prices.length ? Math.min(...prices) : operator.priceFrom;
   }, [umbrellas, operator.priceFrom]);
+  const dateFrom = useMemo(() => isoDate(startOffset), [startOffset]);
+  const dateTo = useMemo(() => isoDate(startOffset + days - 1), [startOffset, days]);
+  const umbrellasNeeded = umbrellasNeededFor(Math.max(1, fallbackGuests));
+  const totalFrom = cheapestBandPrice * umbrellasNeeded * days;
 
   const handleReserve = () => onBook({ startOffset, days, guests: fallbackGuests });
 
@@ -1295,13 +1431,10 @@ const DesktopDetail: React.FC<{
           </Text>
         </View>
 
-        <View style={styles.desktopGalleryRow}>
-          <BeachPhoto photo={operator.photo} height={340} variant={0} style={styles.desktopGalleryMain} borderRadius={radius.lg} />
-          <View style={styles.desktopGallerySide}>
-            <BeachPhoto photo={operator.photo} height={162} variant={1} style={styles.desktopGallerySideTile} borderRadius={radius.lg} />
-            <BeachPhoto photo={operator.photo} height={162} variant={2} style={styles.desktopGallerySideTile} borderRadius={radius.lg} />
-          </View>
-        </View>
+        <GalleryGrid photo={operator.photo} mainHeight={260} smallHeight={140} />
+
+        <Text style={styles.detailSectionTitle}>Punti di forza della struttura</Text>
+        <PropertyHighlightsRow />
 
         <View style={styles.desktopDetailColumns}>
           <View style={styles.desktopDetailMain}>
@@ -1318,77 +1451,68 @@ const DesktopDetail: React.FC<{
               <Text style={styles.detailServiceText}>Bar sulla spiaggia</Text>
             </View>
 
-            {priceList ? (
-              <>
-                <Text style={styles.detailSectionTitle}>Costi</Text>
-                <Text style={styles.detailParagraph}>Ombrellone: a partire da {formatCurrency(cheapestBandPrice)}/giorno</Text>
-                <Text style={styles.detailParagraph}>Sdraio: {formatCurrency(priceList.prices['art-sdraio'] ?? 0)}/giorno</Text>
-              </>
-            ) : (
-              <View style={styles.detailComingSoonBox}>
-                <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
-                <Text style={styles.detailComingSoonText}>
-                  Prenotabile prossimamente in questa demo. Prova con Bagno Pietrasanta, Bagno Argentina o Bagno Roma.
-                </Text>
-              </View>
-            )}
-
             <Text style={styles.detailSectionTitle}>Recensioni</Text>
             <View style={styles.desktopRatingRow}>
               <View style={styles.desktopRatingBadgeLarge}>
                 <Text style={styles.desktopRatingBadgeLargeText}>{operator.rating.toFixed(1)}</Text>
               </View>
               <View>
-                <Text style={styles.desktopRatingSummary}>Ottimo</Text>
-                <Text style={styles.detailRatingCount}>{operator.reviewCount} recensioni</Text>
+                <Text style={styles.desktopRatingSummary}>{ratingSummaryLabel(operator.rating)}</Text>
+                <Text style={styles.detailRatingCount}>Vedi {operator.reviewCount} recensioni</Text>
               </View>
             </View>
-            <View style={styles.desktopCategoryGrid}>
-              {REVIEW_CATEGORIES.map((c) => (
-                <View key={c.label} style={styles.desktopCategoryItem}>
-                  <View style={styles.desktopCategoryLabelRow}>
-                    <Text style={styles.desktopCategoryLabel}>{c.label}</Text>
-                    <Text style={styles.desktopCategoryScore}>{c.score.toFixed(1)}</Text>
-                  </View>
-                  <View style={styles.desktopCategoryBarTrack}>
-                    <View style={[styles.desktopCategoryBarFill, { width: `${(c.score / 10) * 100}%` }]} />
-                  </View>
-                </View>
-              ))}
-            </View>
-            {DETAIL_REVIEWS.map((r) => (
-              <View key={r.name} style={styles.detailReviewCard}>
-                <View style={styles.detailReviewHeader}>
-                  <View style={styles.detailReviewAvatar}>
-                    <Ionicons name="person" size={16} color={colors.primary} />
-                  </View>
-                  <View>
-                    <Text style={styles.detailReviewName}>{r.name}</Text>
-                    <View style={{ flexDirection: 'row', gap: 2 }}>
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Ionicons key={i} name={i < r.stars ? 'ellipse' : 'ellipse-outline'} size={9} color={colors.primary} />
-                      ))}
-                    </View>
-                  </View>
-                </View>
-                <Text style={styles.detailParagraph}>Ottima esperienza, personale gentile e spiaggia curata nei minimi dettagli.</Text>
-              </View>
-            ))}
+            <RatingBreakdown />
+
+            <Text style={[styles.detailSectionTitle, { marginTop: spacing.lg }]}>Gli ospiti hanno apprezzato</Text>
+            <GuestReviewsSection />
           </View>
 
           <View style={styles.desktopDetailSidebar}>
             <View style={styles.desktopPriceCard}>
               {priceList ? (
                 <>
-                  <Text style={styles.desktopPriceCardHint}>A partire da</Text>
-                  <Text style={styles.desktopPriceCardAmount}>{formatCurrency(cheapestBandPrice)}</Text>
-                  <Text style={styles.desktopPriceCardHint}>per ombrellone al giorno</Text>
-                  <Button title="Prenota" onPress={handleReserve} style={{ marginTop: spacing.md }} />
-                  <Text style={styles.desktopPriceCardFootnote}>Scegli il tuo posto sulla mappa</Text>
+                  <View style={styles.checkRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.checkLabel}>Check-in</Text>
+                      <Text style={styles.checkValue}>{formatDateShort(dateFrom)}</Text>
+                    </View>
+                    <View style={styles.checkDivider} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.checkLabel}>Check-out</Text>
+                      <Text style={styles.checkValue}>{formatDateShort(dateTo)}</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.detailSectionTitle, { marginTop: spacing.md }]}>Hai cercato</Text>
+                  <Text style={styles.searchedForLink}>
+                    {umbrellasNeeded} {umbrellasNeeded === 1 ? 'ombrellone' : 'ombrelloni'} ·{' '}
+                    {Math.max(1, fallbackGuests)} {fallbackGuests === 1 ? 'persona' : 'persone'}
+                  </Text>
+                  <Text style={[styles.detailSectionTitle, { marginTop: spacing.md }]}>
+                    Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}
+                  </Text>
+                  <Text style={styles.desktopPriceCardAmount}>{formatCurrency(totalFrom)}</Text>
+                  <Text style={styles.desktopPriceCardHint}>a partire da, tasse incluse</Text>
+                  <View style={{ marginTop: spacing.sm, gap: 4 }}>
+                    <View style={styles.checkmarkRow}>
+                      <Ionicons name="checkmark" size={14} color={colors.success} />
+                      <Text style={styles.checkmarkRowTextGreen}>Cancellazione gratuita</Text>
+                    </View>
+                    <View style={styles.checkmarkRow}>
+                      <Ionicons name="checkmark" size={14} color={colors.success} />
+                      <Text style={styles.checkmarkRowTextGreen}>Nessun anticipo richiesto</Text>
+                    </View>
+                  </View>
+                  <Button title="Vedi disponibilita" onPress={handleReserve} style={{ marginTop: spacing.md }} />
                 </>
               ) : (
                 <>
-                  <Text style={styles.desktopPriceCardHint}>Non disponibile in questa demo</Text>
+                  <View style={styles.detailComingSoonBox}>
+                    <Ionicons name="time-outline" size={18} color={colors.primaryDark} />
+                    <Text style={styles.detailComingSoonText}>
+                      Prenotabile prossimamente in questa demo. Prova con Bagno Pietrasanta, Bagno Argentina o Bagno
+                      Roma.
+                    </Text>
+                  </View>
                   <Button title="Prossimamente" onPress={handleReserve} disabled style={{ marginTop: spacing.md }} />
                 </>
               )}
@@ -1525,31 +1649,34 @@ const styles = StyleSheet.create({
   operatorTown: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   operatorTagline: { fontSize: 12, color: colors.textMuted, marginTop: 4, lineHeight: 16 },
 
-  detailHero: {
-    height: 200,
-    backgroundColor: colors.seaDark,
-    justifyContent: 'flex-end',
-    padding: spacing.lg,
+  detailTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
+  detailTopBarTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: colors.text, marginHorizontal: spacing.sm },
   detailBackBtn: {
-    position: 'absolute',
-    top: spacing.sm,
-    left: spacing.lg,
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: 'rgba(0,0,0,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  detailHeroIconWrap: { position: 'absolute', right: spacing.xl, top: spacing.xl },
-  detailHeroTitle: { fontSize: 22, fontWeight: '800', color: colors.white },
-  detailTabsRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
-  detailTab: { flex: 1, alignItems: 'center', paddingVertical: spacing.md },
-  detailTabText: { fontSize: 13, fontWeight: '700', color: colors.textMuted },
-  detailTabTextActive: { color: colors.text },
-  detailTabUnderline: { marginTop: 6, height: 2, width: 28, backgroundColor: colors.peachDark, borderRadius: 1 },
   detailBody: { padding: spacing.lg, gap: spacing.sm },
+  detailTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  detailTitleBig: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.text, lineHeight: 26 },
+  detailTitleRatingBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  detailTitleRatingBadgeText: { color: colors.white, fontSize: 13, fontWeight: '800' },
+  detailAddressLine: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   detailParagraph: { fontSize: 13, color: colors.textMuted, lineHeight: 19 },
   detailSectionTitle: { fontSize: 14, fontWeight: '800', color: colors.text, marginTop: spacing.md },
   detailServiceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 4 },
@@ -1564,30 +1691,61 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   detailComingSoonText: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.primaryDark },
-  detailRatingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  detailRatingScore: { fontSize: 18, fontWeight: '800', color: colors.peachDark },
-  detailRatingCount: { fontSize: 12, color: colors.textMuted, marginLeft: spacing.sm },
-  detailReviewCard: { marginTop: spacing.md, gap: 6 },
-  detailReviewHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  detailReviewAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  detailRatingCount: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  detailShowMoreLink: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  detailDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.lg },
+  galleryMoreOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryMoreOverlayText: { color: colors.white, fontSize: 16, fontWeight: '800' },
+  highlightsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  highlightPill: {
+    width: 140,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    gap: 2,
+  },
+  highlightIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.prenotatoBg,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 4,
   },
-  detailReviewName: { fontSize: 13, fontWeight: '800', color: colors.text },
-  detailPhotoHint: { fontSize: 12, color: colors.textMuted },
-  detailPhotoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: spacing.xs },
-  detailPhotoTile: {
-    width: '32.6%',
-    aspectRatio: 1,
-    backgroundColor: colors.seaDark,
+  highlightTitle: { fontSize: 12, fontWeight: '800', color: colors.text },
+  highlightSubtitle: { fontSize: 11, color: colors.textMuted },
+  checkRow: { flexDirection: 'row', alignItems: 'center' },
+  checkLabel: { fontSize: 13, fontWeight: '800', color: colors.text },
+  checkValue: { fontSize: 13, color: colors.primary, fontWeight: '700', marginTop: 2 },
+  checkDivider: { width: 1, height: 30, backgroundColor: colors.border, marginHorizontal: spacing.md },
+  searchedForLink: { fontSize: 13, color: colors.primary, fontWeight: '700', marginTop: 2 },
+  priceSummaryAmount: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 2 },
+  priceSummaryHint: { fontSize: 11, color: colors.textMuted },
+  checkmarkRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  checkmarkRowTextGreen: { fontSize: 12, fontWeight: '700', color: colors.success },
+  ratingCardRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm },
+  reviewCard2: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, gap: spacing.xs },
+  reviewCard2Header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  reviewCard2Avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.peach,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  detailPhotoTileAlt: { backgroundColor: colors.primary },
+  reviewCard2AvatarText: { fontSize: 14, fontWeight: '800', color: colors.peachDark },
+  reviewCard2Name: { fontSize: 13, fontWeight: '800', color: colors.text },
+  reviewCard2Country: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
+  reviewCard2Quote: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
   detailFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1762,11 +1920,7 @@ const styles = StyleSheet.create({
   desktopDetailTitle: { fontSize: 26, fontWeight: '800', color: colors.text },
   desktopDetailMetaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs, marginBottom: spacing.lg },
   desktopDetailMetaText: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
-  desktopGalleryRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
-  desktopGalleryMain: { flex: 2 },
-  desktopGallerySide: { flex: 1, gap: spacing.sm },
-  desktopGallerySideTile: { width: '100%' },
-  desktopDetailColumns: { flexDirection: 'row', gap: spacing.xl, alignItems: 'flex-start' },
+  desktopDetailColumns: { flexDirection: 'row', gap: spacing.xl, alignItems: 'flex-start', marginTop: spacing.xl },
   desktopDetailMain: { flex: 2 },
   desktopDetailSidebar: { flex: 1, minWidth: 260 },
   desktopPriceCard: {
