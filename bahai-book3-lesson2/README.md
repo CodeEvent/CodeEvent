@@ -10,19 +10,22 @@ connection needed. Everything runs client-side in that one file.
 
 ## Two screens
 
-The app is built for two screens at once:
+- **Teacher screen** — the default view. All the controls live here: timers,
+  the lesson script, and the buttons that drive each game.
+- **Kid screen** — click **"👀 Switch to Kid Screen"** in the header to swap
+  the whole page over to the big, colourful, game-like view for whatever
+  step you're on, with a "🧑‍🏫 Teacher Screen" button to switch back. Nothing
+  to operate on the kid side.
 
-- **Teacher screen** — the window you open `index.html` in. All the
-  controls live here: timers, the lesson script, and the buttons that drive
-  each game.
-- **Kid screen** — click **"🖥️ Open Kid Screen"** in the header to pop open a
-  second window. Drag that window onto a TV or projector so the children see
-  only the big, colourful, game-like version of whatever step you're on. It
-  updates live as you use the teacher controls — nothing to operate on the
-  kid side.
+**One screen:** just flip back and forth with those two buttons.
 
-If only one screen is available, the kid window can just be switched to on
-the same device when it's time to show something.
+**Two screens (a laptop + a TV/projector):** open `index.html` a second time
+in another tab or window (or the same file on the second screen), and switch
+*that* window to Kid Screen while the first stays on Teacher Screen. The two
+stay in sync automatically — hide a word, deal out an item, or move to the
+next step on the teacher window and the kid window updates live. (This sync
+uses the browser's local storage, so both windows need to be the same file
+opened twice, not two different copies.)
 
 ## What it does
 
