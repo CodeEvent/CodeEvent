@@ -166,6 +166,7 @@
   .word{ padding: 2px 4px; border-bottom: 3px solid transparent; cursor:pointer; border-radius:6px; }
   .word:hover{ background: rgba(255,255,255,0.08); }
   .word.hidden{ color: transparent; border-bottom-color: var(--board-chalk); user-select:none; }
+  .word.singing{ background: rgba(232,196,104,0.25); border-bottom-color: var(--board-chalk); }
   .quote-attr{ margin-top: 10px; color: var(--board-ink); opacity: 0.65; font-style: italic; font-family: var(--font-display); font-size:0.85rem; }
 
   .prayer{
@@ -258,6 +259,18 @@
   #kidRoot .kid-card .icon{ font-size:3rem; }
   #kidRoot .kid-card .label{ font-size:1.15rem; font-weight:700; color:#204B4A; }
   #kidRoot .kid-timer{ font-family:ui-monospace,monospace; font-size:2.4rem; font-weight:700; color:#B87F2B; margin-top:10px; }
+  #kidRoot .kid-tile.singing{ box-shadow: 0 0 0 4px #E8C468; transform: scale(1.08); }
+
+  #kidRoot .draw-tools{ display:flex; gap:16px; justify-content:center; align-items:center; flex-wrap:wrap; margin: 18px 0 14px; }
+  #kidRoot .swatches{ display:flex; gap:6px; }
+  #kidRoot .swatch{ width:34px; height:34px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1px #00000022; cursor:pointer; padding:0; }
+  #kidRoot .swatch.selected{ box-shadow:0 0 0 3px #204B4A; }
+  #kidRoot .swatch.eraser{ background:#fff !important; font-size:1rem; display:flex; align-items:center; justify-content:center; }
+  #kidRoot .brush-sizes{ display:flex; gap:6px; }
+  #kidRoot .brush-btn{ background:#fff; border:1px solid #E4D7BE; border-radius:8px; padding:4px 12px; cursor:pointer; color:#2B2118; font-size:0.9rem; }
+  #kidRoot .brush-btn.selected{ background:#204B4A; color:#fff; border-color:#204B4A; }
+  #kidRoot .clearCanvasBtn{ background:#F6DDD3; color:#7A3A24; border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; }
+  #kidRoot #kidCanvas{ width:100%; max-width:900px; height:auto; aspect-ratio: 960 / 420; background:#fff; border-radius:16px; border:3px solid #E4D7BE; cursor:crosshair; touch-action:none; display:block; margin: 0 auto; }
 
   @keyframes kidpop{ 0%{ transform:scale(0.4); opacity:0; } 70%{ transform:scale(1.15); opacity:1; } 100%{ transform:scale(1); } }
   @keyframes kidbounce{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-8px); } }
@@ -312,8 +325,8 @@ const PRAYER = {
   text: "O God, guide me, protect me, make of me a shining lamp and a brilliant star. Thou art the Mighty and the Powerful.",
   who: "— 'Abdu'l-Bahá"
 };
-const QUOTE_TEXT = "Tread ye the path of justice, for this, verily, is the straight path.";
-const QUOTE_WHO = "— Bahá'u'lláh";
+const DEFAULT_QUOTE_TEXT = "Tread ye the path of justice, for this, verily, is the straight path.";
+const DEFAULT_QUOTE_WHO = "Bahá'u'lláh";
 
 const PREP_ITEMS = [
   "Whiteboard, working marker and eraser",
@@ -324,6 +337,8 @@ const PREP_ITEMS = [
 ];
 
 const AVATAR_COLORS = ['#E4572E','#F3A712','#4C9F70','#3A86FF','#8338EC','#FF5D8F','#2EC4B6','#B5852E'];
+const DRAW_COLORS = ['#2B2118','#C24A30','#E4572E','#F3A712','#3F7D53','#3A86FF','#8338EC','#FF5D8F'];
+const SING_SCALE = [1.0, 1.15, 1.3, 1.15, 1.0, 1.3, 1.5, 1.3, 1.15, 1.0, 1.3, 1.5];
 const STATE_KEY = 'justiceLessonSharedState_v1';
 
 const steps = [
@@ -343,10 +358,17 @@ let masterRemaining = 45*60;
 let masterRunning = false;
 let masterInterval = null;
 
-let quoteWords = QUOTE_TEXT.split(' ');
+let quoteText = DEFAULT_QUOTE_TEXT;
+let quoteWho = DEFAULT_QUOTE_WHO;
+let quoteWords = quoteText.split(' ');
 let hiddenIndices = new Set();
 let storyRevealed = false;
 let deal = { children: 8, items: 16, each: 0, leftover: 0, order: [], assigned: [], dealt: 0, total: 0, autoInterval: null };
+let singing = false;
+let singingIndex = -1;
+let currentDrawColor = DRAW_COLORS[0];
+let currentBrushSize = 10;
+let kidCanvasMouseUpHandler = null;
 
 function fmt(sec){
   sec = Math.max(0, sec);
@@ -509,6 +531,52 @@ function hideRandomWord(){
 }
 function revealAllQuote(){ hiddenIndices = new Set(); }
 
+function refreshSingingHighlight(){
+  const wordsEl = document.getElementById('quoteWords');
+  if(wordsEl){
+    wordsEl.querySelectorAll('.word').forEach((el, idx) => {
+      el.classList.toggle('singing', idx === singingIndex);
+    });
+  }
+  broadcastState();
+  if(viewMode === 'kid' && current === 2) renderKidView();
+}
+
+function playQuoteSong(){
+  if(!('speechSynthesis' in window)){
+    alert('This browser cannot sing the quote out loud, sorry — the words will still highlight if you play it from a browser that supports speech.');
+    return;
+  }
+  window.speechSynthesis.cancel();
+  singing = true;
+  let i = 0;
+  function speakNext(){
+    if(!singing || i >= quoteWords.length){
+      singing = false;
+      singingIndex = -1;
+      refreshSingingHighlight();
+      return;
+    }
+    const word = quoteWords[i].replace(/[.,]/g, '');
+    const utter = new SpeechSynthesisUtterance(word);
+    utter.pitch = Math.min(2, SING_SCALE[i % SING_SCALE.length]);
+    utter.rate = 0.75;
+    singingIndex = i;
+    refreshSingingHighlight();
+    utter.onend = () => { i++; speakNext(); };
+    utter.onerror = () => { i++; speakNext(); };
+    window.speechSynthesis.speak(utter);
+  }
+  speakNext();
+}
+
+function stopQuoteSong(){
+  singing = false;
+  if('speechSynthesis' in window) window.speechSynthesis.cancel();
+  singingIndex = -1;
+  refreshSingingHighlight();
+}
+
 function renderQuoteStep(){
   const box = document.createElement('div');
   box.innerHTML = `
@@ -518,7 +586,7 @@ function renderQuoteStep(){
     </div>
     <div class="quote-card">
       <div class="quote-words" id="quoteWords"></div>
-      <div class="quote-attr">${QUOTE_WHO}</div>
+      <div class="quote-attr">— ${quoteWho}</div>
     </div>
     <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:14px;">
       <button class="btn" id="hideWordBtn">Hide a Word</button>
@@ -536,6 +604,30 @@ function renderQuoteStep(){
       </ol>
       <p style="margin:8px 0 0; color:var(--muted); font-size:0.85rem;">Tip: click any word directly to hide or reveal just that one. If they get stuck, reveal it for one round, then try again.</p>
     </div>
+    <div class="control-card">
+      <h4>🎵 Sing the quote</h4>
+      <p style="margin:0 0 10px; font-size:0.85rem; color:var(--muted);">Uses your browser's built-in voice to sing the quote word by word, with the current word glowing on both screens. Plays through whichever screen you click it from.</p>
+      <div class="btn-row">
+        <button class="btn" id="singQuoteBtn">🎵 Sing the Quote</button>
+        <button class="btn secondary" id="stopSingBtn">⏹ Stop</button>
+      </div>
+    </div>
+    <div class="control-card">
+      <h4>Quote of the day</h4>
+      <p style="margin:0 0 10px; font-size:0.85rem; color:var(--muted);">Teaching a different quote this week? Edit it here — the board, the song and the kid screen all update.</p>
+      <div class="field" style="width:100%; margin-bottom:12px;">
+        <label for="quoteTextInput">Quote text</label>
+        <textarea class="note" id="quoteTextInput" style="min-height:64px;">${quoteText}</textarea>
+      </div>
+      <div class="control-row">
+        <div class="field">
+          <label for="quoteWhoInput">Said by</label>
+          <input type="text" id="quoteWhoInput" value="${quoteWho}" style="width:220px;">
+        </div>
+        <button class="btn" id="saveQuoteBtn">Save Quote</button>
+        <button class="btn secondary" id="resetQuoteBtn">Reset to Lesson 2 Quote</button>
+      </div>
+    </div>
   `;
   const wordsEl = box.querySelector('#quoteWords');
   renderQuoteWords(wordsEl);
@@ -551,6 +643,29 @@ function renderQuoteStep(){
     broadcastState();
     if(viewMode === 'kid') renderKidView();
   });
+  box.querySelector('#singQuoteBtn').addEventListener('click', playQuoteSong);
+  box.querySelector('#stopSingBtn').addEventListener('click', stopQuoteSong);
+  box.querySelector('#saveQuoteBtn').addEventListener('click', () => {
+    const newText = box.querySelector('#quoteTextInput').value.trim();
+    const newWho = box.querySelector('#quoteWhoInput').value.trim();
+    if(!newText) return;
+    quoteText = newText;
+    quoteWords = quoteText.split(/\s+/).filter(Boolean);
+    quoteWho = newWho || DEFAULT_QUOTE_WHO;
+    hiddenIndices = new Set();
+    stopQuoteSong();
+    broadcastState();
+    render();
+  });
+  box.querySelector('#resetQuoteBtn').addEventListener('click', () => {
+    quoteText = DEFAULT_QUOTE_TEXT;
+    quoteWords = quoteText.split(' ');
+    quoteWho = DEFAULT_QUOTE_WHO;
+    hiddenIndices = new Set();
+    stopQuoteSong();
+    broadcastState();
+    render();
+  });
   return box;
 }
 
@@ -558,7 +673,7 @@ function renderQuoteWords(container){
   container.innerHTML = '';
   quoteWords.forEach((word, i) => {
     const span = document.createElement('span');
-    span.className = 'word' + (hiddenIndices.has(i) ? ' hidden' : '');
+    span.className = 'word' + (hiddenIndices.has(i) ? ' hidden' : '') + (i === singingIndex ? ' singing' : '');
     span.textContent = word;
     span.title = 'Click to toggle';
     span.addEventListener('click', () => {
@@ -769,8 +884,12 @@ function renderStep(stepId){
         <span class="prompt-chip">🤝 Helping someone who was left out</span>
       </div>
       <div class="qbox" style="margin-top:16px;">
+        <h4>Digital option</h4>
+        The kid screen also has its own colouring canvas with a colour palette, brush sizes and a clear button — a child at a touchscreen or the mouse can draw or colour right on the big screen while the others use paper.
+      </div>
+      <div class="qbox">
         <h4>While they draw</h4>
-        Quietly repeat the quote so they hear it again: <em>"${QUOTE_TEXT}"</em>
+        Quietly repeat the quote so they hear it again: <em>"${quoteText}"</em>
       </div>
       <p>When they finish, let a few children hold up their drawing and tell the group what fair thing they drew.</p>
     `;
@@ -857,14 +976,19 @@ function buildKidCardHTML(stepId){
     `;
   }
   if(stepId === 2){
-    const tiles = quoteWords.map((w, i) => `<span class="kid-tile ${hiddenIndices.has(i) ? 'hidden' : ''}">${hiddenIndices.has(i) ? '❓' : w}</span>`).join('');
+    const tiles = quoteWords.map((w, i) => {
+      const cls = ['kid-tile'];
+      if(hiddenIndices.has(i)) cls.push('hidden');
+      if(i === singingIndex) cls.push('singing');
+      return `<span class="${cls.join(' ')}">${hiddenIndices.has(i) ? '❓' : w}</span>`;
+    }).join('');
     const stars = '⭐'.repeat(hiddenIndices.size) + '☆'.repeat(Math.max(0, quoteWords.length - hiddenIndices.size));
     return `
       <div class="card">
         <h1 class="kid-title">The Magic Quote</h1>
         <div class="kid-stars">${stars}</div>
         <div class="kid-board">${tiles}</div>
-        <div class="kid-attr">${QUOTE_WHO}</div>
+        <div class="kid-attr">— ${quoteWho}</div>
         ${hiddenIndices.size === quoteWords.length ? '<div class="kid-celebrate">🎉 You know it by heart! 🎉</div>' : ''}
       </div>
     `;
@@ -924,14 +1048,25 @@ function buildKidCardHTML(stepId){
     `;
   }
   if(stepId === 5){
+    const swatches = DRAW_COLORS.map(c => `<button class="swatch ${c === currentDrawColor ? 'selected' : ''}" data-color="${c}" style="background:${c}" title="Draw in this colour"></button>`).join('');
     return `
       <div class="card">
-        <h1 class="kid-title">Draw Something Fair!</h1>
+        <h1 class="kid-title">Draw or Colour Something Fair!</h1>
         <div class="kid-cards">
           <div class="kid-card"><span class="icon">🧸</span><span class="label">Sharing toys</span></div>
           <div class="kid-card"><span class="icon">🔁</span><span class="label">Taking turns</span></div>
           <div class="kid-card"><span class="icon">🤝</span><span class="label">Helping a friend</span></div>
         </div>
+        <div class="draw-tools">
+          <div class="swatches">${swatches}<button class="swatch eraser" data-color="#FFFFFF" title="Eraser">🧽</button></div>
+          <div class="brush-sizes">
+            <button class="brush-btn ${currentBrushSize === 4 ? 'selected' : ''}" data-size="4">Thin</button>
+            <button class="brush-btn ${currentBrushSize === 10 ? 'selected' : ''}" data-size="10">Medium</button>
+            <button class="brush-btn ${currentBrushSize === 20 ? 'selected' : ''}" data-size="20">Thick</button>
+          </div>
+          <button class="clearCanvasBtn" id="clearCanvasBtn">Clear 🧹</button>
+        </div>
+        <canvas id="kidCanvas" width="960" height="420"></canvas>
         <div class="kid-timer" id="kidTimer">${fmt(stepTimers[5].remaining)}</div>
       </div>
     `;
@@ -941,6 +1076,17 @@ function buildKidCardHTML(stepId){
 
 function renderKidView(){
   const root = document.getElementById('kidRoot');
+
+  // Step 5 hosts a live drawing canvas — never wipe it just because the
+  // teacher flipped back and forth or an unrelated timer tick came in.
+  if(current === 5 && root.querySelector('#kidCanvas')){
+    const timerEl = document.getElementById('kidTimer');
+    if(timerEl) timerEl.textContent = fmt(stepTimers[5].remaining);
+    const pathEl = root.querySelector('.path');
+    if(pathEl) pathEl.outerHTML = pathTrackerHTML();
+    return;
+  }
+
   root.innerHTML = `
     <div class="stage">
       <button class="backBtn" id="backToTeacherBtn">🧑‍🏫 Teacher Screen</button>
@@ -949,6 +1095,73 @@ function renderKidView(){
     </div>
   `;
   document.getElementById('backToTeacherBtn').addEventListener('click', () => setViewMode('teacher'));
+  if(current === 5) setupDrawingCanvas();
+}
+
+function setupDrawingCanvas(){
+  const canvas = document.getElementById('kidCanvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  let drawing = false;
+  let lastX = 0, lastY = 0;
+
+  function pointFromEvent(e){
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }
+  function start(e){
+    drawing = true;
+    const p = pointFromEvent(e);
+    lastX = p.x; lastY = p.y;
+    ctx.fillStyle = currentDrawColor;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, currentBrushSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    e.preventDefault();
+  }
+  function move(e){
+    if(!drawing) return;
+    const p = pointFromEvent(e);
+    ctx.strokeStyle = currentDrawColor;
+    ctx.lineWidth = currentBrushSize;
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    lastX = p.x; lastY = p.y;
+    e.preventDefault();
+  }
+  function end(){ drawing = false; }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+  if(kidCanvasMouseUpHandler) window.removeEventListener('mouseup', kidCanvasMouseUpHandler);
+  kidCanvasMouseUpHandler = end;
+  window.addEventListener('mouseup', kidCanvasMouseUpHandler);
+
+  document.querySelectorAll('#kidRoot .swatch').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentDrawColor = btn.dataset.color;
+      document.querySelectorAll('#kidRoot .swatch').forEach(b => b.classList.toggle('selected', b === btn));
+    });
+  });
+  document.querySelectorAll('#kidRoot .brush-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentBrushSize = parseInt(btn.dataset.size, 10);
+      document.querySelectorAll('#kidRoot .brush-btn').forEach(b => b.classList.toggle('selected', b === btn));
+    });
+  });
+  const clearBtn = document.getElementById('clearCanvasBtn');
+  if(clearBtn) clearBtn.addEventListener('click', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
 }
 
 function setViewMode(mode){
@@ -971,7 +1184,10 @@ function currentSharedState(){
       children: deal.children, items: deal.items, each: deal.each, leftover: deal.leftover,
       assigned: deal.assigned.slice(), dealt: deal.dealt, total: deal.total, order: deal.order.slice()
     },
-    step5Remaining: stepTimers[5].remaining
+    step5Remaining: stepTimers[5].remaining,
+    quoteText,
+    quoteWho,
+    singingIndex
   };
 }
 
@@ -989,13 +1205,44 @@ function applyState(s){
   if(typeof s.step5Remaining === 'number'){
     stepTimers[5].remaining = s.step5Remaining;
   }
+  if(typeof s.quoteText === 'string' && s.quoteText){
+    quoteText = s.quoteText;
+    quoteWords = quoteText.split(/\s+/).filter(Boolean);
+  }
+  if(typeof s.quoteWho === 'string' && s.quoteWho) quoteWho = s.quoteWho;
+  singingIndex = typeof s.singingIndex === 'number' ? s.singingIndex : -1;
 }
 
 window.addEventListener('storage', (e) => {
   if(e.key !== STATE_KEY || e.newValue == null) return;
   let s;
   try{ s = JSON.parse(e.newValue); }catch(err){ return; }
+
+  const before = {
+    current, storyRevealed, quoteText,
+    hidden: [...hiddenIndices].sort().join(','),
+    dealStr: JSON.stringify(deal.assigned) + '|' + deal.dealt + '|' + deal.total,
+    singingIndex
+  };
+
   applyState(s);
+
+  const onlyTimerChanged = current === before.current
+    && storyRevealed === before.storyRevealed
+    && quoteText === before.quoteText
+    && singingIndex === before.singingIndex
+    && [...hiddenIndices].sort().join(',') === before.hidden
+    && (JSON.stringify(deal.assigned) + '|' + deal.dealt + '|' + deal.total) === before.dealStr;
+
+  if(onlyTimerChanged && current === 5){
+    if(viewMode === 'kid'){
+      const el = document.getElementById('kidTimer');
+      if(el) el.textContent = fmt(stepTimers[5].remaining);
+    }
+    renderNav();
+    return;
+  }
+
   renderNav();
   renderStep(current);
   if(viewMode === 'kid') renderKidView();

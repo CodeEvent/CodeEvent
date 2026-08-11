@@ -38,6 +38,14 @@ opened twice, not two different copies.)
   and watch it disappear as a face-down "❓" card on the big kid board, with a
   star filling in for every word learned and a celebration when the whole
   quote is hidden.
+- **Sing the quote** — plays the quote word by word through the browser's
+  built-in voice with a simple rising-and-falling pitch, so it comes out as a
+  little sing-song chant. The word being sung glows on both screens as it
+  plays.
+- **Editable quote of the day** — the quote and who said it aren't fixed to
+  Lesson 2. Edit them in the "Quote of the day" panel on Step 2 and the
+  board, the song, and both screens all switch to the new one immediately
+  (handy for reusing the app with a different lesson's quote).
 - **Orange story toggle** — flip the kid screen between "one friend has it
   all" and "shared fairly, half each" while you tell the story.
 - **Fair Shares dealing game** — set the number of children and items, then
@@ -45,8 +53,10 @@ opened twice, not two different copies.)
   child's pile live on the kid screen, with any leftover shown separately to
   prompt the fairness discussion. A button suggests an uneven amount for
   round two.
-- **Drawing prompt cards** — big icon cards for sharing, taking turns, and
-  helping a friend, plus a synced countdown.
+- **Draw or colour, right on the kid screen** — big prompt cards for sharing,
+  taking turns, and helping a friend, plus a real colouring canvas underneath
+  with a colour palette, three brush sizes, and a clear button, so a child at
+  the screen (mouse or touchscreen) can draw alongside everyone using paper.
 - **Prep checklist and end-of-class notes**, saved locally in the browser so
   they're there next time you teach this lesson.
 
