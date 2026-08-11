@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Justice — Book 3, Lesson 2 | Class Companion</title>
+<style>
+  :root{
+    --bg: #fbf6ec;
+    --panel: #ffffff;
+    --ink: #2c2620;
+    --muted: #7a6f60;
+    --accent: #c8873a;
+    --accent-dark: #9c6425;
+    --accent-light: #f3ddb8;
+    --good: #4f8a5b;
+    --warn: #c85a3a;
+    --border: #e7dcc6;
+    --radius: 14px;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; padding:0; background:var(--bg); color:var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .app{ max-width: 1180px; margin: 0 auto; padding: 18px 18px 60px; }
+
+  header.top{
+    display:flex; flex-wrap:wrap; gap:14px; align-items:center; justify-content:space-between;
+    background: linear-gradient(135deg, var(--accent-light), #fff);
+    border:1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px; margin-bottom: 16px;
+  }
+  header.top h1{ margin:0; font-size: 1.4rem; }
+  header.top .sub{ margin:2px 0 0; color:var(--muted); font-size: 0.92rem; }
+  .badges{ display:flex; gap:8px; flex-wrap:wrap; }
+  .badge{
+    background:#fff; border:1px solid var(--border); border-radius: 999px;
+    padding: 5px 12px; font-size: 0.82rem; color:var(--muted);
+  }
+
+  .master-timer{
+    display:flex; align-items:center; gap:12px; background:#fff;
+    border:1px solid var(--border); border-radius: var(--radius); padding: 10px 16px;
+  }
+  .master-timer .clock{
+    font-variant-numeric: tabular-nums; font-size: 1.8rem; font-weight:700; min-width: 92px; text-align:center;
+  }
+  .master-timer.low .clock{ color: var(--warn); }
+  .btn{
+    border:none; border-radius: 10px; padding: 8px 14px; font-size: 0.9rem; cursor:pointer;
+    background: var(--accent); color:#fff; font-weight:600;
+  }
+  .btn:hover{ background: var(--accent-dark); }
+  .btn.secondary{ background:#fff; color: var(--accent-dark); border:1px solid var(--accent); }
+  .btn.secondary:hover{ background: var(--accent-light); }
+  .btn:disabled{ opacity:0.45; cursor:not-allowed; }
+  .btn.small{ padding:5px 10px; font-size:0.8rem; }
+
+  .layout{ display:grid; grid-template-columns: 250px 1fr; gap:16px; }
+  @media (max-width: 860px){ .layout{ grid-template-columns: 1fr; } }
+
+  nav.steps{ display:flex; flex-direction:column; gap:8px; }
+  .step-btn{
+    display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+    text-align:left; background:var(--panel); border:1px solid var(--border);
+    border-radius: 12px; padding: 10px 12px; cursor:pointer; color:var(--ink);
+  }
+  .step-btn .t{ font-weight:700; font-size:0.92rem; }
+  .step-btn .m{ font-size:0.78rem; color:var(--muted); }
+  .step-btn.active{ background: var(--accent); color:#fff; border-color: var(--accent-dark); }
+  .step-btn.active .m{ color: #fff9ee; }
+  .step-btn.done{ border-color: var(--good); }
+  .step-btn.done:not(.active) .t::before{ content:"✓ "; color: var(--good); }
+
+  .prep{
+    margin-top: 14px; background:var(--panel); border:1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px;
+  }
+  .prep h3{ margin:0 0 8px; font-size:0.95rem; }
+  .prep label{ display:flex; gap:8px; align-items:flex-start; font-size:0.85rem; margin-bottom:6px; color:var(--muted); cursor:pointer; }
+  .prep input[type=checkbox]{ margin-top:2px; }
+  .prep label.checked{ color: var(--ink); text-decoration: line-through; text-decoration-color: var(--good); }
+
+  main.panel{
+    background:var(--panel); border:1px solid var(--border); border-radius: var(--radius);
+    padding: 22px 26px; min-height: 420px;
+  }
+  main.panel h2{ margin-top:0; font-size:1.35rem; }
+  .step-meta{ display:flex; gap:10px; align-items:center; color:var(--muted); font-size:0.85rem; margin-bottom: 14px; flex-wrap:wrap; }
+
+  .step-timer{ display:flex; align-items:center; gap:8px; background: var(--accent-light); border-radius: 999px; padding: 4px 6px 4px 14px; }
+  .step-timer .clock{ font-variant-numeric: tabular-nums; font-weight:700; min-width:58px; }
+  .step-timer.low{ background:#fbdccf; }
+  .step-timer.low .clock{ color: var(--warn); }
+
+  .quote-card{
+    background: #fffaf0; border:2px dashed var(--accent); border-radius: 12px;
+    padding: 20px; text-align:center; margin: 14px 0;
+  }
+  .quote-words{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; font-size:1.35rem; font-weight:600; line-height:1.6; }
+  .word{
+    padding: 2px 4px; border-bottom: 3px solid transparent; cursor:pointer; border-radius:6px;
+  }
+  .word:hover{ background: var(--accent-light); }
+  .word.hidden{ color: transparent; border-bottom-color: var(--accent-dark); user-select:none; }
+  .quote-attr{ margin-top: 10px; color: var(--muted); font-style: italic; }
+  .quote-meaning{ background:#f5f0e2; border-radius:10px; padding:12px 16px; margin:12px 0; font-size:0.95rem; }
+
+  .prayer{
+    background:#fffaf0; border-left:4px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; font-size:1.15rem; line-height:1.6; font-style: italic;
+  }
+  .prayer .who{ display:block; margin-top:8px; font-style:normal; color:var(--muted); font-size:0.9rem; }
+
+  ul.tidy{ padding-left: 20px; line-height:1.7; }
+  .qbox{ background:#f5f0e2; border-radius:10px; padding:12px 16px; margin: 10px 0; }
+  .qbox h4{ margin:0 0 6px; font-size:0.9rem; color:var(--accent-dark); }
+
+  .story{ background:#fffaf0; border-radius:10px; padding:14px 18px; line-height:1.7; }
+
+  .game-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+  @media (max-width: 700px){ .game-grid{ grid-template-columns: 1fr; } }
+  .calc{ background:#f5f0e2; border-radius:12px; padding:16px; }
+  .calc label{ display:block; font-size:0.85rem; color:var(--muted); margin-bottom:4px; }
+  .calc input{ width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border); font-size:1rem; margin-bottom:10px; }
+  .calc-result{ margin-top:12px; padding:12px; border-radius:10px; background:#fff; border:1px solid var(--border); font-size:0.95rem; min-height: 46px; }
+  .calc-result.fair{ border-color: var(--good); }
+  .calc-result.uneven{ border-color: var(--warn); }
+
+  .drawing-prompts{ display:flex; flex-wrap:wrap; gap:10px; margin-top: 10px; }
+  .prompt-chip{ background: var(--accent-light); border-radius: 999px; padding:8px 14px; font-size:0.9rem; }
+
+  textarea.note{
+    width:100%; min-height: 60px; border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; font-family: inherit; font-size:0.85rem; resize: vertical;
+  }
+  .notes-grid{ display:grid; gap:10px; margin-top:8px; }
+  .notes-grid label{ font-size:0.8rem; color:var(--muted); font-weight:600; }
+
+  .footer-nav{ display:flex; justify-content:space-between; margin-top:22px; }
+
+  .sound-toggle{ display:flex; align-items:center; gap:6px; font-size:0.8rem; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <div>
+      <h1>Justice — Tread the Path</h1>
+      <p class="sub">Children's Class · Book 3 · Lesson 2</p>
+      <div class="badges">
+        <span class="badge">Ages 5–7</span>
+        <span class="badge">Up to 8 children</span>
+        <span class="badge">45 minutes</span>
+      </div>
+    </div>
+    <div class="master-timer" id="masterTimerBox">
+      <div>
+        <div class="clock" id="masterClock">45:00</div>
+      </div>
+      <button class="btn" id="masterStart">Start Class</button>
+      <button class="btn secondary" id="masterReset">Reset</button>
+      <label class="sound-toggle"><input type="checkbox" id="soundToggle" checked> Chime</label>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div>
+      <nav class="steps" id="stepNav"></nav>
+      <div class="prep">
+        <h3>Teacher prep checklist</h3>
+        <div id="prepList"></div>
+      </div>
+    </div>
+
+    <main class="panel" id="panel"></main>
+  </div>
+</div>
+
+<script>
+const PRAYER = {
+  text: "O God, guide me, protect me, make of me a shining lamp and a brilliant star. Thou art the Mighty and the Powerful.",
+  who: "— 'Abdu'l-Bahá"
+};
+const QUOTE_TEXT = "Tread ye the path of justice, for this, verily, is the straight path.";
+const QUOTE_WHO = "— Bahá'u'lláh";
+
+const PREP_ITEMS = [
+  "Whiteboard, working marker and eraser",
+  "Quote written up before class starts",
+  "Counters or pasta and a basket for the game",
+  "Paper and colouring pencils for the drawing",
+  "The prayer printed or written where you can see it"
+];
+
+const steps = [
+  { id:1, title:"Welcome & Opening Prayer", minutes:5 },
+  { id:2, title:"The Quote & Whiteboard", minutes:12 },
+  { id:3, title:"Talk & Story", minutes:8 },
+  { id:4, title:"The Game: Fair Shares", minutes:10 },
+  { id:5, title:"Drawing", minutes:8 },
+  { id:6, title:"Review & Closing Prayer", minutes:2 }
+];
+
+let current = 1;
+let stepTimers = {};
+steps.forEach(s => stepTimers[s.id] = { remaining: s.minutes*60, running:false, interval:null, everRan:false });
+let masterRemaining = 45*60;
+let masterRunning = false;
+let masterInterval = null;
+
+function fmt(sec){
+  sec = Math.max(0, sec);
+  const m = Math.floor(sec/60);
+  const s = sec%60;
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function playChime(){
+  if(!document.getElementById('soundToggle').checked) return;
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [660, 880].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + i*0.18 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i*0.18 + 0.35);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + i*0.18);
+      osc.stop(ctx.currentTime + i*0.18 + 0.4);
+    });
+  }catch(e){}
+}
+
+function updateMasterClock(){
+  const clock = document.getElementById('masterClock');
+  clock.textContent = fmt(masterRemaining);
+  document.getElementById('masterTimerBox').classList.toggle('low', masterRemaining <= 120 && masterRemaining > 0);
+}
+
+document.getElementById('masterStart').addEventListener('click', () => {
+  masterRunning = !masterRunning;
+  const btn = document.getElementById('masterStart');
+  if(masterRunning){
+    btn.textContent = 'Pause';
+    masterInterval = setInterval(() => {
+      if(masterRemaining > 0){
+        masterRemaining--;
+        updateMasterClock();
+        if(masterRemaining === 0) playChime();
+      }
+    }, 1000);
+  } else {
+    btn.textContent = 'Start Class';
+    clearInterval(masterInterval);
+  }
+});
+document.getElementById('masterReset').addEventListener('click', () => {
+  masterRemaining = 45*60;
+  masterRunning = false;
+  clearInterval(masterInterval);
+  document.getElementById('masterStart').textContent = 'Start Class';
+  updateMasterClock();
+});
+
+function renderPrep(){
+  const box = document.getElementById('prepList');
+  box.innerHTML = '';
+  PREP_ITEMS.forEach((item, idx) => {
+    const key = 'prep_' + idx;
+    const checked = localStorage.getItem(key) === '1';
+    const label = document.createElement('label');
+    label.className = checked ? 'checked' : '';
+    label.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''}> <span>${item}</span>`;
+    label.querySelector('input').addEventListener('change', (e) => {
+      localStorage.setItem(key, e.target.checked ? '1' : '0');
+      label.classList.toggle('checked', e.target.checked);
+    });
+    box.appendChild(label);
+  });
+}
+
+function renderNav(){
+  const nav = document.getElementById('stepNav');
+  nav.innerHTML = '';
+  steps.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'step-btn' + (s.id === current ? ' active' : '') + (stepTimers[s.id].everRan && stepTimers[s.id].remaining === 0 ? ' done' : '');
+    btn.innerHTML = `<span class="t">${s.id}. ${s.title}</span><span class="m">${s.minutes} min</span>`;
+    btn.addEventListener('click', () => { current = s.id; render(); });
+    nav.appendChild(btn);
+  });
+}
+
+function stepTimerControls(stepId){
+  const t = stepTimers[stepId];
+  const wrap = document.createElement('div');
+  wrap.className = 'step-timer' + (t.remaining <= 60 && t.remaining > 0 ? ' low' : '');
+  wrap.innerHTML = `<span class="clock">${fmt(t.remaining)}</span>`;
+  const startBtn = document.createElement('button');
+  startBtn.className = 'btn small';
+  startBtn.textContent = t.running ? 'Pause' : (t.everRan ? 'Resume' : 'Start');
+  startBtn.addEventListener('click', () => toggleStepTimer(stepId));
+  const resetBtn = document.createElement('button');
+  resetBtn.className = 'btn secondary small';
+  resetBtn.textContent = 'Reset';
+  resetBtn.addEventListener('click', () => resetStepTimer(stepId));
+  wrap.appendChild(startBtn);
+  wrap.appendChild(resetBtn);
+  return wrap;
+}
+
+function toggleStepTimer(stepId){
+  const t = stepTimers[stepId];
+  t.running = !t.running;
+  t.everRan = true;
+  if(t.running){
+    t.interval = setInterval(() => {
+      if(t.remaining > 0){
+        t.remaining--;
+        if(t.remaining === 0){
+          playChime();
+          t.running = false;
+          clearInterval(t.interval);
+        }
+        if(current === stepId) refreshStepTimerUI(stepId);
+      }
+    }, 1000);
+  } else {
+    clearInterval(t.interval);
+  }
+  if(current === stepId) render();
+}
+
+function resetStepTimer(stepId){
+  const t = stepTimers[stepId];
+  clearInterval(t.interval);
+  t.remaining = steps.find(s => s.id === stepId).minutes * 60;
+  t.running = false;
+  if(current === stepId) render();
+  renderNav();
+}
+
+function refreshStepTimerUI(stepId){
+  const el = document.querySelector('.step-timer .clock');
+  if(el) el.textContent = fmt(stepTimers[stepId].remaining);
+  const box = document.querySelector('.step-timer');
+  if(box) box.classList.toggle('low', stepTimers[stepId].remaining <= 60 && stepTimers[stepId].remaining > 0);
+  if(stepTimers[stepId].remaining === 0) renderNav();
+}
+
+let quoteWords = [];
+let hideOrder = [];
+let hiddenCount = 0;
+
+function setupQuote(){
+  quoteWords = QUOTE_TEXT.split(' ');
+  hideOrder = quoteWords.map((_, i) => i);
+  for(let i = hideOrder.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [hideOrder[i], hideOrder[j]] = [hideOrder[j], hideOrder[i]];
+  }
+  hiddenCount = 0;
+}
+setupQuote();
+
+function renderQuoteStep(){
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <div class="qbox">
+      <h4>What it means (say it simply)</h4>
+      Being fair is like walking on a straight path. When we are fair to everyone, we stay on the right road.
+    </div>
+    <div class="quote-card">
+      <div class="quote-words" id="quoteWords"></div>
+      <div class="quote-attr">${QUOTE_WHO}</div>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:14px;">
+      <button class="btn" id="hideWordBtn">Hide a Word</button>
+      <button class="btn secondary" id="revealAllBtn">Reveal All &amp; Reshuffle</button>
+      <span id="quoteStatus" style="align-self:center; color:var(--muted); font-size:0.85rem;"></span>
+    </div>
+    <div class="qbox">
+      <h4>How to run it</h4>
+      <ol style="margin:0; padding-left:20px; line-height:1.7;">
+        <li>Read the whole quote aloud together two or three times, pointing to each word.</li>
+        <li>Click "Hide a Word" — rub that word off the real whiteboard too.</li>
+        <li>Read the whole quote again; children say the missing word from memory.</li>
+        <li>Keep hiding one word each round until the board is blank.</li>
+        <li>Finish with everyone saying it together, proud and loud.</li>
+      </ol>
+      <p style="margin:8px 0 0; color:var(--muted); font-size:0.85rem;">Tip: click any word directly to hide or reveal just that one. If they get stuck, reveal it for one round, then try again.</p>
+    </div>
+  `;
+  const wordsEl = box.querySelector('#quoteWords');
+  renderQuoteWords(wordsEl);
+  box.querySelector('#hideWordBtn').addEventListener('click', () => {
+    if(hiddenCount < hideOrder.length){
+      hiddenCount++;
+      renderQuoteWords(wordsEl);
+    }
+  });
+  box.querySelector('#revealAllBtn').addEventListener('click', () => {
+    setupQuote();
+    renderQuoteWords(wordsEl);
+  });
+  return box;
+}
+
+function renderQuoteWords(container){
+  const hiddenIdx = new Set(hideOrder.slice(0, hiddenCount));
+  container.innerHTML = '';
+  quoteWords.forEach((word, i) => {
+    const span = document.createElement('span');
+    span.className = 'word' + (hiddenIdx.has(i) ? ' hidden' : '');
+    span.textContent = word;
+    span.title = 'Click to toggle';
+    span.addEventListener('click', () => {
+      if(hiddenIdx.has(i)){
+        hiddenIdx.delete(i);
+      } else {
+        hiddenIdx.add(i);
+      }
+      hideOrder = [...hiddenIdx, ...hideOrder.filter(x => !hiddenIdx.has(x))];
+      hiddenCount = hiddenIdx.size;
+      renderQuoteWords(container);
+    });
+    container.appendChild(span);
+  });
+  const status = document.getElementById('quoteStatus');
+  if(status){
+    status.textContent = hiddenCount === 0
+      ? 'All words showing'
+      : hiddenCount === quoteWords.length
+        ? 'All hidden — say it from memory!'
+        : `${hiddenCount} of ${quoteWords.length} words hidden`;
+  }
+}
+
+function calcFairShare(children, items){
+  if(children <= 0 || items < 0 || !Number.isFinite(children) || !Number.isFinite(items)){
+    return null;
+  }
+  const each = Math.floor(items / children);
+  const leftover = items % children;
+  return { each, leftover };
+}
+
+function renderGameStep(){
+  const box = document.createElement('div');
+  box.innerHTML = `
+    <p><strong>You need:</strong> a small pile of countable items (buttons, counters or dried pasta) and a basket.</p>
+    <ol class="tidy">
+      <li>Give one child the whole pile and no one else any. Ask the group: "Is this fair?"</li>
+      <li>Let them tell you why not.</li>
+      <li>Give the group a task: share the pile so <strong>everyone gets the same amount</strong>.</li>
+      <li>When it is shared out, ask: "Now is it fair? How do you know?"</li>
+      <li>Play a second round with a number that does not divide evenly, and talk about the leftover.</li>
+    </ol>
+    <div class="game-grid">
+      <div class="calc">
+        <label for="numChildren">Number of children</label>
+        <input type="number" id="numChildren" min="1" max="30" value="8">
+        <label for="numItems">Number of items (counters/pasta)</label>
+        <input type="number" id="numItems" min="0" max="200" value="16">
+        <button class="btn" id="calcBtn">Calculate Fair Share</button>
+        <div class="calc-result" id="calcResult">Enter numbers and calculate to see the fair split.</div>
+      </div>
+      <div class="calc">
+        <h4 style="margin-top:0;">Round 2 idea (uneven split)</h4>
+        <p style="color:var(--muted); font-size:0.85rem;">Get a suggested item count that will <em>not</em> divide evenly, so you can talk about leftovers.</p>
+        <button class="btn secondary" id="unevenBtn">Suggest an Uneven Amount</button>
+        <div class="calc-result" id="unevenResult"></div>
+      </div>
+    </div>
+  `;
+  const recalc = () => {
+    const children = parseInt(box.querySelector('#numChildren').value, 10);
+    const items = parseInt(box.querySelector('#numItems').value, 10);
+    const result = box.querySelector('#calcResult');
+    const r = calcFairShare(children, items);
+    if(!r){
+      result.textContent = 'Enter valid numbers.';
+      result.className = 'calc-result';
+      return;
+    }
+    if(r.leftover === 0){
+      result.textContent = `Each of the ${children} children gets ${r.each} — perfectly fair, nothing left over!`;
+      result.className = 'calc-result fair';
+    } else {
+      result.textContent = `Each of the ${children} children gets ${r.each}, with ${r.leftover} left over. Ask the group what to do with the leftover — give it away, or take turns.`;
+      result.className = 'calc-result uneven';
+    }
+  };
+  box.querySelector('#calcBtn').addEventListener('click', recalc);
+  box.querySelector('#unevenBtn').addEventListener('click', () => {
+    const children = parseInt(box.querySelector('#numChildren').value, 10) || 8;
+    let items;
+    do {
+      items = Math.floor(Math.random() * 16) + 5;
+    } while(children > 0 && items % children === 0);
+    box.querySelector('#numItems').value = items;
+    const r = calcFairShare(children, items);
+    const out = box.querySelector('#unevenResult');
+    out.textContent = `Try ${items} items for ${children} children — that leaves ${r.leftover} over. Perfect for talking about fairness with leftovers.`;
+    out.className = 'calc-result uneven';
+  });
+  return box;
+}
+
+function renderStep(stepId){
+  const panel = document.getElementById('panel');
+  panel.innerHTML = '';
+  const step = steps.find(s => s.id === stepId);
+  const heading = document.createElement('h2');
+  heading.textContent = `${step.id}. ${step.title}`;
+  panel.appendChild(heading);
+
+  const meta = document.createElement('div');
+  meta.className = 'step-meta';
+  meta.innerHTML = `<span>Suggested: ${step.minutes} min</span>`;
+  meta.appendChild(stepTimerControls(stepId));
+  panel.appendChild(meta);
+
+  let content;
+  if(stepId === 1){
+    content = document.createElement('div');
+    content.innerHTML = `
+      <p>Gather the children on the mat, welcome each one by name, and settle them.</p>
+      <p>Say this short prayer together, with hands held open. Say it once for them, then have them repeat it after you line by line. We will say the same prayer again at the end.</p>
+      <div class="prayer">"${PRAYER.text}"<span class="who">${PRAYER.who}</span></div>
+    `;
+  } else if(stepId === 2){
+    content = renderQuoteStep();
+  } else if(stepId === 3){
+    content = document.createElement('div');
+    content.innerHTML = `
+      <ul class="tidy">
+        <li>Justice means being <strong>fair</strong>.</li>
+        <li>It means everyone gets what they need and no one is left out.</li>
+        <li>It means we <strong>share</strong> and we <strong>respect</strong> what belongs to other people.</li>
+      </ul>
+      <div class="qbox">
+        <h4>Ask them</h4>
+        <ul class="tidy" style="margin:0;">
+          <li>What does it feel like when something is not fair?</li>
+          <li>Can you tell me about a time you shared, or made something fair?</li>
+        </ul>
+      </div>
+      <div class="story">
+        <strong>The story:</strong> Imagine two friends with one orange. One friend grabs the whole orange for himself. Is that fair? What could they do instead? Guide them to see that sharing it, half each, is the fair and just thing to do. That is walking on the straight path.
+      </div>
+    `;
+  } else if(stepId === 4){
+    content = renderGameStep();
+  } else if(stepId === 5){
+    content = document.createElement('div');
+    content.innerHTML = `
+      <p>Give out paper and pencils. Ask each child to draw <strong>one fair thing they can do</strong>.</p>
+      <div class="drawing-prompts">
+        <span class="prompt-chip">Sharing toys</span>
+        <span class="prompt-chip">Taking turns</span>
+        <span class="prompt-chip">Helping someone who was left out</span>
+      </div>
+      <div class="qbox" style="margin-top:16px;">
+        <h4>While they draw</h4>
+        Quietly repeat the quote so they hear it again: <em>"${QUOTE_TEXT}"</em>
+      </div>
+      <p>When they finish, let a few children hold up their drawing and tell the group what fair thing they drew.</p>
+    `;
+  } else if(stepId === 6){
+    content = document.createElement('div');
+    content.innerHTML = `
+      <ul class="tidy">
+        <li>Ask the children to say the quote back to you one last time, all together.</li>
+        <li>Ask: "What is one fair thing you will do this week?"</li>
+      </ul>
+      <p>Close by saying the opening prayer together again:</p>
+      <div class="prayer">"${PRAYER.text}"<span class="who">${PRAYER.who}</span></div>
+      <div class="notes-grid" style="margin-top:20px;">
+        <div>
+          <label for="noteWorked">Notes for next time — What worked</label>
+          <textarea class="note" id="noteWorked"></textarea>
+        </div>
+        <div>
+          <label for="noteChange">What to change</label>
+          <textarea class="note" id="noteChange"></textarea>
+        </div>
+        <div>
+          <label for="noteSupport">Which children need a little more support</label>
+          <textarea class="note" id="noteSupport"></textarea>
+        </div>
+      </div>
+    `;
+  }
+  panel.appendChild(content);
+
+  if(stepId === 6){
+    ['noteWorked','noteChange','noteSupport'].forEach(key => {
+      const el = panel.querySelector('#' + key);
+      el.value = localStorage.getItem(key) || '';
+      el.addEventListener('input', () => localStorage.setItem(key, el.value));
+    });
+  }
+
+  const footer = document.createElement('div');
+  footer.className = 'footer-nav';
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'btn secondary';
+  prevBtn.textContent = '← Previous';
+  prevBtn.disabled = stepId === 1;
+  prevBtn.addEventListener('click', () => { current = stepId - 1; render(); });
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'btn';
+  nextBtn.textContent = 'Next →';
+  nextBtn.disabled = stepId === steps.length;
+  nextBtn.addEventListener('click', () => { current = stepId + 1; render(); });
+  footer.appendChild(prevBtn);
+  footer.appendChild(nextBtn);
+  panel.appendChild(footer);
+}
+
+function render(){
+  renderNav();
+  renderStep(current);
+}
+
+renderPrep();
+updateMasterClock();
+render();
+</script>
+</body>
+</html>
