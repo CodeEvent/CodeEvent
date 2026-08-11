@@ -36,12 +36,13 @@ opened twice, not two different copies.)
   footprint path tracker on the kid screen showing where the class is.
 - **Quote memorisation game** — hide one word at a time (or click any word)
   and watch it disappear as a face-down "❓" card on the big kid board, with a
-  star filling in for every word learned and a celebration when the whole
-  quote is hidden.
-- **Sing the quote** — plays the quote word by word through the browser's
-  built-in voice with a simple rising-and-falling pitch, so it comes out as a
-  little sing-song chant. The word being sung glows on both screens as it
-  plays.
+  star filling in for every word learned, a cheerful chime, and a celebration
+  when the whole quote is hidden.
+- **Sing the quote** — plays an actual little tune for the quote, one musical
+  note per word on a gentle pentatonic scale (so it's always pleasant, never
+  a wrong note) with a quiet spoken word underneath and the current word
+  glowing on both screens — a real melody the class can sing along to, not
+  just a voice reading the words.
 - **Editable quote of the day** — the quote and who said it aren't fixed to
   Lesson 2. Edit them in the "Quote of the day" panel on Step 2 and the
   board, the song, and both screens all switch to the new one immediately
@@ -59,5 +60,9 @@ opened twice, not two different copies.)
   the screen (mouse or touchscreen) can draw alongside everyone using paper.
 - **Prep checklist and end-of-class notes**, saved locally in the browser so
   they're there next time you teach this lesson.
+- **A friendly mascot** (🦉) on the kid screen with a short encouraging line
+  for whatever step is active, plus bigger touch targets on the drawing
+  tools and a little bounce on the path tracker — small touches aimed at
+  keeping it easy for a 5–7 year old to follow on their own.
 
 `lesson-plan.md` is the original lesson plan the app is built from.
