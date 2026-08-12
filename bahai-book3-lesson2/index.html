@@ -594,8 +594,8 @@ function buildMelody(words){
     const isPhraseEnd = /[,.]$/.test(word);
     const degree = isLast ? 0 : PENTATONIC_CONTOUR[i % PENTATONIC_CONTOUR.length];
     const freq = PENTATONIC_SCALE[degree % PENTATONIC_SCALE.length];
-    const dur = isLast ? 0.85 : (isPhraseEnd ? 0.55 : 0.4);
-    const gap = isPhraseEnd ? 0.18 : 0.06;
+    const dur = isLast ? 1.1 : (isPhraseEnd ? 0.75 : 0.55);
+    const gap = isPhraseEnd ? 0.22 : 0.08;
     notes.push({ freq, dur, gap });
   });
   return notes;
@@ -604,6 +604,9 @@ function buildMelody(words){
 let songTimeouts = [];
 let songOscillators = [];
 
+// A pure sung melody, no computer voice: the tune plays and the current
+// word glows so the teacher and class sing the actual words themselves,
+// in time with the notes — like a real call-and-response song.
 function playQuoteSong(){
   if(!document.getElementById('soundToggle').checked){
     alert('Turn on "Chime" (top right) to hear the song.');
@@ -614,16 +617,15 @@ function playQuoteSong(){
   try{
     const ctx = getAudioCtx();
     const notes = buildMelody(quoteWords);
-    const canSpeak = 'speechSynthesis' in window;
-    let t = ctx.currentTime + 0.12;
+    let t = ctx.currentTime + 0.15;
     notes.forEach((note, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
       osc.frequency.value = note.freq;
       gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.22, t + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + note.dur * 0.92);
+      gain.gain.exponentialRampToValueAtTime(0.26, t + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + note.dur * 0.95);
       osc.connect(gain).connect(ctx.destination);
       osc.start(t);
       osc.stop(t + note.dur);
@@ -634,12 +636,6 @@ function playQuoteSong(){
         if(!singing) return;
         singingIndex = i;
         refreshSingingHighlight();
-        if(canSpeak){
-          const utter = new SpeechSynthesisUtterance(quoteWords[i].replace(/[.,]/g, ''));
-          utter.rate = 0.85;
-          utter.volume = 0.55;
-          window.speechSynthesis.speak(utter);
-        }
       }, delayMs));
 
       t += note.dur + note.gap;
@@ -661,7 +657,6 @@ function stopQuoteSong(){
   songTimeouts = [];
   songOscillators.forEach(osc => { try{ osc.stop(); }catch(e){} });
   songOscillators = [];
-  if('speechSynthesis' in window) window.speechSynthesis.cancel();
   singingIndex = -1;
   refreshSingingHighlight();
 }
@@ -695,7 +690,7 @@ function renderQuoteStep(){
     </div>
     <div class="control-card">
       <h4>🎵 Sing the quote</h4>
-      <p style="margin:0 0 10px; font-size:0.85rem; color:var(--muted);">Plays a real little tune for the quote — one musical note per word, with a quiet spoken word underneath and the current word glowing on both screens. Sing along with the words as it plays! Plays through whichever screen you click it from.</p>
+      <p style="margin:0 0 10px; font-size:0.85rem; color:var(--muted);">Plays a real little tune, one musical note per word — no computer voice. Sing the highlighted word out loud with the class as its note plays, like a call-and-response song. Plays through whichever screen you click it from.</p>
       <div class="btn-row">
         <button class="btn" id="singQuoteBtn">🎵 Sing the Quote</button>
         <button class="btn secondary" id="stopSingBtn">⏹ Stop</button>
@@ -719,18 +714,19 @@ function renderQuoteStep(){
     </div>
   `;
   const wordsEl = box.querySelector('#quoteWords');
-  renderQuoteWords(wordsEl);
+  const statusEl = box.querySelector('#quoteStatus');
+  renderQuoteWords(wordsEl, statusEl);
   box.querySelector('#hideWordBtn').addEventListener('click', () => {
     const wasComplete = hiddenIndices.size === quoteWords.length;
     hideRandomWord();
     if(!wasComplete && hiddenIndices.size === quoteWords.length) playCelebrationSound();
-    renderQuoteWords(wordsEl);
+    renderQuoteWords(wordsEl, statusEl);
     broadcastState();
     if(viewMode === 'kid') renderKidView();
   });
   box.querySelector('#revealAllBtn').addEventListener('click', () => {
     revealAllQuote();
-    renderQuoteWords(wordsEl);
+    renderQuoteWords(wordsEl, statusEl);
     broadcastState();
     if(viewMode === 'kid') renderKidView();
   });
@@ -760,7 +756,7 @@ function renderQuoteStep(){
   return box;
 }
 
-function renderQuoteWords(container){
+function renderQuoteWords(container, statusEl){
   container.innerHTML = '';
   quoteWords.forEach((word, i) => {
     const span = document.createElement('span');
@@ -769,15 +765,14 @@ function renderQuoteWords(container){
     span.title = 'Click to toggle';
     span.addEventListener('click', () => {
       if(hiddenIndices.has(i)) hiddenIndices.delete(i); else hiddenIndices.add(i);
-      renderQuoteWords(container);
+      renderQuoteWords(container, statusEl);
       broadcastState();
       if(viewMode === 'kid') renderKidView();
     });
     container.appendChild(span);
   });
-  const status = document.getElementById('quoteStatus');
-  if(status){
-    status.textContent = hiddenIndices.size === 0
+  if(statusEl){
+    statusEl.textContent = hiddenIndices.size === 0
       ? 'All words showing'
       : hiddenIndices.size === quoteWords.length
         ? 'All hidden — say it from memory!'
