@@ -28,7 +28,7 @@ import { QRCode } from '../../components/QRCode';
 import { sidebarBackdrop, sidebarSheet, useSidebarMode } from '../../components/sidebarSheet';
 import { Button, Card, Checkbox, Chip, StepProgressBar, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
-import { colors, radius, spacing } from '../../theme';
+import { avatarPalette, cardShadow, colors, radius, spacing } from '../../theme';
 import { Booking, Customer, Umbrella } from '../../types';
 import { ROWS } from '../../data/seed';
 import { DEMO_OPERATORS } from '../../data/demoOperators';
@@ -1753,12 +1753,13 @@ const BookingForm: React.FC<{
                       Ombrellone N.{u.number} · {u.zone} · {ownAdults} {ownAdults === 1 ? 'adulto' : 'adulti'}
                     </Text>
                   )}
-                  {packages.map((pkg) => {
+                  {packages.map((pkg, pkgIdx) => {
                     const price = (baseUmbrellaPricePerDay(u) + pkg.beds * bedRate) * days;
                     const selected = eq.beds === pkg.beds;
+                    const tint = avatarPalette[pkgIdx % avatarPalette.length];
                     return (
                       <React.Fragment key={pkg.key}>
-                        <View style={[styles.roomCard, selected && styles.roomCardSelected]}>
+                        <View style={[styles.roomCard, cardShadow, selected && styles.roomCardSelected]}>
                           <View style={styles.roomCardTopRow}>
                             <View style={{ flex: 1 }}>
                               <Text style={styles.roomCardTitle}>{priceBandLabel(u)}</Text>
@@ -1775,8 +1776,8 @@ const BookingForm: React.FC<{
                                 )}
                               </View>
                             </View>
-                            <View style={styles.roomCardThumb}>
-                              <Ionicons name="sunny-outline" size={22} color={colors.primary} />
+                            <View style={[styles.roomCardThumb, { backgroundColor: tint.bg }]}>
+                              <Ionicons name="sunny-outline" size={22} color={tint.fg} />
                             </View>
                           </View>
 

@@ -8,7 +8,7 @@ import { BeachPhoto } from '../../components/BeachPhoto';
 import { Calendar } from '../../components/Calendar';
 import { Button, Card, Checkbox, Chip, Stepper } from '../../components/UI';
 import { useStore } from '../../store/StoreContext';
-import { colors, radius, spacing } from '../../theme';
+import { avatarPalette, cardShadow, colors, radius, spacing } from '../../theme';
 import { DEMO_OPERATORS, DEMO_TOWNS, DemoOperator } from '../../data/demoOperators';
 import { MAX_ADULTS_PER_UMBRELLA, umbrellasNeededFor } from '../../utils/booking';
 import { baseUmbrellaPricePerDay } from '../../utils/pricing';
@@ -1316,39 +1316,45 @@ const RatingBreakdown: React.FC = () => {
 // Shared "Guests who stayed here loved" review-card list, used by both mobile and desktop.
 const GuestReviewsSection: React.FC = () => (
   <View style={{ marginTop: spacing.md, gap: spacing.md }}>
-    {GUEST_REVIEWS.map((r) => (
-      <View key={r.name} style={styles.reviewCard2}>
-        <View style={styles.reviewCard2Header}>
-          <View style={styles.reviewCard2Avatar}>
-            <Text style={styles.reviewCard2AvatarText}>{r.name[0]}</Text>
+    {GUEST_REVIEWS.map((r, i) => {
+      const tint = avatarPalette[i % avatarPalette.length];
+      return (
+        <View key={r.name} style={[styles.reviewCard2, cardShadow]}>
+          <View style={styles.reviewCard2Header}>
+            <View style={[styles.reviewCard2Avatar, { backgroundColor: tint.bg }]}>
+              <Text style={[styles.reviewCard2AvatarText, { color: tint.fg }]}>{r.name[0]}</Text>
+            </View>
+            <View>
+              <Text style={styles.reviewCard2Name}>
+                {r.name} - {r.type}
+              </Text>
+              <Text style={styles.reviewCard2Country}>
+                {r.flag} {r.country}
+              </Text>
+            </View>
           </View>
-          <View>
-            <Text style={styles.reviewCard2Name}>
-              {r.name} - {r.type}
-            </Text>
-            <Text style={styles.reviewCard2Country}>
-              {r.flag} {r.country}
-            </Text>
-          </View>
+          <Text style={styles.reviewCard2Quote}>&ldquo;{r.quote}&rdquo;</Text>
         </View>
-        <Text style={styles.reviewCard2Quote}>&ldquo;{r.quote}&rdquo;</Text>
-      </View>
-    ))}
+      );
+    })}
   </View>
 );
 
 // Shared "Property highlights" pill row, used by both mobile and desktop property pages.
 const PropertyHighlightsRow: React.FC = () => (
   <View style={styles.highlightsRow}>
-    {PROPERTY_HIGHLIGHTS.map((h) => (
-      <View key={h.title} style={styles.highlightPill}>
-        <View style={styles.highlightIconCircle}>
-          <Ionicons name={h.icon} size={18} color={colors.primaryDark} />
+    {PROPERTY_HIGHLIGHTS.map((h, i) => {
+      const tint = avatarPalette[i % avatarPalette.length];
+      return (
+        <View key={h.title} style={[styles.highlightPill, cardShadow]}>
+          <View style={[styles.highlightIconCircle, { backgroundColor: tint.bg }]}>
+            <Ionicons name={h.icon} size={18} color={tint.fg} />
+          </View>
+          <Text style={styles.highlightTitle}>{h.title}</Text>
+          <Text style={styles.highlightSubtitle}>{h.subtitle}</Text>
         </View>
-        <Text style={styles.highlightTitle}>{h.title}</Text>
-        <Text style={styles.highlightSubtitle}>{h.subtitle}</Text>
-      </View>
-    ))}
+      );
+    })}
   </View>
 );
 
@@ -1931,6 +1937,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     position: 'sticky' as any,
     top: spacing.lg,
+    ...cardShadow,
   },
   desktopPriceCardHint: { fontSize: 12, color: colors.textMuted },
   desktopPriceCardAmount: { fontSize: 24, fontWeight: '800', color: colors.text, marginTop: 2 },

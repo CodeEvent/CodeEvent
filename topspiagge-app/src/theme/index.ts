@@ -81,3 +81,26 @@ export const radius = {
   lg: 16,
   xl: 24,
 };
+
+// Subtle lifted-card shadow shared by every "crafted primitive" style card in the guest
+// booking flow (property page highlight pills, review cards, room-option cards, price
+// summary) -- one consistent elevation recipe instead of each screen inventing its own.
+export const cardShadow = {
+  shadowColor: '#000',
+  shadowOpacity: 0.06,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 3 },
+  elevation: 2,
+};
+
+// Rotating {background, icon} tint pairs for small circular icon-avatars (property
+// highlights, guest review initials, room-option thumbnails) -- cycling through a few
+// distinct, low-saturation tints instead of one repeated color reads as more "crafted"
+// (each item visually distinct) without introducing new semantic-status colors.
+export const avatarPalette: Array<{ bg: string; fg: string }> = [
+  { bg: '#E5F5F5', fg: '#0E7D83' },
+  { bg: '#FCEBD4', fg: '#E7AD6B' },
+  { bg: '#E9F7EF', fg: '#2FB380' },
+  { bg: '#FFF3DC', fg: '#D98C0F' },
+  { bg: '#EAEEFE', fg: '#5B6FD1' },
+];
