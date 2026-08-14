@@ -1754,7 +1754,13 @@ const BookingForm: React.FC<{
                     </Text>
                   )}
                   {packages.map((pkg, pkgIdx) => {
-                    const price = (baseUmbrellaPricePerDay(u) + pkg.beds * bedRate) * days;
+                    // Same discount used by "Il tuo ombrellone"/the footer total (umbrellaTotal)
+                    // -- applying it here too keeps this card's price the actual amount that
+                    // package would charge, instead of a gross figure that never matches what
+                    // the guest is billed once selected.
+                    const grossPrice = (baseUmbrellaPricePerDay(u) + pkg.beds * bedRate) * days;
+                    const discountPct = umbrellaDiscount(id).total;
+                    const price = Math.round(grossPrice * (1 - discountPct) * 100) / 100;
                     const selected = eq.beds === pkg.beds;
                     const tint = avatarPalette[pkgIdx % avatarPalette.length];
                     return (
@@ -1811,7 +1817,17 @@ const BookingForm: React.FC<{
                             <Text style={styles.roomCardPriceLabel}>
                               Prezzo per {days} {days === 1 ? 'giorno' : 'giorni'}
                             </Text>
-                            <Text style={styles.roomCardPriceAmount}>{formatCurrency(price)}</Text>
+                            <View style={styles.roomCardPriceRow}>
+                              <Text style={styles.roomCardPriceAmount}>{formatCurrency(price)}</Text>
+                              {discountPct > 0 && (
+                                <Text style={styles.roomCardPriceWas}>{formatCurrency(grossPrice)}</Text>
+                              )}
+                            </View>
+                            {discountPct > 0 && (
+                              <Text style={styles.roomCardDiscountNote}>
+                                Sconto applicato: -{Math.round(discountPct * 100)}%
+                              </Text>
+                            )}
                             <Pressable
                               onPress={() => setBeds(id, pkg.beds)}
                               style={styles.roomCardSelectBtn}
@@ -2700,7 +2716,10 @@ const styles = StyleSheet.create({
   roomCardPackageRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   roomCardPackageLabel: { fontSize: 13, fontWeight: '700', color: colors.text },
   roomCardPriceLabel: { fontSize: 11, color: colors.textMuted, marginTop: spacing.sm },
+  roomCardPriceRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs },
   roomCardPriceAmount: { fontSize: 18, fontWeight: '800', color: colors.text },
+  roomCardPriceWas: { fontSize: 13, color: colors.textMuted, textDecorationLine: 'line-through' },
+  roomCardDiscountNote: { fontSize: 11, fontWeight: '700', color: colors.success, marginTop: 2 },
   roomCardSelectBtn: {
     marginTop: spacing.sm,
     backgroundColor: colors.primary,
