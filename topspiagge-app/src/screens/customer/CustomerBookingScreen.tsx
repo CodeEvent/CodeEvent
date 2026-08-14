@@ -49,6 +49,7 @@ import {
   computeDiscounts,
   isSameDayWalkIn,
   isStudentDiscountEligibleRow,
+  lateBookingDiscount,
   priceBandLabel,
 } from '../../utils/pricing';
 import { generateBookingReference } from '../../utils/reference';
@@ -72,10 +73,17 @@ const PRICE_BANNER_HEIGHT = 42;
 
 // Groups rows into price tiers (every row in a tier shares the exact same base price) so the
 // map can show one full-width "STANDARD - DA €X" banner per tier instead of repeating the
-// price on every row, mirroring a seat map's section banners.
-function buildPriceBands(umbrellas: Umbrella[]) {
+// price on every row, mirroring a seat map's section banners. `discountPct` (the same
+// same-day-walk-in discount applied to the actual booking total -- see umbrellaTotal in
+// BookingForm) is baked into rowPrices here so the map's own price banners and the "selected
+// spot" footer price already show the real, discounted rate instead of a gross figure that
+// only gets corrected once the guest reaches the Disponibilità step.
+function buildPriceBands(umbrellas: Umbrella[], discountPct: number = 0) {
   const rowPrices = new Map<number, number>();
-  umbrellas.forEach((u) => rowPrices.set(u.row, baseUmbrellaPricePerDay(u)));
+  umbrellas.forEach((u) => {
+    const gross = baseUmbrellaPricePerDay(u);
+    rowPrices.set(u.row, Math.round(gross * (1 - discountPct) * 100) / 100);
+  });
   const sortedRows = Array.from(rowPrices.keys()).sort((a, b) => a - b);
   const isNewBandRow = (row: number) => {
     const price = rowPrices.get(row);
@@ -321,7 +329,8 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
   const fullCellSize = Math.max(14, Math.min(widthBasedCellSize, heightBasedCellSize));
   const cellSize = fullMapView ? fullCellSize : normalCellSize;
 
-  const priceBands = useMemo(() => buildPriceBands(umbrellas), [umbrellas]);
+  const mapDiscountPct = lateBookingDiscount(dateFrom, dateTo);
+  const priceBands = useMemo(() => buildPriceBands(umbrellas, mapDiscountPct), [umbrellas, mapDiscountPct]);
   const rowBannerHeight = (row: number) => (priceBands.isNewBandRow(row) ? PRICE_BANNER_HEIGHT : 0);
   const positions = useUmbrellaPositions(umbrellas, cellSize, GAP, cellSize, SECTION_WALKWAYS, rowBannerHeight);
 
@@ -407,6 +416,7 @@ export const CustomerBookingScreen: React.FC<CustomerBookingScreenProps> = ({
       onToggleFullMapView={() => setFullMapView((v) => !v)}
       rowBannerHeight={rowBannerHeight}
       rowPrices={priceBands.rowPrices}
+      discountPct={mapDiscountPct}
       selectedUmbrella={umbrellas.find((u) => u.id === selectedUmbrellaId) ?? null}
       guestsHint={guestsHint}
     />
@@ -784,6 +794,7 @@ const MapStep: React.FC<{
   onToggleFullMapView: () => void;
   rowBannerHeight: (row: number) => number;
   rowPrices: Map<number, number>;
+  discountPct: number;
   selectedUmbrella: Umbrella | null;
   guestsHint: number;
 }> = ({
@@ -801,6 +812,7 @@ const MapStep: React.FC<{
   onToggleFullMapView,
   rowBannerHeight,
   rowPrices,
+  discountPct,
   selectedUmbrella,
   guestsHint,
 }) => {
@@ -852,7 +864,9 @@ const MapStep: React.FC<{
         // One bar over the Nord side, one over the Sud side -- each sized and positioned
         // exactly to its own side (not just centered across the combined Nord+Sud width),
         // so the price is visible whichever side the guest has scrolled to.
-        const label = `Da ${formatCurrency(rowPrices.get(row) ?? 0)} al giorno`;
+        const label = `Da ${formatCurrency(rowPrices.get(row) ?? 0)} al giorno${
+          discountPct > 0 ? ` · -${Math.round(discountPct * 100)}%` : ''
+        }`;
         return (
           <>
             <View style={[styles.priceBanner, { left: 0, width: nordWidth }]}>
