@@ -96,6 +96,7 @@
 drwxr-xr-x  [BLOCKCHAIN]   SmartGuard/            Slither DeFi fraud detector · 100% F1 · SIGiST 2026
 drwxr-xr-x  [DFIR]         Operation-FishNet/     ACPO forensics · DarkComet RAT · 50+ court exhibits
 drwxr-xr-x  [OFFENSIVE]    OWASP-Pentest-Suite/   SQLi · XSS · CSRF · 2FA bypass · 89/100
+| [🐚 Web Exploitation Labs](https://github.com/CodeEvent/Web-Exploitation-Labs) | JWT forgery · OS cmd injection → RCE · reverse shell — Juice Shop & DVWA | jwt_tool · sqlmap · ffuf · Docker |
 drwxr-xr-x  [NETWORK]      Network-Security/      ARP poison · Snort IDS · OpenVPN · RADIUS · A2
 drwxr-xr-x  [CRYPTO]       Cryptography/          PKI · AES · RSA · hashing · GPG · IKEv2 VPN · COMP09106
 drwxr-xr-x  [SECURE-CODE]  Secure-Programming/    SEI CERT C++ · Rust Hangman · DCL50 STR50 MEM51
