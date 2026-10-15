@@ -106,6 +106,7 @@ drwxr-xr-x  [PYTHON]       Programming-for-Cyber/ HTTP brute force · DNS pipeli
 | Mission | Objective | Stack |
 |---------|-----------|-------|
 | [🔐 SmartGuard](https://github.com/CodeEvent/SmartGuard) | DeFi fraud detector — 100% F1 — SIGiST 2026 | Python · Slither · Solidity |
+| [🏠 RentShield](https://github.com/CodeEvent/RentShield) | Dubai tenancy-notice & ID-verification platform — NFC + liveness, notary review, RDSC compliance gate | Django · DRF · Angular |
 | [🕵️ Operation FishNet](https://github.com/CodeEvent/Operation-FishNet) | ACPO DFIR — DarkComet RAT — 50+ exhibits | Autopsy · Volatility · FTK |
 | [💉 OWASP Pentest Suite](https://github.com/CodeEvent/OWASP-Pentest-Suite) | SQLi · XSS · CSRF · 2FA bypass — 89/100 | Burp Suite · Python |
 | [🌐 Network Security](https://github.com/CodeEvent/Network-Security) | ARP poison · Snort · OpenVPN · RADIUS — A2 | Ettercap · Snort · FreeRADIUS |
