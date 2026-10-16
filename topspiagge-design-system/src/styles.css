@@ -1,0 +1,15 @@
+.tsds-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+  border-style: solid;
+  border-radius: 50%;
+  animation: tsds-spin 0.7s linear infinite;
+}
+
+@keyframes tsds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
